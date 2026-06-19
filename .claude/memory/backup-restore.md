@@ -42,6 +42,25 @@ metadata:
 | hello_js_reverse_skill | `git clone` |
 | Python venv | `python -m venv` |
 
+## 自动备份（git push 自动化）
+
+每次 `git commit` 后自动 `git push`。
+
+**原理**: `.githooks/post-commit` → 后台异步 git push，不阻塞提交，网络异常也不影响本地工作。
+
+**换机后启用**: `install-mcp.sh` 已包含 `git config core.hooksPath .githooks`，自动生效。
+
+**手动启用**（如未运行 install 脚本）:
+```bash
+git config core.hooksPath .githooks
+```
+
+国内需先配代理才能推送:
+```bash
+git config http.proxy http://127.0.0.1:10808
+git config https.proxy http://127.0.0.1:10808
+```
+
 ## 为什么这样设计
 
 - `camoufox-reverse-mcp` 不在 PyPI 上，必须 git clone
