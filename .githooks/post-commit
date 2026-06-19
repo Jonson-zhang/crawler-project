@@ -1,0 +1,24 @@
+#!/bin/bash
+# ============================================================
+# Auto-backup: git push after every commit
+# Runs asynchronously — won't block your commit even if offline
+# ============================================================
+
+# Get current branch
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+REMOTE=$(git config branch."$BRANCH".remote 2>/dev/null || echo "origin")
+
+# Push in background, log failures without blocking
+(
+  sleep 1  # tiny delay — let the commit fully settle
+  if git push "$REMOTE" "$BRANCH" 2>&1; then
+    exit 0
+  else
+    # Log failure but don't interrupt the user
+    echo "[backup] push failed at $(date +%H:%M:%S) — will retry on next commit" >&2
+    exit 0
+  fi
+) &
+disown
+
+exit 0

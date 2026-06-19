@@ -74,8 +74,13 @@ cd "$MCP_DIR/js-reverse-mcp"
 npm install --silent 2>&1 | tail -1
 say "js-reverse-mcp installed"
 
+# ---- Git auto-backup ----
+echo "[4/5] auto-backup hook ..."
+git config core.hooksPath .githooks
+say "git post-commit auto-push enabled"
+
 # ---- Skills ----
-echo "[4/4] Skills ..."
+echo "[5/5] Skills ..."
 if [ ! -d "$SKILLS_DIR/hello_js_reverse_skill/.git" ]; then
   rm -rf "$SKILLS_DIR/hello_js_reverse_skill"
   if [ "$USE_PROXY" = "1" ]; then

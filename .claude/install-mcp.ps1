@@ -16,7 +16,7 @@ Write-Host "Project: $ProjectDir"
 Write-Host ""
 
 # ---- Check deps ----
-Write-Host "[1/4] Checking Node.js + Python ..."
+Write-Host "[1/5] Checking Node.js + Python ..."
 $python = Get-Command python -ErrorAction SilentlyContinue
 if (-not $python) { $python = Get-Command python3 -ErrorAction SilentlyContinue }
 if (-not $python) { throw "Install Python 3.10+ first" }
@@ -25,7 +25,7 @@ Write-Host "  Node:   $( node --version 2>&1 )"
 Write-Host "[OK] Python + Node.js OK" -ForegroundColor Green
 
 # ---- camoufox-reverse-mcp (Python) ----
-Write-Host "[2/4] camoufox-reverse-mcp ..."
+Write-Host "[2/5] camoufox-reverse-mcp ..."
 New-Item -ItemType Directory -Force -Path $McpDir | Out-Null
 $CamouSrc = Join-Path $McpDir "camoufox-reverse-mcp"
 if (-not (Test-Path "$CamouSrc\src")) {
@@ -41,14 +41,19 @@ $Pip = Join-Path $VenvDir "Scripts\pip.exe"
 Write-Host "[OK] camoufox-reverse-mcp installed" -ForegroundColor Green
 
 # ---- js-reverse-mcp (Node.js) ----
-Write-Host "[3/4] js-reverse-mcp ..."
+Write-Host "[3/5] js-reverse-mcp ..."
 Push-Location (Join-Path $McpDir "js-reverse-mcp")
 npm install --silent
 Pop-Location
 Write-Host "[OK] js-reverse-mcp installed" -ForegroundColor Green
 
+# ---- Git auto-backup ----
+Write-Host "[4/5] auto-backup hook ..."
+git config core.hooksPath .githooks
+Write-Host "[OK] git post-commit auto-push enabled" -ForegroundColor Green
+
 # ---- Skills ----
-Write-Host "[4/4] Skills ..."
+Write-Host "[5/5] Skills ..."
 $HelloSkill = Join-Path $SkillsDir "hello_js_reverse_skill"
 if (-not (Test-Path "$HelloSkill\.git")) {
     Remove-Item -Recurse -Force $HelloSkill -ErrorAction SilentlyContinue
