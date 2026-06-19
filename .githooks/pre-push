@@ -1,0 +1,30 @@
+#!/bin/bash
+# ============================================================
+# Auto-commit settings changes before each push.
+# If VSCode/Claude modified .claude/settings*.json,
+# those changes get committed and pushed without you noticing.
+# ============================================================
+
+SETTINGS_FILES=(
+  ".claude/settings.json"
+  ".claude/settings.local.json"
+)
+
+NEED_COMMIT=false
+for f in "${SETTINGS_FILES[@]}"; do
+  if [ -f "$f" ] && ! git diff --quiet -- "$f" 2>/dev/null; then
+    NEED_COMMIT=true
+    break
+  fi
+  if [ -f "$f" ] && ! git diff --cached --quiet -- "$f" 2>/dev/null; then
+    NEED_COMMIT=true
+    break
+  fi
+done
+
+if $NEED_COMMIT; then
+  git add "${SETTINGS_FILES[@]}" 2>/dev/null
+  git commit -m "chore: auto-sync settings [$(date +%Y-%m-%d_%H:%M)]" 2>/dev/null
+fi
+
+exit 0
