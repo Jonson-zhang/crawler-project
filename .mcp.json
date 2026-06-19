@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "js-reverse": {
+      "type": "stdio",
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["h:\\Crawler\\.claude\\mcp-servers\\js-reverse-mcp\\node_modules\\js-reverse-mcp\\build\\src\\index.js"]
+    },
+    "camoufox-reverse": {
+      "type": "stdio",
+      "command": "h:\\Crawler\\.claude\\mcp-servers\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "camoufox_reverse_mcp", "--proxy", "http://127.0.0.1:10808"]
+    }
+  }
+}

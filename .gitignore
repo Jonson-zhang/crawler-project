@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# MCP — 只排除安装产物，保留声明文件 (package.json / pyproject.toml)
+.claude/mcp-servers/**/node_modules/
+.claude/mcp-servers/**/.venv/
+.claude/mcp-servers/camoufox-reverse-mcp/
+
+# Skills — hello_js_reverse_skill 由 install-mcp.sh 克隆
+.claude/skills/hello_js_reverse_skill/

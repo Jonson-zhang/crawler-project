@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "dependencies": {
+    "js-reverse-mcp": "^2.1.1"
+  }
+}
