@@ -14,5 +14,8 @@ wheels/
 .claude/mcp-servers/**/.venv/
 .claude/mcp-servers/camoufox-reverse-mcp/
 
-# Skills — hello_js_reverse_skill 由 install-mcp.sh 克隆
+# Skills — install-mcp.sh 一键克隆
 .claude/skills/hello_js_reverse_skill/
+.claude/skills/ast-deobfuscation/
+.claude/skills/web-reverse-algorithm/
+.claude/skills/web-reverse-env/

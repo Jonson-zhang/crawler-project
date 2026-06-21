@@ -1,4 +1,4 @@
-import requests, subprocess, json, time
+import requests, subprocess, json, time, os
 
 headers = {
     "accept": "application/json, text/plain, */*",
@@ -29,8 +29,10 @@ params = {
 }
 
 
-# 1. 调用 Node.js
-out = subprocess.check_output(["node", "code.js"])
+# 1. 调用 Node.js（使用绝对路径避免工作目录问题）
+script_dir = os.path.dirname(os.path.abspath(__file__))
+code_js = os.path.join(script_dir, "code.js")
+out = subprocess.check_output(["node", code_js], cwd=script_dir)
 data = json.loads(out.decode())
 # print(data)
 for k, v in data.items():

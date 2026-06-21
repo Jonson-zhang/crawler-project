@@ -469,7 +469,8 @@ function get_param(A, g, I, B, Q, C) {
 
 
 const fs = require("fs");
-wasm_code = fs.readFileSync("lizhi.wasm");
+const path = require("path");
+wasm_code = fs.readFileSync(path.join(__dirname, "lizhi.wasm"));
 
 //使用python调用时，需要使用本函数
 function mapToObject(map) {

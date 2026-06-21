@@ -93,6 +93,24 @@ if [ ! -d "$SKILLS_DIR/hello_js_reverse_skill/.git" ]; then
   fi
 fi
 # wasm-reverse skill 已在仓库中 (无 .git, 被 git 直接追踪), 无需额外安装
+
+# xbsReverseSkill (3 个子 skill: ast-deobfuscation / web-reverse-algorithm / web-reverse-env)
+if [ ! -f "$SKILLS_DIR/ast-deobfuscation/SKILL.md" ]; then
+  echo "  git clone xbsReverseSkill ..."
+  rm -rf "$SKILLS_DIR/xbsReverseSkill_temp"
+  if [ "$USE_PROXY" = "1" ]; then
+    git clone https://github.com/lwjjike/xbsReverseSkill.git \
+      "$SKILLS_DIR/xbsReverseSkill_temp" \
+      -c http.proxy="$PROXY" -c https.proxy="$PROXY"
+  else
+    git clone https://github.com/lwjjike/xbsReverseSkill.git \
+      "$SKILLS_DIR/xbsReverseSkill_temp"
+  fi
+  mv "$SKILLS_DIR/xbsReverseSkill_temp/ast-deobfuscation"     "$SKILLS_DIR/"
+  mv "$SKILLS_DIR/xbsReverseSkill_temp/web-reverse-algorithm" "$SKILLS_DIR/"
+  mv "$SKILLS_DIR/xbsReverseSkill_temp/web-reverse-env"       "$SKILLS_DIR/"
+  rm -rf "$SKILLS_DIR/xbsReverseSkill_temp"
+fi
 say "Skills OK"
 
 echo ""
