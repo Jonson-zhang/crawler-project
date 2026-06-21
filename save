@@ -1,0 +1,5 @@
+#!/bin/bash
+# 一键保存并推送: bash save "提交说明"
+MSG="${1:-quick save}"
+cd "$(dirname "$0")"
+git add -A && git commit -m "$MSG" && git push
