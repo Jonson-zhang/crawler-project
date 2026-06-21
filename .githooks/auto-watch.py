@@ -59,7 +59,11 @@ def git_commit_push():
         if "nothing to commit" in (r.stdout + r.stderr):
             return False
         return False
-    # push
+    # push（先 pull 再 push，避免竞态冲突）
+    r = subprocess.run(
+        ["git", "pull", "--rebase", "origin", "main"],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+    )
     r = subprocess.run(
         ["git", "push"], cwd=str(ROOT),
         capture_output=True, text=True, timeout=60,
