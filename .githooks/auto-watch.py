@@ -72,10 +72,10 @@ def main():
     print(f"[auto-watch] started, watching: {', '.join(str(d.relative_to(ROOT)) for d in WATCH_DIRS)}")
     last_snapshot = snapshot()
     last_push = time.time()
-    PUSH_INTERVAL = 120  # 最短推送间隔（秒）
+    PUSH_INTERVAL = 300  # 最短推送间隔（秒），与检测周期一致
 
     while True:
-        time.sleep(15)  # 每 15 秒检测一次
+        time.sleep(300)  # 每 5 分钟检测一次
         current = snapshot()
         if current != last_snapshot:
             # 有变更 → 等 5 秒让写入完成，然后提交
