@@ -123,37 +123,12 @@ function fetchHomePage() {
 }
 
 /**
- * 发送加密请求到 shoppingv2
+ * 发送已加密的请求到 shoppingv2（无需再次加密）
+ * 供 call_api 命令使用，跳过 fetchHomePage 开销
  */
-function searchFlights(params) {
-    const { dep, arr, date, depName, arrName, cookies: extraCookies } = params;
-
-    // 如果传入了额外 cookies，合并
-    if (extraCookies) {
-        sessionCookies = extraCookies + '; ' + sessionCookies;
-    }
-
+function postShoppingv2(encReq) {
     return new Promise((resolve, reject) => {
-        const fullPayload = {
-            currentQueryType: 'FLIGHT_LIST',
-            currentSegIndex: 0,
-            language: 'zh',
-            selectedRoutes: [],
-            productType: 'CASH',
-            routes: [{
-                arrCode: arr, depCode: dep,
-                flightDate: date,
-                arrCodeType: '1', depCodeType: '1',
-                depCityName: depName || getCityName(dep),
-                arrCityName: arrName || getCityName(arr),
-                segIndex: 0, leftInner: '', rightInner: '',
-            }],
-            tripType: 'OW',
-            cabinGrade: '',
-        };
-
-        const { req: encrypted } = encryptPayload(fullPayload);
-        const body = JSON.stringify({ req: encrypted });
+        const body = JSON.stringify({ req: encReq });
 
         const url = new URL('/m-base/sale/shoppingv2', BASE);
         const req = https.request({
@@ -197,13 +172,7 @@ function searchFlights(params) {
                 }
 
                 try {
-                    const data = JSON.parse(raw);
-                    if (data.res) {
-                        const decrypted = decryptPayload(data.res);
-                        resolve(JSON.parse(decrypted));
-                    } else {
-                        resolve(data);
-                    }
+                    resolve(JSON.parse(raw));
                 } catch (e) {
                     reject(new Error('JSON parse failed: ' + raw.substring(0, 200)));
                 }
@@ -214,6 +183,45 @@ function searchFlights(params) {
         req.setTimeout(30000, () => { req.destroy(); reject(new Error('timeout')); });
         req.write(body);
         req.end();
+    });
+}
+
+/**
+ * 发送加密请求到 shoppingv2（构造 payload + 加密 + 发送）
+ */
+function searchFlights(params) {
+    const { dep, arr, date, depName, arrName, cookies: extraCookies } = params;
+
+    // 如果传入了额外 cookies，合并
+    if (extraCookies) {
+        sessionCookies = extraCookies + '; ' + sessionCookies;
+    }
+
+    const fullPayload = {
+        currentQueryType: 'FLIGHT_LIST',
+        currentSegIndex: 0,
+        language: 'zh',
+        selectedRoutes: [],
+        productType: 'CASH',
+        routes: [{
+            arrCode: arr, depCode: dep,
+            flightDate: date,
+            arrCodeType: '1', depCodeType: '1',
+            depCityName: depName || getCityName(dep),
+            arrCityName: arrName || getCityName(arr),
+            segIndex: 0, leftInner: '', rightInner: '',
+        }],
+        tripType: 'OW',
+        cabinGrade: '',
+    };
+
+    const { req: encrypted } = encryptPayload(fullPayload);
+
+    return postShoppingv2(encrypted).then(data => {
+        if (data.res) {
+            return JSON.parse(decryptPayload(data.res));
+        }
+        return data;
     });
 }
 

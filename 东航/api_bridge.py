@@ -1,6 +1,7 @@
 """
-东航 API 桥接 — CloakBrowser（Cookie 保鲜 + API 调用）
+东航 API 桥接 — CloakBrowser（Cookie 保鲜 + API 调用，单浏览器 Session）
 用法: python api_bridge.py <enc_req>
+输出: 末尾一行 JSON {"success": true/false, "enc_response": "..."}
 """
 import json, sys, io, time
 from pathlib import Path
@@ -10,36 +11,36 @@ COOKIES_FILE = SD / "cookies.json"
 COOKIE_MAX_AGE = 25 * 60
 
 
-def load_cookies():
-    if COOKIES_FILE.exists():
-        with open(COOKIES_FILE, encoding="utf-8") as f: return json.load(f)
-    return {}
-
-
-def get_cookie_age():
-    if not COOKIES_FILE.exists(): return float("inf")
-    try:
-        t = load_cookies().get("_refreshed_at")
-        if t: return time.time() - t
-    except Exception: pass
-    return time.time() - COOKIES_FILE.stat().st_mtime
-
-
 def run(enc_req):
     launch = __import__("cloakbrowser").launch
 
-    need_refresh = get_cookie_age() >= COOKIE_MAX_AGE or not COOKIES_FILE.exists()
-
-    if need_refresh:
-        # Session 1: Cookie 刷新
-        print("[Cookie] refresh...", file=sys.stderr)
-        b = launch(headless=True, locale="zh-CN")
-        ctx = b.new_context()
-        page = ctx.new_page()
+    # 判断是否需要刷新 Cookie
+    need_refresh = not COOKIES_FILE.exists()
+    if not need_refresh:
         try:
-            page.goto("https://m.ceair.com/mapp/Home", wait_until="domcontentloaded", timeout=30000)
+            with open(COOKIES_FILE, encoding="utf-8") as f:
+                cached = json.load(f)
+            age = time.time() - cached.get("_refreshed_at", 0)
+            if age >= COOKIE_MAX_AGE:
+                need_refresh = True
+            elif "ssxmod_itna" not in cached:
+                need_refresh = True
+        except Exception:
+            need_refresh = True
+
+    b = launch(headless=True, locale="zh-CN")
+    ctx = b.new_context()
+
+    try:
+        # ── 阶段 1：Cookie 保鲜 ──
+        if need_refresh:
+            print("[Cookie] refresh...", file=sys.stderr)
+            page = ctx.new_page()
+            page.goto("https://m.ceair.com/mapp/Home",
+                      wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(5000)
-            page.goto("https://m.ceair.com/mapp/reserve/flightList", wait_until="domcontentloaded", timeout=30000)
+            page.goto("https://m.ceair.com/mapp/reserve/flightList",
+                      wait_until="domcontentloaded", timeout=30000)
             for i in range(20):
                 if "ssxmod_itna" in [c["name"] for c in ctx.cookies()]:
                     print(f"  ssxmod ({i}s)", file=sys.stderr)
@@ -51,29 +52,34 @@ def run(enc_req):
             with open(COOKIES_FILE, "w", encoding="utf-8") as f:
                 json.dump(cd, f, ensure_ascii=False, indent=2)
             print(f"  [OK] {len(cd)} cookies", file=sys.stderr)
-        finally:
-            b.close()
+            page.close()
+        else:
+            print("[Cookie] cached (fresh)", file=sys.stderr)
 
-        if "ssxmod_itna" not in load_cookies():
-            return {"success": False, "error": "cookie refresh failed"}
+        # 验证 ssxmod_itna 存在
+        with open(COOKIES_FILE, encoding="utf-8") as f:
+            cookies = json.load(f)
+        if "ssxmod_itna" not in cookies:
+            return {"success": False, "error": "ssxmod_itna missing"}
 
-    # Session 2: API 调用
-    print("[API] call...", file=sys.stderr)
-    cookies = load_cookies()
-    b = launch(headless=True, locale="zh-CN")
-    ctx = b.new_context()
-    ctx.add_cookies([{"name": k, "value": v, "domain": ".ceair.com", "path": "/"}
-                     for k, v in cookies.items() if v and not k.startswith("_")])
-    page = ctx.new_page()
-    try:
+        # ── 阶段 2：注入 Cookie → API 调用 ──
+        print("[API] call...", file=sys.stderr)
+        ctx.add_cookies([
+            {"name": k, "value": v, "domain": ".ceair.com", "path": "/"}
+            for k, v in cookies.items() if v and not k.startswith("_")
+        ])
+
+        page = ctx.new_page()
         page.goto("https://m.ceair.com/mapp/reserve/flightList",
                   wait_until="domcontentloaded", timeout=30000)
         time.sleep(3)
 
-        # SPA may have replaced page — poll alive pages
+        # SPA 可能替换 page，遍历存活 page 发 fetch
+        resp = None
         for attempt in range(3):
             for pg in ctx.pages:
-                if pg.is_closed(): continue
+                if pg.is_closed():
+                    continue
                 try:
                     resp = pg.evaluate("""
                         async (encReq) => {
@@ -93,13 +99,16 @@ def run(enc_req):
                             };
                         }
                     """, enc_req)
-                    break  # succeeded
+                    break
                 except Exception:
                     time.sleep(1)
-            else:
-                return {"success": False, "error": "SPA replaced all pages"}
-            if resp: break
+            if resp:
+                break
             time.sleep(1)
+
+        if resp is None:
+            return {"success": False, "error": "SPA replaced all pages"}
+
     finally:
         b.close()
 

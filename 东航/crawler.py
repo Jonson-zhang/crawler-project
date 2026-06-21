@@ -3,13 +3,15 @@
 API: POST https://m.ceair.com/m-base/sale/shoppingv2
 
 用法:
-  python crawler.py              # 读 config.json
+  python crawler.py              # 在 config.json 中设置出发地、目的地和出发时间
   python crawler.py 杭州 北京    # 出发 到达
   python crawler.py 杭州 北京 20260630  # 出发 到达 日期
 """
+
 import subprocess
 import json
 import sys
+import time
 import io
 from pathlib import Path
 
@@ -24,13 +26,32 @@ API_BRIDGE = SD / "api_bridge.py"
 
 # 城市映射
 CITY_MAP = {
-    "上海": "SHA", "北京": "BJS", "广州": "CAN", "深圳": "SZX",
-    "成都": "CTU", "重庆": "CKG", "西安": "XIY", "昆明": "KMG",
-    "杭州": "HGH", "南京": "NKG", "武汉": "WUH", "长沙": "CSX",
-    "青岛": "TAO", "大连": "DLC", "厦门": "XMN", "福州": "FOC",
-    "海口": "HAK", "三亚": "SYX", "沈阳": "SHE", "郑州": "CGO",
-    "济南": "TNA", "哈尔滨": "HRB", "乌鲁木齐": "URC", "兰州": "LHW",
-    "银川": "INC", "西宁": "XNN",
+    "上海": "SHA",
+    "北京": "BJS",
+    "广州": "CAN",
+    "深圳": "SZX",
+    "成都": "CTU",
+    "重庆": "CKG",
+    "西安": "XIY",
+    "昆明": "KMG",
+    "杭州": "HGH",
+    "南京": "NKG",
+    "武汉": "WUH",
+    "长沙": "CSX",
+    "青岛": "TAO",
+    "大连": "DLC",
+    "厦门": "XMN",
+    "福州": "FOC",
+    "海口": "HAK",
+    "三亚": "SYX",
+    "沈阳": "SHE",
+    "郑州": "CGO",
+    "济南": "TNA",
+    "哈尔滨": "HRB",
+    "乌鲁木齐": "URC",
+    "兰州": "LHW",
+    "银川": "INC",
+    "西宁": "XNN",
 }
 CODE_REV = {v: k for k, v in CITY_MAP.items()}
 
@@ -57,10 +78,14 @@ def city_name(code):
 # WASM 加解密
 # ============================================================
 
+
 def _node(cmd, data=""):
     p = subprocess.Popen(
-        ["node", str(SIGN_JS), cmd], cwd=str(SD),
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        ["node", str(SIGN_JS), cmd],
+        cwd=str(SD),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
     out, err = p.communicate(input=data.encode() if data else None, timeout=30)
     if p.returncode:
@@ -70,8 +95,9 @@ def _node(cmd, data=""):
 
 def encrypt(data):
     """加密 → {"req": "base64..."}"""
-    return json.loads(_node("encrypt",
-        json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
+    return json.loads(
+        _node("encrypt", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    )
 
 
 def decrypt(b64):
@@ -80,8 +106,9 @@ def decrypt(b64):
 
 
 # ============================================================
-# API 桥接 — api_bridge.py 子进程（CloakBrowser Cookie + API）
+# API 桥接 — api_bridge.py 子进程（CloakBrowser，单 Session 完成一切）
 # ============================================================
+
 
 def _venv():
     """返回装有 CloakBrowser 的 Python 路径"""
@@ -90,9 +117,14 @@ def _venv():
 
 
 def call_api(enc_req):
+    """浏览器单 Session：自动判断 Cookie 保鲜 + API 调用"""
+    t0 = time.time()
     r = subprocess.run(
         [_venv(), str(API_BRIDGE), enc_req],
-        capture_output=True, text=True, timeout=120, cwd=str(SD),
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=str(SD),
     )
     for line in r.stderr.splitlines():
         if line.strip():
@@ -104,6 +136,8 @@ def call_api(enc_req):
         try:
             data = json.loads(line)
             if data.get("success") and data.get("enc_response"):
+                t_elapsed = time.time() - t0
+                print(f"  ── API 总耗时: {t_elapsed:.1f}s ──", file=sys.stderr)
                 return decrypt(data["enc_response"])
         except json.JSONDecodeError:
             pass
@@ -114,37 +148,64 @@ def call_api(enc_req):
 # 搜索
 # ============================================================
 
+
 def search(dep, arr, date, dn, an):
+    t_total_start = time.time()
+
+    t0 = time.time()
     print("[0/2] Encrypt...", file=sys.stderr)
     payload = {
-        "currentQueryType": "FLIGHT_LIST", "currentSegIndex": 0,
-        "language": "zh", "selectedRoutes": [], "productType": "CASH",
-        "routes": [{
-            "arrCode": arr, "depCode": dep, "flightDate": date,
-            "arrCodeType": "1", "depCodeType": "1",
-            "depCityName": dn, "arrCityName": an,
-            "segIndex": 0, "leftInner": "", "rightInner": "",
-        }],
-        "tripType": "OW", "cabinGrade": "",
+        "currentQueryType": "FLIGHT_LIST",
+        "currentSegIndex": 0,
+        "language": "zh",
+        "selectedRoutes": [],
+        "productType": "CASH",
+        "routes": [
+            {
+                "arrCode": arr,
+                "depCode": dep,
+                "flightDate": date,
+                "arrCodeType": "1",
+                "depCodeType": "1",
+                "depCityName": dn,
+                "arrCityName": an,
+                "segIndex": 0,
+                "leftInner": "",
+                "rightInner": "",
+            }
+        ],
+        "tripType": "OW",
+        "cabinGrade": "",
     }
     enc = encrypt(payload)
-    print(f"  {len(enc['req'])} chars", file=sys.stderr)
+    t_enc = (time.time() - t0) * 1000
+    print(f"  ✓ {len(enc['req'])} chars  ({t_enc:.0f}ms)", file=sys.stderr)
 
+    # API 调用（浏览器单 Session：自动判断 cookie 保鲜 + 发请求）
+    t1 = time.time()
     print("[1/2] API...", file=sys.stderr)
     for attempt in range(2):
         result = call_api(enc["req"])
         if result:
-            print("[2/2] Done", file=sys.stderr)
+            t_api = time.time() - t1
+            t_total = time.time() - t_total_start
+            print(
+                f"[2/2] Done  (API {t_api:.1f}s, total {t_total:.1f}s)",
+                file=sys.stderr,
+            )
             return result
         if attempt == 0:
             print("  retry...", file=sys.stderr)
-            COOKIES_FILE.unlink(missing_ok=True)
+    t_api = time.time() - t1
+    print(f"  ✗ failed after {t_api:.1f}s", file=sys.stderr)
     return None
 
 
 def show(result, date):
     data = result.get("data", result)
-    flights = data.get("flights") or data.get("flightList") or data.get("flightlist") or []
+    flights = (
+        data.get("flights") or data.get("flightList") or data.get("flightlist") or []
+    )
     if not flights:
         print(json.dumps(result, ensure_ascii=False, indent=2)[:3000])
         return
@@ -195,7 +256,10 @@ if __name__ == "__main__":
     dep_name = city_name(dep_code)
     arr_name = city_name(arr_code)
 
-    print(f"CEAIR: {dep_name}({dep_code}) → {arr_name}({arr_code}) {date_str}", file=sys.stderr)
+    print(
+        f"CEAIR: {dep_name}({dep_code}) → {arr_name}({arr_code}) {date_str}",
+        file=sys.stderr,
+    )
     print("=" * 55, file=sys.stderr)
 
     r = search(dep_code, arr_code, date_str, dep_name, arr_name)
