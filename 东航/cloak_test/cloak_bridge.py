@@ -9,8 +9,20 @@
 import json
 import sys
 import io
+import subprocess
 import time
 from pathlib import Path
+
+# ── 自动纠偏 ──
+if not sys.executable.replace("\\", "/").endswith(".venv/Scripts/python.exe"):
+    PROJECT = Path(__file__).resolve().parent.parent.parent
+    UV_PYTHON = PROJECT / ".venv" / "Scripts" / "python.exe"
+    if UV_PYTHON.exists():
+        result = subprocess.run(
+            [str(UV_PYTHON), __file__, *sys.argv[1:]],
+            cwd=str(PROJECT),
+        )
+        sys.exit(result.returncode)
 
 HERE = Path(__file__).parent
 COOKIES_FILE = HERE / "cloak_cookies.json"

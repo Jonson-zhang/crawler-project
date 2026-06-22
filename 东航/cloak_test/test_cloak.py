@@ -1,7 +1,7 @@
 """
 东航 CloakBrowser WAF 绕过测试
-用法: python test_cloak.py [出发] [到达] [日期]
-示例: python test_cloak.py 成都 广州 20250628
+用法: uv run python test_cloak.py [出发] [到达] [日期]
+示例: uv run python 东航/cloak_test/test_cloak.py 成都 广州 20260628
 """
 
 import subprocess
@@ -10,6 +10,17 @@ import sys
 import io
 import time
 from pathlib import Path
+
+# ── 自动纠偏：如果用系统 Python 而非 uv 环境，自动重调 ──
+if not sys.executable.replace("\\", "/").endswith(".venv/Scripts/python.exe"):
+    PROJECT = Path(__file__).resolve().parent.parent.parent  # crawler/
+    UV_PYTHON = PROJECT / ".venv" / "Scripts" / "python.exe"
+    if UV_PYTHON.exists():
+        result = subprocess.run(
+            [str(UV_PYTHON), __file__, *sys.argv[1:]],
+            cwd=str(PROJECT),
+        )
+        sys.exit(result.returncode)
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
