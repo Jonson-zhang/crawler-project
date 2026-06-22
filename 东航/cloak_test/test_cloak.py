@@ -7,8 +7,13 @@
 import subprocess
 import json
 import sys
+import io
 import time
 from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 SD = Path(__file__).parent.parent  # 东航/
 SIGN_JS = SD / "sign.js"
@@ -175,10 +180,5 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # 3. 解密
-    print(f"  [debug] enc_response type={type(enc_response).__name__} len={len(enc_response)}", file=sys.stderr)
     result = decrypt(enc_response)
-    print(f"  [debug] result type={type(result).__name__}", file=sys.stderr)
-    if result is None:
-        print("  [debug] decrypt returned None!", file=sys.stderr)
-        sys.exit(1)
     show(result, date)
