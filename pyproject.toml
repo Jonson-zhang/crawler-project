@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "camoufox>=0.4.11",
     "drissionpage>=4.1.0",
     "playwright>=1.60.0",
     "pycryptodome>=3.23.0",
