@@ -106,8 +106,7 @@ def run(enc_req):
                             const text = await r.text();
                             return JSON.stringify({ status: r.status, contentType: ct, text: text });
                         }
-                        """,
-                        timeout=60,
+                        """
                     )
                     resp = json.loads(raw)
                 except Exception as e:
