@@ -22,6 +22,11 @@ def run(enc_req):
     co.set_browser_path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
     co.set_user_data_path(PROFILE_DIR)
     co.auto_port()
+    co.headless(True)                                     # 无头模式（需配合 UA 伪装）
+    co.set_user_agent(                                    # 去掉 HeadlessChrome 标识
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    )
     co.set_argument("--no-sandbox")
     co.set_argument("--disable-gpu")
     co.set_argument("--disable-blink-features=AutomationControlled")
