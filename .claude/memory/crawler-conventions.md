@@ -19,11 +19,23 @@ metadata:
 - 无需创建额外的子目录结构
 
 **子进程调用规范**
-- 主脚本通过 `subprocess` 启动子进程脚本（如 `api_bridge.py`）时，解释器用 `sys.executable`，**禁止硬编码** `.venv/Scripts/python.exe` 路径
-- 原因：`uv run` 启动时 `sys.executable` 即是 venv Python，子进程自动找得到所有依赖；硬编码路径在目录深度变化时会断裂（如 `cloak_test/` → `cloak/v1.0/` 多一层）
+- 主脚本通过 `subprocess` 启动子进程脚本（如 `api_bridge.py`）时，解释器用 `sys.executable`
+- 每个脚本顶部加自动纠偏：检测当前解释器是否是 venv Python，不是则 `subprocess.run` 重调到 venv Python
+- 纠偏后 `sys.executable` 即是 venv Python，子进程自动找得到所有依赖
 
-**Why:** 硬编码的 `SD.parent.parent.…` 路径依赖目录层级，重构目录结构时容易断裂。`sys.executable` 是运行时真实解释器，永远正确。
-**How to apply:** `subprocess.run([sys.executable, str(script), arg], ...)` — 不要写 `_venv()` 函数去找 `SD.parent.../.venv/Scripts/python.exe`。
+**Why:** `python -u xxx.py` 用的是系统 Python，没有项目依赖。自动纠偏让脚本无论如何启动都能切到正确解释器。
+**How to apply:**
+```python
+import subprocess, sys
+from pathlib import Path
+
+PROJECT = Path(__file__).resolve().parent.parent.parent.parent  # 从脚本到项目根的层数
+UV_PYTHON = PROJECT / ".venv" / "Scripts" / "python.exe"
+if UV_PYTHON.exists() and sys.executable != str(UV_PYTHON):
+    result = subprocess.run([str(UV_PYTHON), __file__, *sys.argv[1:]], cwd=str(PROJECT))
+    sys.exit(result.returncode)
+```
+注意 `parent` 层数 = 脚本在项目中的深度（如 `东航/cloak/v1.0/test_cloak.py` = 4 层 → 4 个 `.parent`）。
 
 **版本迭代规则（目录级分支）**
 - 代码一旦跑通（验证成功），**禁止原地修改**
