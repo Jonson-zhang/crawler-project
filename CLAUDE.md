@@ -18,22 +18,21 @@
 
 ```
 项目根/
-├── .mcp.json                        # MCP 服务器启动配置（git 追踪）
-├── .gitignore                       # 排除安装产物，保留声明文件
+├── .mcp.json                        # MCP 服务器配置（机器相关，install-mcp.sh 生成，不追踪）
+├── .gitignore                       # 排除安装产物 + 机器相关文件
 ├── pyproject.toml / uv.lock         # Python 项目依赖
 ├── main.py                          # 项目入口
 │
 ├── .vscode/
-│   ├── settings.json                # GitDoc 配置：保存即自动 commit + push
-│   └── tasks.json                   # VSCode 任务（预留）
-│
-├── .githooks/
-│   └── post-commit                  # commit 后自动 git push（非 GitDoc 场景兜底）
+│   ├── settings.json                # GitDoc 配置 + 解释器路径（${workspaceFolder} 可移植）
+│   ├── tasks.json                   # VSCode 任务（预留）
+│   └── extensions.json              # 推荐扩展列表（含 GitDoc）
 │
 ├── .claude/
 │   ├── settings.json                # 全局权限配置
 │   ├── settings.local.json          # 本地权限配置（项目专属）
 │   │
+│   ├── fix-paths.py                 # 安装脚本：生成本机 .mcp.json
 │   ├── install-mcp.sh               # 一键恢复脚本（Git Bash）
 │   ├── install-mcp.ps1              # 一键恢复脚本（PowerShell）
 │   │
@@ -86,7 +85,7 @@ cd crawler-project
 # 2. 恢复 Python 环境（uv.lock → 虚拟环境）
 uv sync
 
-# 3. 一键安装 MCP + Skills（Git Bash 版本）
+# 3. 一键安装 MCP + Skills + 生成本机 .mcp.json
 bash .claude/install-mcp.sh
 
 # 4. 用 VSCode 打开
@@ -95,7 +94,26 @@ code .
 
 完成后重启 VSCode 即可使用全部功能。
 
-### 3.3 国内用户：配置代理
+> **注意**：`.mcp.json` 被 `.gitignore` 排除（含本机绝对路径），`install-mcp.sh` 第 5 步自动生成。
+
+### 3.3 Python 包管理规范 ⚠️
+
+**永远使用 `uv` 安装 Python 包，不要用 `pip install`。**
+
+```bash
+# ✅ 正确：uv 自动更新 pyproject.toml + uv.lock
+uv add DrissionPage
+
+# ✅ 正确：同步锁文件到当前环境
+uv sync
+
+# ❌ 错误：绕过了 pyproject.toml，换电脑后丢失
+pip install DrissionPage
+```
+
+**为什么**：`uv add` 会同时更新 `pyproject.toml` 和 `uv.lock`，git 同步后另一台电脑执行 `uv sync` 即可恢复完全一致的环境。`pip install` 只装到当前环境，不更新任何锁文件——下次换电脑就报 `ModuleNotFoundError`。
+
+### 3.4 国内用户：配置代理
 
 GitHub 被墙时，需要先配代理再操作：
 
@@ -123,7 +141,6 @@ USE_PROXY=1 bash .claude/install-mcp.sh
 | push 后 | 自动 `git pull` | GitDoc `autopull: "onPush"` |
 | 打开项目 | 自动 `git pull` | GitDoc `pullOnOpen: true` |
 | 关闭 VSCode | 提交未保存的变更 | GitDoc `commitOnClose: true` |
-| 手动 `git commit` | 自动 `git push` | `.githooks/post-commit`（兜底） |
 
 ### 4.2 监控范围
 
@@ -146,15 +163,16 @@ USE_PROXY=1 bash .claude/install-mcp.sh
 
 git push 即备份，以下内容随仓库走：
 
-- **配置文件**：`.mcp.json`、`settings.json`、`settings.local.json`
+- **配置文件**：`settings.json`、`settings.local.json`
 - **声明文件**：`package.json`、`package-lock.json`、`pyproject.toml`、`uv.lock`
 - **经验库**：`.claude/memory/` 下全部 `.md` 文件
 - **wasm-reverse skill**：SKILL.md + gen_stub_template.js
-- **Git hooks**：`.githooks/` 下全部脚本
-- **VSCode 配置**：`.vscode/settings.json`、`.vscode/tasks.json`
+- **VSCode 配置**：`.vscode/settings.json`、`.vscode/tasks.json`、`.vscode/extensions.json`
+- **业务模板**：各站点 `config.example.json`、`cookies.example.json`（不含实际 cookie）
 
 以下**不需要备份**（`install-mcp.sh` 一键恢复）：
 
+- `.mcp.json`（每台机器 `fix-paths.py` 生成本机绝对路径）
 - `node_modules/`、`.venv/`
 - `camoufox-reverse-mcp/`（GitHub clone）
 - `hello_js_reverse_skill/`（GitHub clone）
@@ -339,13 +357,15 @@ uv sync
 **原因**: 一级索引 `MEMORY.md` 未在 `.claude/memory/` 下，或二级索引需要 Agent 手动触发。
 **解决**: 确认文件路径正确，检查 `.gitignore`。
 
-### Q5: 换电脑后想保留 settings.local.json
+### Q5: 换电脑后报 `ModuleNotFoundError`
 
-已在 `.gitignore` 中排除 `.claude/settings.local.json`？检查确认它已被 git 追踪：
-```bash
-git ls-files .claude/settings.local.json
-```
-若未被追踪，手动添加：`git add -f .claude/settings.local.json`
+**原因**: Python 依赖未同步。
+**解决**: 运行 `uv sync`。如果缺少的是 DrissionPage 等爬虫依赖，确认 `pyproject.toml` 里已声明，并重新 `uv sync`。**不要用 `pip install`**（绕过锁文件，下次换电脑又丢）。
+
+### Q6: `.mcp.json` 不存在
+
+**原因**: 这是正常现象。`.mcp.json` 已被 `.gitignore` 排除（含本机绝对路径）。
+**解决**: 运行 `bash .claude/install-mcp.sh`，最后一步会自动生成。
 
 ---
 
@@ -353,5 +373,6 @@ git ls-files .claude/settings.local.json
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| 1.2 | 2026-06-22 | 跨机器同步清理：`.mcp.json` 不再追踪（fix-paths.py 生成）；移除废弃文件（save/null/tools/.githooks）；`uv add` 包管理规范写入 CLAUDE.md；`.vscode/settings.json` 改用 `${workspaceFolder}` 可移植路径 |
 | 1.1 | 2026-06-22 | 自动备份迁移至 GitDoc 插件：保存即 commit + push，替代 auto-watch.py + tasks.json 轮询 |
 | 1.0 | 2026-06-19 | 初始版本：MCP × 2、Skill × 2、Memory 两级索引、自动备份 |

@@ -1,14 +1,14 @@
-"""Rewrite .mcp.json and .vscode/settings.json with absolute paths for this machine."""
+"""Generate .mcp.json with machine-specific absolute paths.
+
+Run by install-mcp.sh on every fresh clone.
+.vscode/settings.json is NOT touched — it uses ${workspaceFolder} and GitDoc config stays portable.
+"""
 import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-
-# Use forward slashes — Windows handles them fine, no escaping headaches
-# Use POSIX-style paths which work everywhere
 ROOT_POSIX = str(ROOT).replace("\\", "/")
 
-# --- .mcp.json ---
 mcp = {
     "mcpServers": {
         "js-reverse": {
@@ -24,15 +24,4 @@ mcp = {
     }
 }
 (ROOT / ".mcp.json").write_text(json.dumps(mcp, indent=2) + "\n", encoding="utf-8")
-print("[OK] .mcp.json updated")
-
-# --- .vscode/settings.json ---
-(ROOT / ".vscode").mkdir(exist_ok=True)
-settings = {
-    "python.defaultInterpreterPath": f"{ROOT_POSIX}/.venv/Scripts/python.exe",
-    "code-runner.clearPreviousOutput": True,
-    "code-runner.runInTerminal": True,
-    "code-runner.saveFileBeforeRun": True,
-}
-(ROOT / ".vscode" / "settings.json").write_text(json.dumps(settings, indent=4) + "\n", encoding="utf-8")
-print("[OK] .vscode/settings.json updated")
+print("[OK] .mcp.json generated")

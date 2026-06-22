@@ -11,6 +11,7 @@ metadata:
 - 使用 `mcp__js-reverse` 系列工具进行浏览器端 JS 分析与逆向
 - 用 Python 实现加密/解密逻辑，供爬虫调用
 - **生成Python代码，获取数据**
+- **安装 Python 包必须用 `uv add <package>`**，禁止 `pip install`：`uv add` 会更新 `pyproject.toml` 和 `uv.lock`，确保 git 同步后 `uv sync` 能恢复；`pip install` 绕过锁文件，换电脑就丢依赖
 
 **代码组织**
 - 所有代码文件放在笔记 Markdown 文件所在的同一目录下

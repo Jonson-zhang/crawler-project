@@ -112,7 +112,7 @@ def decrypt(b64):
 
 def _venv():
     """返回装有 DrissionPage 的 Python 路径"""
-    venv = SD.parent / ".claude" / "mcp-servers" / ".venv" / "Scripts" / "python.exe"
+    venv = SD.parent / ".venv" / "Scripts" / "python.exe"
     return str(venv) if venv.exists() else sys.executable
 
 

@@ -1,3 +1,6 @@
+# Python version pin (pyenv/uv)
+.python-version
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -6,8 +9,11 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# Virtual environments (uv sync 重建)
 .venv
+
+# MCP 服务器配置 — 机器相关，install-mcp.sh 生成
+.mcp.json
 
 # MCP — 只排除安装产物，保留声明文件 (package.json / pyproject.toml)
 .claude/mcp-servers/**/node_modules/
@@ -19,14 +25,27 @@ wheels/
 .claude/skills/ast-deobfuscation/
 .claude/skills/web-reverse-algorithm/
 .claude/skills/web-reverse-env/
+.claude/skills/playwright-skill/
+
+# 已废弃（GitDoc 替代）
+.githooks/
+save
+save.ps1
+null
+
+# 重复资产（已在 .claude/skills/wasm-reverse/ 中）
+tools/
 
 # 好医生 — 敏感数据不追踪
 好医生/cookies.json
 好医生/state.json
 好医生/browser_data/
-东航/cookies.json
-.claude/skills/playwright-skill/
 好医生_v2/
+
+# 东航 — 敏感数据不追踪
+东航/cookies.json
+
+# 浏览器残留
 browser_cookies.txt
 */browser_profile/
 */dp_user_data/
