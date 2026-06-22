@@ -24,15 +24,6 @@ wheels/
 .claude/skills/web-reverse-env/
 .claude/skills/playwright-skill/
 
-# 已废弃（GitDoc 替代）
-.githooks/
-save
-save.ps1
-null
-
-# 重复资产（已在 .claude/skills/wasm-reverse/ 中）
-tools/
-
 # 好医生 — 敏感数据不追踪
 好医生/cookies.json
 好医生/state.json
