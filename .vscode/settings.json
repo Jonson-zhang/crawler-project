@@ -3,6 +3,7 @@
     "code-runner.clearPreviousOutput": false,
     "code-runner.runInTerminal": true,
     "code-runner.saveFileBeforeRun": true,
+    "workbench.tree.expandMode": "singleClick",
 
     // ── 必须开启 Git，否则 GitDoc 无法工作（用户级设为 false）──
     "git.enabled": true,
