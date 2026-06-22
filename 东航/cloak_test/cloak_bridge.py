@@ -110,7 +110,8 @@ def run(enc_req):
                         timeout=60,
                     )
                     resp = json.loads(raw)
-                except Exception:
+                except Exception as e:
+                    print(f"  fetch error: {e}", file=sys.stderr)
                     _ensure_page(context)
                     page.evaluate("(val) => { window._encReq = val; }", enc_req)
                     continue
