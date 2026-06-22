@@ -1,5 +1,5 @@
 """
-东航机票爬取 — CloakBrowser + WASM 加解密
+东航机票爬取 — DrissionPage + WASM 加解密
 API: POST https://m.ceair.com/m-base/sale/shoppingv2
 
 用法:
@@ -111,7 +111,7 @@ def decrypt(b64):
 
 
 def _venv():
-    """返回装有 CloakBrowser 的 Python 路径"""
+    """返回装有 DrissionPage 的 Python 路径"""
     venv = SD.parent / ".claude" / "mcp-servers" / ".venv" / "Scripts" / "python.exe"
     return str(venv) if venv.exists() else sys.executable
 
@@ -123,7 +123,7 @@ def call_api(enc_req):
         [_venv(), str(API_BRIDGE), enc_req],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=180,
         cwd=str(SD),
     )
     for line in r.stderr.splitlines():

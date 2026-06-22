@@ -1,127 +1,106 @@
 """
-东航 API 桥接 — CloakBrowser（Cookie 保鲜 + API 调用，单浏览器 Session）
+东航 API 桥接 — DrissionPage（Chromium 浏览器自动化）
 用法: python api_bridge.py <enc_req>
 输出: 末尾一行 JSON {"success": true/false, "enc_response": "..."}
+
+策略:
+- 手机 UA 导航 → 阿里云 WAF 对移动端限制较松，不弹滑块
+- fetch API 从浏览器内发起 → 复用页面已加载的 WAF 脚本上下文
+- 持久化 profile → 后续复用 Cookie
 """
 import json, sys, io, time
 from pathlib import Path
 
 SD = Path(__file__).parent
-COOKIES_FILE = SD / "cookies.json"
-COOKIE_MAX_AGE = 25 * 60
+PROFILE_DIR = str(SD / "dp_user_data")
 
 
 def run(enc_req):
-    launch = __import__("cloakbrowser").launch
+    from DrissionPage import ChromiumPage, ChromiumOptions
 
-    # 判断是否需要刷新 Cookie
-    need_refresh = not COOKIES_FILE.exists()
-    if not need_refresh:
-        try:
-            with open(COOKIES_FILE, encoding="utf-8") as f:
-                cached = json.load(f)
-            age = time.time() - cached.get("_refreshed_at", 0)
-            if age >= COOKIE_MAX_AGE:
-                need_refresh = True
-            elif "ssxmod_itna" not in cached:
-                need_refresh = True
-        except Exception:
-            need_refresh = True
+    co = ChromiumOptions()
+    co.set_browser_path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
+    co.set_user_data_path(PROFILE_DIR)
+    co.auto_port()
+    co.set_user_agent(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+    )
+    co.set_argument("--no-sandbox")
+    co.set_argument("--disable-gpu")
+    co.set_argument("--disable-blink-features=AutomationControlled")
+    co.set_argument("--window-size=390,844")
 
-    b = launch(headless=True, locale="zh-CN")
-    ctx = b.new_context()
-
+    page = None
     try:
-        # ── 阶段 1：Cookie 保鲜 ──
-        if need_refresh:
-            print("[Cookie] refresh...", file=sys.stderr)
-            page = ctx.new_page()
-            page.goto("https://m.ceair.com/mapp/Home",
-                      wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(5000)
-            page.goto("https://m.ceair.com/mapp/reserve/flightList",
-                      wait_until="domcontentloaded", timeout=30000)
-            for i in range(20):
-                if "ssxmod_itna" in [c["name"] for c in ctx.cookies()]:
-                    print(f"  ssxmod ({i}s)", file=sys.stderr)
-                    break
-                page.wait_for_timeout(1000)
-            page.wait_for_timeout(2000)
-            cd = {c["name"]: c["value"] for c in ctx.cookies() if c["name"]}
-            cd["_refreshed_at"] = time.time()
-            with open(COOKIES_FILE, "w", encoding="utf-8") as f:
-                json.dump(cd, f, ensure_ascii=False, indent=2)
-            print(f"  [OK] {len(cd)} cookies", file=sys.stderr)
-            page.close()
-        else:
-            print("[Cookie] cached (fresh)", file=sys.stderr)
+        page = ChromiumPage(co)
 
-        # 验证 ssxmod_itna 存在
-        with open(COOKIES_FILE, encoding="utf-8") as f:
-            cookies = json.load(f)
-        if "ssxmod_itna" not in cookies:
+        # ── 加载页面 ──
+        for _ in range(3):
+            page.get("https://m.ceair.com/mapp/Home")
+            page.wait(3)
+
+            page.get("https://m.ceair.com/mapp/reserve/flightList")
+            page.wait(5)
+
+            if "ssxmod_itna" in [c.get("name") for c in page.cookies()]:
+                break
+
+        if "ssxmod_itna" not in [c.get("name") for c in page.cookies()]:
             return {"success": False, "error": "ssxmod_itna missing"}
 
-        # ── 阶段 2：注入 Cookie → API 调用 ──
-        print("[API] call...", file=sys.stderr)
-        ctx.add_cookies([
-            {"name": k, "value": v, "domain": ".ceair.com", "path": "/"}
-            for k, v in cookies.items() if v and not k.startswith("_")
-        ])
+        # ── API ──
+        page.run_js("window._encReq = arguments[0];", enc_req)
 
-        page = ctx.new_page()
-        page.goto("https://m.ceair.com/mapp/reserve/flightList",
-                  wait_until="domcontentloaded", timeout=30000)
-        time.sleep(3)
-
-        # SPA 可能替换 page，遍历存活 page 发 fetch
-        resp = None
         for attempt in range(3):
-            for pg in ctx.pages:
-                if pg.is_closed():
-                    continue
-                try:
-                    resp = pg.evaluate("""
-                        async (encReq) => {
-                            const r = await fetch('https://m.ceair.com/m-base/sale/shoppingv2', {
-                                method: 'POST', credentials: 'include',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json, text/plain, */*',
-                                    'M-CEAIR-ENCRYPTED': 'true', 'X-CEAIR-OS': 'M',
-                                },
-                                body: JSON.stringify({ req: encReq })
-                            });
-                            return {
-                                status: r.status,
-                                contentType: r.headers.get('content-type') || '',
-                                text: await r.text()
-                            };
-                        }
-                    """, enc_req)
-                    break
-                except Exception:
-                    time.sleep(1)
-            if resp:
-                break
-            time.sleep(1)
+            try:
+                raw = page.run_js(
+                    """
+                    (async () => {
+                        const r = await fetch('/m-base/sale/shoppingv2', {
+                            method: 'POST', credentials: 'include',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json, text/plain, */*',
+                                'M-CEAIR-ENCRYPTED': 'true', 'X-CEAIR-OS': 'M',
+                            },
+                            body: JSON.stringify({ req: window._encReq })
+                        });
+                        const ct = r.headers.get('content-type') || '';
+                        const text = await r.text();
+                        return JSON.stringify({ status: r.status, contentType: ct, text: text });
+                    })();
+                    """,
+                    as_expr=True,
+                    timeout=60,
+                )
+                resp = json.loads(raw)
+            except Exception:
+                page.get("https://m.ceair.com/mapp/reserve/flightList")
+                page.wait(5)
+                page.run_js("window._encReq = arguments[0];", enc_req)
+                continue
 
-        if resp is None:
-            return {"success": False, "error": "SPA replaced all pages"}
+            if resp["status"] != 200:
+                return {"success": False, "error": f"HTTP {resp['status']}"}
+
+            text = resp.get("text", "")
+            if "aliyun_waf" in text:
+                return {"success": False, "error": "WAF blocked — 当前IP被风控，请稍后重试或换代理"}
+
+            data = json.loads(text)
+            if data.get("res"):
+                return {"success": True, "enc_response": data["res"]}
+            return {"success": True, "enc_response": json.dumps(data, ensure_ascii=False)}
+
+        return {"success": False, "error": "API: max retries"}
 
     finally:
-        b.close()
-
-    if resp["status"] == 200 and "json" in resp.get("contentType", ""):
-        data = json.loads(resp["text"])
-        if data.get("res"):
-            print(f"[API] OK {len(data['res'])} chars", file=sys.stderr)
-            return {"success": True, "enc_response": data["res"]}
-        return {"success": True, "enc_response": json.dumps(data)}
-
-    err = "WAF" if "aliyun_waf" in resp.get("text", "") else f"HTTP {resp['status']}"
-    print(f"[API] FAIL: {err}", file=sys.stderr)
-    return {"success": False, "error": err}
+        if page:
+            try:
+                page.quit()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

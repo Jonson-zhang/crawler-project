@@ -27,3 +27,6 @@ wheels/
 东航/cookies.json
 .claude/skills/playwright-skill/
 好医生_v2/
+browser_cookies.txt
+*/browser_profile/
+*/dp_user_data/
