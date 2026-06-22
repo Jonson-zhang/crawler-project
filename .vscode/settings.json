@@ -9,15 +9,15 @@
     "git.enabled": true,
 
     // ── GitDoc: 保存即自动 commit + push ──
-    "gitdoc.enabled": true,
+    //"gitdoc.enabled": true,
     // gitdoc.filePattern 未设置 → 默认监控整个工作区（.gitignore 排除的不会提交）
-    "gitdoc.autoCommitDelay": 5000,
-    "gitdoc.commitMessageFormat": "auto: sync [MM-DD HH:mm]",
-    "gitdoc.autopush": "onCommit",
-    "gitdoc.autopull": "onPush",
-    "gitdoc.pullOnOpen": true,
-    "gitdoc.commitOnClose": true,
-    "gitdoc.commitValidationLevel": "none",
+    //"gitdoc.autoCommitDelay": 5000,
+    //"gitdoc.commitMessageFormat": "auto: sync [MM-DD HH:mm]",
+    //"gitdoc.autopush": "onCommit",
+    //"gitdoc.autopull": "onPush",
+    //"gitdoc.pullOnOpen": true,
+    //"gitdoc.commitOnClose": true,
+    //"gitdoc.commitValidationLevel": "none",
 
     // ── 终端：复用已有终端（关闭 VSCode 后终端历史不丢失）──
     "terminal.integrated.enablePersistentSessions": true,
