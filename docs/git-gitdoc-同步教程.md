@@ -123,7 +123,140 @@ GitDoc 是一个 VSCode 插件，它**自动帮你做这些事**：
 
 ---
 
-## 三、动手实践：在两台电脑上设置同步
+## 三、哪些文件不会自动同步（以及为什么）
+
+### 3.1 一个关键概念：`.gitignore`
+
+Git 不会自动决定哪些文件该同步、哪些不该。你需要给它一份**排除清单**，告诉它"这些文件和目录请无视"。
+
+这份清单就是项目根目录下的 `.gitignore` 文件。
+
+```
+你的项目文件夹
+├── main.py           ✅ 同步
+├── .vscode/
+│   └── settings.json ✅ 同步
+├── .venv/            ❌ 不同步（被 .gitignore 排除）
+├── .mcp.json         ❌ 不同步（被 .gitignore 排除）
+├── node_modules/     ❌ 不同步（被 .gitignore 排除）
+└── __pycache__/      ❌ 不同步（被 .gitignore 排除）
+```
+
+### 3.2 本项目排除的内容（逐条解释）
+
+以下是 `.gitignore` 中的每一类，以及**为什么不能同步**：
+
+#### 📦 第一类：Python 运行产物
+
+```gitignore
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+```
+
+**为什么排除**：这些是 Python 运行后自动生成的中间文件。每台电脑上的版本不同，同步了反而会互相覆盖、报错。而且它们**不是源代码**，没有备份价值。
+
+#### 🐍 第二类：Python 虚拟环境
+
+```gitignore
+.venv
+```
+
+**为什么排除**：虚拟环境里是几百 MB 的第三方包（`numpy`、`DrissionPage` 等），直接同步太慢也太浪费。正确的做法是用 `uv.lock` 记录依赖清单，换电脑后一条命令重建。
+
+> ⚠️ **重要**：`.venv` 不同步，但它依赖的清单文件 `pyproject.toml` 和 `uv.lock` **会同步**。换电脑后用 `uv sync` 即可重建一模一样的环境。
+
+#### ⚙️ 第三类：机器相关配置
+
+```gitignore
+.mcp.json
+```
+
+**为什么排除**：`.mcp.json` 里写的是 MCP 服务器的**本机绝对路径**（比如 `H:\Crawler\.claude\...`），换一台电脑路径就变了。这个文件由 `install-mcp.sh` 脚本在每台电脑上自动生成。
+
+#### 📥 第四类：MCP 服务器安装产物
+
+```gitignore
+.claude/mcp-servers/**/node_modules/
+.claude/mcp-servers/**/.venv/
+.claude/mcp-servers/camoufox-reverse-mcp/
+```
+
+**为什么排除**：MCP 服务器是第三方工具，体积大（node_modules 几百 MB），通过 `install-mcp.sh` 一键安装即可。它们不是你的项目代码，不需要备份。
+
+> 💡 但 `package.json` 和 `package-lock.json` **会同步**——它们记录了依赖清单，和 `uv.lock` 同理。
+
+#### 🧩 第五类：Skills 技能库
+
+```gitignore
+.claude/skills/hello_js_reverse_skill/
+.claude/skills/ast-deobfuscation/
+.claude/skills/web-reverse-algorithm/
+.claude/skills/web-reverse-env/
+.claude/skills/playwright-skill/
+```
+
+**为什么排除**：这些是从 GitHub 克隆的第三方技能库，`install-mcp.sh` 一键恢复。它们会独立更新，不应该混在你的项目 git 历史里。
+
+> 💡 **例外**：`wasm-reverse` 这个 skill 是我们自己写的，所以**不在排除列表中**，它会同步。
+
+#### 🌐 第六类：浏览器运行残留
+
+```gitignore
+browser_cookies.txt
+*/browser_profile/
+*/dp_user_data/
+```
+
+**为什么排除**：爬虫运行时会启动浏览器，产生 cookie 文件、浏览器缓存、用户数据目录。这些是运行时产物，而且**含有你的登录信息**，绝对不该上传到公开的 GitHub。
+
+### 3.3 换电脑后如何恢复这些被排除的内容
+
+所有被排除的文件都有一键恢复方案：
+
+| 被排除的内容 | 恢复方式 | 命令 / 步骤 |
+|-------------|---------|-------------|
+| `.venv`（Python 包） | `uv sync` 重建 | `uv sync` |
+| `node_modules`（JS 包） | `npm install` 重建 | `cd .claude/mcp-servers/js-reverse-mcp && npm install` |
+| `.mcp.json` | `install-mcp.sh` 自动生成 | `bash .claude/install-mcp.sh` |
+| MCP 服务器 | `install-mcp.sh` 克隆安装 | `bash .claude/install-mcp.sh` |
+| Skills | `install-mcp.sh` 克隆安装 | `bash .claude/install-mcp.sh` |
+| 浏览器残留 | 不需要恢复，运行时自动生成 | 无需操作 |
+
+**所以换新电脑的完整恢复步骤只有两条命令**：
+
+```bash
+uv sync                       # 恢复 Python 环境
+bash .claude/install-mcp.sh   # 恢复 MCP + Skills + 生成本机配置
+```
+
+### 3.4 如果你需要新增排除规则
+
+假设你开始在某站写爬虫，产生了一个 `某站/cookies.json`，你不想把它同步到 GitHub（含敏感信息）。
+
+在 `.gitignore` 末尾加一行：
+
+```gitignore
+某站/cookies.json
+```
+
+或者更彻底，排除整个站点的运行产物目录：
+
+```gitignore
+# XX站点运行产物（含敏感信息）
+某站/logs/
+某站/cookies.json
+某站/browser_profile/
+```
+
+**规则**：修改 `.gitignore` 本身**会被同步**到 GitHub，这样另一台电脑也会自动遵守这些规则。
+
+---
+
+## 四、动手实践：在两台电脑上设置同步
 
 ### 第一台电脑（已配置好）
 
@@ -166,7 +299,7 @@ code crawler-project
 
 ---
 
-## 四、常见问题
+## 五、常见问题
 
 ### Q1: 怎么知道同步成功了？
 
@@ -224,7 +357,7 @@ git push
 
 ---
 
-## 五、一句话总结
+## 六、一句话总结
 
 | 你做的 | GitDoc 自动做的 |
 |-------|---------------|
