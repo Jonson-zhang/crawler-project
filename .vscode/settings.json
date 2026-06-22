@@ -26,14 +26,10 @@
 
     // ── 调试器终端：调试时复用终端，不创建多个 "Code" 终端 ──
     "debug.terminal.clearBeforeReusing": true,
-    "debug.terminal.reuse": true,
 
     // ── Python 扩展终端 ──
     // 自动激活虚拟环境
     "python.terminal.activateEnvironment": true,
     // 在文件所在目录执行（省去 os.chdir()）
-    "python.terminal.executeInFileDir": true,
-
-    // ── 任务终端：复用终端，不遗留僵尸终端 ──
-    "task.terminal.reuse": true
+    "python.terminal.executeInFileDir": true
 }
