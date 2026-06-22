@@ -23,6 +23,7 @@ metadata:
 - 要换方案或迭代，创建新目录如 `cloak_v1.0`、`drission_v1.0`，或递增 `v1.1`、`v1.2`
 - 新目录必须完全自包含，复制所有依赖文件进来，不引用父级文件
 - 相当于用目录模拟 git branch，每个版本独立可运行，互不干扰
+- 新目录创建并验证通过后，**清理父级目录中的原始文件**（已复制进版本目录的），只保留文档（`*.md`）和版本子目录
 
 **Why:** 防止改坏已验证通过的代码。每个版本独立运行，可以随时回退对比。项目结构如 `crawler.py` + `api_bridge.py`（DrissionPage v1）和 `cloak_v1.0/test_cloak.py` + `cloak_bridge.py` 并存。
 **How to apply:** 用户请求"换用 CloakBrowser"时，不修改 `crawler.py`/`api_bridge.py`，而是新建 `cloak_v1.0/` 目录，把所需文件全复制进去再改。
