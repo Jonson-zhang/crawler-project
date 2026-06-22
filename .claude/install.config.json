@@ -1,0 +1,30 @@
+{
+  "mcpServers": [
+    {
+      "name": "camoufox-reverse",
+      "url": "https://github.com/WhiteNightShadow/camoufox-reverse-mcp.git",
+      "type": "python-git",
+      "dir": ".claude/mcp-servers/camoufox-reverse-mcp"
+    },
+    {
+      "name": "js-reverse",
+      "type": "npm",
+      "dir": ".claude/mcp-servers/js-reverse-mcp"
+    }
+  ],
+  "skills": [
+    {
+      "name": "hello_js_reverse_skill",
+      "url": "https://github.com/WhiteNightShadow/hello_js_reverse_skill.git",
+      "type": "git-clone",
+      "dir": ".claude/skills/hello_js_reverse_skill"
+    },
+    {
+      "name": "xbsReverseSkill",
+      "url": "https://github.com/lwjjike/xbsReverseSkill.git",
+      "type": "git-extract",
+      "dir": ".claude/skills",
+      "extract": ["ast-deobfuscation", "web-reverse-algorithm", "web-reverse-env"]
+    }
+  ]
+}
