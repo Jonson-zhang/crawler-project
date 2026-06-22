@@ -26,4 +26,3 @@
 - [Camoufox 版本兼容问题](camoufox-version-issue.md) — **新**：`cloakbrowser`→`camoufox` 改名导致 ModuleNotFoundError
 - [Emscripten wasm2js 模式](emscripten-wasm2js-pattern.md) — 与 wasm-bindgen 完全不同，不需要 stub 生成
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
-<!-- gitdoc-test: 2026-06-22 17:05 -->
