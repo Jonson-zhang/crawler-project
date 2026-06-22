@@ -24,9 +24,21 @@ metadata:
 - 如果浏览器 fetch 成功 → TLS 指纹问题，走浏览器桥接方案
 - 如果浏览器 fetch 也失败 → Cookie/参数/加密问题，继续调试
 
-## 解决方案（降级梯度）
+## 解决方案（降级梯度，已更新）
 
-### 梯度 1: curl_cffi（纯 Python，推荐先试）
+### 梯度 1: DrissionPage headless Chromium（推荐首选）
+
+经东航项目验证，这是对国内阿里云 WAF 兼容性最好的方案。关键配置见 [[drissionpage-practice]]。
+
+```python
+from DrissionPage import ChromiumPage, ChromiumOptions
+co = ChromiumOptions()
+co.headless(True)
+co.set_user_agent("...Chrome/125...")  # 覆盖 HeadlessChrome UA
+co.set_argument("--disable-blink-features=AutomationControlled")
+```
+
+### 梯度 2: curl_cffi（纯 Python，推荐先试）
 
 ```python
 from curl_cffi import requests as curl_requests
@@ -34,20 +46,13 @@ resp = curl_requests.post(url, json=body, headers=headers,
                           impersonate="chrome110")
 ```
 
-### 梯度 2: Playwright headless 桥接（本次采用）
+### 梯度 3: Playwright headless Chromium
 
-```
-Python crawler.py
-  → subprocess → Playwright Chromium headless
-  → page.evaluate(fetch()) → 利用 Chromium TLS 栈
-  → 返回加密响应 → Python 解密
-```
+与梯度 1 类似，使用 Playwright Chromium 的 TLS 栈。
 
-代价：每次 API 调用需启动 Chromium（~3 秒）。
+### ⚠️ 不要用 Camoufox
 
-### 梯度 3: Camoufox headless（已有基础设施时）
-
-与梯度 2 类似，使用 Camoufox MCP 的反检测 TLS。
+东航项目验证：Camoufox（Firefox/Gecko 引擎）被阿里云 WAF 全线拦截，与 headless/有头/UA 无关。仅当目标站对 Chrome 也有反制时再考虑。详见 [[waf-browser-engine]]。
 
 ## Cookie 保鲜优化
 

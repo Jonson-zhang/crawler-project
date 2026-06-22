@@ -20,5 +20,10 @@
 
 - [Crawler 项目约定](crawler-conventions.md) — 工具链、代码组织、输出方式的默认约定
 - [WAF/TLS 指纹识别与应对](waf-tls-fingerprint.md) — requests 返回 WAF HTML 的诊断 + 浏览器桥接方案 + Cookie 保鲜
+- [WAF 浏览器引擎检测](waf-browser-engine.md) — **新**：阿里云 WAF 对 Firefox/Gecko 全线拦截，Chromium/Blink 天然通过
+- [WAF 风控升级机制](waf-rate-limiting.md) — **新**：三级升级（JS 挑战→滑块→405 封杀）+ IP 冷却恢复
+- [DrissionPage 踩坑汇总](drissionpage-practice.md) — **新**：API 陷阱、进程管理、headless 配置
+- [Camoufox 版本兼容问题](camoufox-version-issue.md) — **新**：`cloakbrowser`→`camoufox` 改名导致 ModuleNotFoundError
 - [Emscripten wasm2js 模式](emscripten-wasm2js-pattern.md) — 与 wasm-bindgen 完全不同，不需要 stub 生成
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
+<!-- gitdoc-test: 2026-06-22 17:05 -->

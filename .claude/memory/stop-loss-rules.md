@@ -34,23 +34,30 @@ metadata:
 
 **触发信号**：`requests` 发加密请求 → HTTP 200 + `content-type: text/html` + body 含 `aliyun_waf` 或 WAF 特征。
 
-**诊断方法（一步到位）**：在同一个浏览器会话中同时用 `fetch()` 发加密请求和 `requests` 发相同请求。
-- 浏览器 `fetch()` 成功 → **TLS 指纹问题**，走 `curl_cffi`（`impersonate="chrome110"`）或 Playwright Chromium TLS 栈
-- 浏览器 `fetch()` 也失败 → Cookie/参数/加密问题，继续调试
+**诊断方法（两步定位根因）**：
+1. 浏览器引擎对照：Chromium `fetch()` vs Firefox `page.evaluate(fetch())` 各试一次
+   - Chromium 成功 + Firefox 失败 → **浏览器引擎问题**（见 [[waf-browser-engine]]），切 Chromium
+   - 两者皆成功 → TLS 指纹问题，走 `curl_cffi`
+   - 两者皆失败 → Cookie/加密问题
+
+2. 如果 Chrome 的 `fetch()` 也超时不返回 → 是 WAF tarpitting（IP 被标记）。检查 [[waf-rate-limiting]]。
 
 **禁止**：
 - ❌ Cookie 有效却反复删 cookies.json 重试刷新
 - ❌ 反复修改 `requests` headers（Origin/Referer/Cookie 格式等）
 - ❌ 在 Cookie 配置上花超过 5 分钟
+- ❌ 出现滑块后继续 retry loop（**新发现**：retry 会加速 IP 升级到 405）
+- ❌ 默认用 Firefox 系浏览器（Camoufox/Playwright Firefox）。国内站点先试 Chromium。
 
-**方案降级梯度**：
-1. `curl_cffi` impersonate（推荐先试，纯 Python，无浏览器开销）
-2. Playwright headless Chromium TLS 栈
-3. Camoufox headless（已有基础设施时）
+**方案降级梯度**（更新）：
+1. **DrissionPage headless Chromium**（推荐首选，国内站点兼容性最好）
+2. `curl_cffi` impersonate（纯 Python，适合低频请求）
+3. Playwright headless Chromium
+4. Camoufox（仅当目标站对 Chrome 也有反制时考虑）
 
-**Why**: 东航实战中确认 Cookie 有效但 Python requests 被 WAF 拦截，同一个 Cookie 在 Chromium fetch 中成功。在 Cookie 配置上反复调整是浪费时间。
+**Why**: 东航实战中不仅验证了 TLS 指纹规则，还发现阿里云 WAF 对 Firefox 引擎全线拦截（无论 headless/有头/UA 伪装），而对 Chromium 天然放行。浏览器引擎选择比 TLS 指纹更重要。
 
-**How to apply**: 第一次 WAF HTML 出现时 → 不要改 Cookie → 立即做浏览器内 fetch 对照实验。
+**How to apply**: 接手新站 → 先 Chromium `fetch()` → 被拦再试 Firefox → 5 分钟确定要不要切引擎。[[waf-browser-engine]] [[waf-rate-limiting]]
 
 ## 规则 3：`Module._malloc` + `Module.cwrap` → Emscripten wasm2js，一行 `require`
 
