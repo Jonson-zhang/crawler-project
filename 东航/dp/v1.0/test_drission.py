@@ -1,13 +1,11 @@
 """
-东航机票爬取 — CloakBrowser + WASM 加解密
+东航机票爬取 — DrissionPage + WASM 加解密
 API: POST https://m.ceair.com/m-base/sale/shoppingv2
 
-与 crawler.py 用法完全一致，仅将 DrissionPage 替换为 CloakBrowser。
-
 用法:
-  python test_cloak.py              # 读 config.json
-  python test_cloak.py 杭州 北京    # 出发 到达
-  python test_cloak.py 杭州 北京 20260628  # 出发 到达 日期
+  python crawler.py              # 在 config.json 中设置出发地、目的地和出发时间
+  python crawler.py 杭州 北京    # 出发 到达
+  python crawler.py 杭州 北京 20260630  # 出发 到达 日期
 """
 
 import subprocess
@@ -22,18 +20,38 @@ if sys.platform == "win32":
 
 SD = Path(__file__).parent
 SIGN_JS = SD / "sign.js"
-CLOAK_BRIDGE = SD / "cloak_bridge.py"
+COOKIES_FILE = SD / "cookies.json"
 CONFIG_FILE = SD / "config.json"
+API_BRIDGE = SD / "api_bridge.py"
 
 # 城市映射
 CITY_MAP = {
-    "上海": "SHA", "北京": "BJS", "广州": "CAN", "深圳": "SZX",
-    "成都": "CTU", "重庆": "CKG", "西安": "XIY", "昆明": "KMG",
-    "杭州": "HGH", "南京": "NKG", "武汉": "WUH", "长沙": "CSX",
-    "青岛": "TAO", "大连": "DLC", "厦门": "XMN", "福州": "FOC",
-    "海口": "HAK", "三亚": "SYX", "沈阳": "SHE", "郑州": "CGO",
-    "济南": "TNA", "哈尔滨": "HRB", "乌鲁木齐": "URC",
-    "兰州": "LHW", "银川": "INC", "西宁": "XNN",
+    "上海": "SHA",
+    "北京": "BJS",
+    "广州": "CAN",
+    "深圳": "SZX",
+    "成都": "CTU",
+    "重庆": "CKG",
+    "西安": "XIY",
+    "昆明": "KMG",
+    "杭州": "HGH",
+    "南京": "NKG",
+    "武汉": "WUH",
+    "长沙": "CSX",
+    "青岛": "TAO",
+    "大连": "DLC",
+    "厦门": "XMN",
+    "福州": "FOC",
+    "海口": "HAK",
+    "三亚": "SYX",
+    "沈阳": "SHE",
+    "郑州": "CGO",
+    "济南": "TNA",
+    "哈尔滨": "HRB",
+    "乌鲁木齐": "URC",
+    "兰州": "LHW",
+    "银川": "INC",
+    "西宁": "XNN",
 }
 CODE_REV = {v: k for k, v in CITY_MAP.items()}
 
@@ -88,13 +106,13 @@ def decrypt(b64):
 
 
 # ============================================================
-# API 桥接 — cloak_bridge.py 子进程（CloakBrowser，单 Session）
+# API 桥接 — api_bridge.py 子进程（DrissionPage，单 Session）
 # ============================================================
 
 
 def _venv():
-    """返回装有依赖的 Python 路径"""
-    venv = SD.parent.parent / ".venv" / "Scripts" / "python.exe"  # cloak_test → 东航 → 项目根
+    """返回装有 DrissionPage 的 Python 路径"""
+    venv = SD.parent.parent.parent / ".venv" / "Scripts" / "python.exe"
     return str(venv) if venv.exists() else sys.executable
 
 
@@ -102,7 +120,7 @@ def call_api(enc_req):
     """浏览器单 Session：自动判断 Cookie 保鲜 + API 调用"""
     t0 = time.time()
     r = subprocess.run(
-        [_venv(), str(CLOAK_BRIDGE), enc_req],
+        [_venv(), str(API_BRIDGE), enc_req],
         capture_output=True,
         text=True,
         timeout=180,
@@ -113,7 +131,7 @@ def call_api(enc_req):
             print(f"  {line.strip()}", file=sys.stderr)
     if r.returncode != 0:
         return None
-    # cloak_bridge.py 末尾打印一行 JSON，取最后一行
+    # api_bridge.py 末尾打印一行 JSON，取最后一行
     for line in reversed(r.stdout.strip().splitlines()):
         try:
             data = json.loads(line)
@@ -163,7 +181,7 @@ def search(dep, arr, date, dn, an):
     t_enc = (time.time() - t0) * 1000
     print(f"  ✓ {len(enc['req'])} chars  ({t_enc:.0f}ms)", file=sys.stderr)
 
-    # API 调用（CloakBrowser 单 Session：自动判断 cookie 保鲜 + 发请求）
+    # API 调用（浏览器单 Session：自动判断 cookie 保鲜 + 发请求）
     t1 = time.time()
     print("[1/2] API...", file=sys.stderr)
     for attempt in range(2):
@@ -221,7 +239,7 @@ def show(result, date):
 
 
 if __name__ == "__main__":
-    cfg = {"dep": "SHA", "arr": "BJS", "date": "20260625"}
+    cfg = {"dep": "SHA", "arr": "BJS", "date": "20260629"}
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, encoding="utf-8") as f:
             cfg.update(json.load(f))
