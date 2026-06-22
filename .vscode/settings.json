@@ -31,5 +31,6 @@
     // 自动激活虚拟环境
     "python.terminal.activateEnvironment": true,
     // 在文件所在目录执行（省去 os.chdir()）
-    "python.terminal.executeInFileDir": true
+    "python.terminal.executeInFileDir": true,
+    "gitdoc.enabled": false
 }
