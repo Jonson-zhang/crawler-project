@@ -18,6 +18,13 @@ metadata:
 - 解密/签名函数单独放在一个文件中（如 `sign.py`），主爬虫文件（如 `crawl.py`）import 使用
 - 无需创建额外的子目录结构
 
+**子进程调用规范**
+- 主脚本通过 `subprocess` 启动子进程脚本（如 `api_bridge.py`）时，解释器用 `sys.executable`，**禁止硬编码** `.venv/Scripts/python.exe` 路径
+- 原因：`uv run` 启动时 `sys.executable` 即是 venv Python，子进程自动找得到所有依赖；硬编码路径在目录深度变化时会断裂（如 `cloak_test/` → `cloak/v1.0/` 多一层）
+
+**Why:** 硬编码的 `SD.parent.parent.…` 路径依赖目录层级，重构目录结构时容易断裂。`sys.executable` 是运行时真实解释器，永远正确。
+**How to apply:** `subprocess.run([sys.executable, str(script), arg], ...)` — 不要写 `_venv()` 函数去找 `SD.parent.../.venv/Scripts/python.exe`。
+
 **版本迭代规则（目录级分支）**
 - 代码一旦跑通（验证成功），**禁止原地修改**
 - 按工具/方案建一级目录（如 `dp/`、`cloak/`），版本号建二级目录（如 `v1.0/`、`v2.0/`）

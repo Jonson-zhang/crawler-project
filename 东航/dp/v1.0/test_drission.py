@@ -110,17 +110,11 @@ def decrypt(b64):
 # ============================================================
 
 
-def _venv():
-    """返回装有 DrissionPage 的 Python 路径"""
-    venv = SD.parent.parent.parent / ".venv" / "Scripts" / "python.exe"
-    return str(venv) if venv.exists() else sys.executable
-
-
 def call_api(enc_req):
     """浏览器单 Session：自动判断 Cookie 保鲜 + API 调用"""
     t0 = time.time()
     r = subprocess.run(
-        [_venv(), str(API_BRIDGE), enc_req],
+        [sys.executable, str(API_BRIDGE), enc_req],
         capture_output=True,
         text=True,
         timeout=180,
