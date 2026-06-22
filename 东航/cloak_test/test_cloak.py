@@ -1,35 +1,31 @@
 """
-东航 CloakBrowser WAF 绕过测试
-用法: uv run python test_cloak.py [出发] [到达] [日期]
-示例: uv run python 东航/cloak_test/test_cloak.py 成都 广州 20260628
+东航机票爬取 — CloakBrowser + WASM 加解密
+API: POST https://m.ceair.com/m-base/sale/shoppingv2
+
+与 crawler.py 用法完全一致，仅将 DrissionPage 替换为 CloakBrowser。
+
+用法:
+  python test_cloak.py              # 读 config.json
+  python test_cloak.py 杭州 北京    # 出发 到达
+  python test_cloak.py 杭州 北京 20260628  # 出发 到达 日期
 """
 
 import subprocess
 import json
 import sys
-import io
 import time
 from pathlib import Path
-
-# ── 自动纠偏：如果用系统 Python 而非 uv 环境，自动重调 ──
-if not sys.executable.replace("\\", "/").endswith(".venv/Scripts/python.exe"):
-    PROJECT = Path(__file__).resolve().parent.parent.parent  # crawler/
-    UV_PYTHON = PROJECT / ".venv" / "Scripts" / "python.exe"
-    if UV_PYTHON.exists():
-        result = subprocess.run(
-            [str(UV_PYTHON), __file__, *sys.argv[1:]],
-            cwd=str(PROJECT),
-        )
-        sys.exit(result.returncode)
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-SD = Path(__file__).parent.parent  # 东航/
-SIGN_JS = SD / "sign.js"
-CLOAK_BRIDGE = Path(__file__).parent / "cloak_bridge.py"
+SD = Path(__file__).parent
+SIGN_JS = SD.parent / "sign.js"
+CLOAK_BRIDGE = SD / "cloak_bridge.py"
+CONFIG_FILE = SD / "config.json"
 
+# 城市映射
 CITY_MAP = {
     "上海": "SHA", "北京": "BJS", "广州": "CAN", "深圳": "SZX",
     "成都": "CTU", "重庆": "CKG", "西安": "XIY", "昆明": "KMG",
@@ -43,77 +39,152 @@ CODE_REV = {v: k for k, v in CITY_MAP.items()}
 
 
 def resolve(s):
+    """中文名→代码，代码→原样，未知→大写"""
+    if not s:
+        return s
     if s in CITY_MAP:
         return CITY_MAP[s]
     if s.upper() in CODE_REV:
         return s.upper()
+    if s in CODE_REV:
+        return CODE_REV[s]
     return s.upper()
 
 
 def city_name(code):
+    """机场代码→城市名"""
     return CODE_REV.get(code.upper(), code)
 
 
-def encrypt(payload):
-    """通过 sign.js 加密"""
+# ============================================================
+# WASM 加解密
+# ============================================================
+
+
+def _node(cmd, data=""):
     p = subprocess.Popen(
-        ["node", str(SIGN_JS), "encrypt"],
-        cwd=str(SD),
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        ["node", str(SIGN_JS), cmd],
+        cwd=str(SD.parent),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
-    out, err = p.communicate(
-        input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(),
-        timeout=30,
-    )
+    out, err = p.communicate(input=data.encode() if data else None, timeout=30)
     if p.returncode:
         raise RuntimeError(err.decode()[:500])
-    return json.loads(out.decode().strip())
+    return out.decode().strip()
 
 
-def call_cloak(enc_req_str):
-    """调用 cloak_bridge.py"""
+def encrypt(data):
+    """加密 → {"req": "base64..."}"""
+    return json.loads(
+        _node("encrypt", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    )
+
+
+def decrypt(b64):
+    """解密 → dict"""
+    return json.loads(_node("decrypt", b64))
+
+
+# ============================================================
+# API 桥接 — cloak_bridge.py 子进程（CloakBrowser，单 Session）
+# ============================================================
+
+
+def _venv():
+    """返回装有依赖的 Python 路径"""
+    venv = SD.parent.parent / ".venv" / "Scripts" / "python.exe"
+    return str(venv) if venv.exists() else sys.executable
+
+
+def call_api(enc_req):
+    """浏览器单 Session：自动判断 Cookie 保鲜 + API 调用"""
     t0 = time.time()
     r = subprocess.run(
-        [sys.executable, str(CLOAK_BRIDGE), enc_req_str],
-        capture_output=True, text=True, timeout=180, cwd=str(SD),
+        [_venv(), str(CLOAK_BRIDGE), enc_req],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        cwd=str(SD.parent),
     )
     for line in r.stderr.splitlines():
         if line.strip():
             print(f"  {line.strip()}", file=sys.stderr)
-
-    if r.returncode != 0 or not r.stdout.strip():
-        print(f"  Exit code: {r.returncode}, stdout empty", file=sys.stderr)
+    if r.returncode != 0:
         return None
-
+    # cloak_bridge.py 末尾打印一行 JSON，取最后一行
     for line in reversed(r.stdout.strip().splitlines()):
         try:
             data = json.loads(line)
             if data.get("success") and data.get("enc_response"):
-                print(f"  ── API 总耗时: {time.time() - t0:.1f}s ──", file=sys.stderr)
-                return data["enc_response"]
-            elif data.get("error"):
-                print(f"  ── Error: {data['error']}", file=sys.stderr)
-                return None
+                t_elapsed = time.time() - t0
+                print(f"  ── API 总耗时: {t_elapsed:.1f}s ──", file=sys.stderr)
+                return decrypt(data["enc_response"])
         except json.JSONDecodeError:
             pass
     return None
 
 
-def decrypt(b64):
-    """通过 sign.js 解密"""
-    p = subprocess.Popen(
-        ["node", str(SIGN_JS), "decrypt"],
-        cwd=str(SD),
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
-    out, err = p.communicate(input=b64.encode(), timeout=30)
-    if p.returncode:
-        raise RuntimeError(err.decode()[:500])
-    return json.loads(out.decode().strip())
+# ============================================================
+# 搜索
+# ============================================================
+
+
+def search(dep, arr, date, dn, an):
+    t_total_start = time.time()
+
+    t0 = time.time()
+    print("[0/2] Encrypt...", file=sys.stderr)
+    payload = {
+        "currentQueryType": "FLIGHT_LIST",
+        "currentSegIndex": 0,
+        "language": "zh",
+        "selectedRoutes": [],
+        "productType": "CASH",
+        "routes": [
+            {
+                "arrCode": arr,
+                "depCode": dep,
+                "flightDate": date,
+                "arrCodeType": "1",
+                "depCodeType": "1",
+                "depCityName": dn,
+                "arrCityName": an,
+                "segIndex": 0,
+                "leftInner": "",
+                "rightInner": "",
+            }
+        ],
+        "tripType": "OW",
+        "cabinGrade": "",
+    }
+    enc = encrypt(payload)
+    t_enc = (time.time() - t0) * 1000
+    print(f"  ✓ {len(enc['req'])} chars  ({t_enc:.0f}ms)", file=sys.stderr)
+
+    # API 调用（CloakBrowser 单 Session：自动判断 cookie 保鲜 + 发请求）
+    t1 = time.time()
+    print("[1/2] API...", file=sys.stderr)
+    for attempt in range(2):
+        result = call_api(enc["req"])
+        if result:
+            t_api = time.time() - t1
+            t_total = time.time() - t_total_start
+            print(
+                f"[2/2] Done  (API {t_api:.1f}s, total {t_total:.1f}s)",
+                file=sys.stderr,
+            )
+            return result
+        if attempt == 0:
+            print("  retry...", file=sys.stderr)
+    t_api = time.time() - t1
+    print(f"  ✗ failed after {t_api:.1f}s", file=sys.stderr)
+    return None
 
 
 def show(result, date):
-    data = result.get("data") or result
+    data = result.get("data", result)
     flights = (
         data.get("flights") or data.get("flightList") or data.get("flightlist") or []
     )
@@ -150,46 +221,31 @@ def show(result, date):
 
 
 if __name__ == "__main__":
-    dep = "CTU"
-    arr = "CAN"
-    date = "20260625"  # 默认日期控制在 3 天内，避免过期
+    cfg = {"dep": "SHA", "arr": "BJS", "date": "20260625"}
+    if CONFIG_FILE.exists():
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            cfg.update(json.load(f))
     if len(sys.argv) > 1:
-        dep = resolve(sys.argv[1])
+        cfg["dep"] = sys.argv[1]
     if len(sys.argv) > 2:
-        arr = resolve(sys.argv[2])
+        cfg["arr"] = sys.argv[2]
     if len(sys.argv) > 3:
-        date = sys.argv[3]
+        cfg["date"] = sys.argv[3]
 
-    dn = city_name(dep)
-    an = city_name(arr)
+    dep_code = resolve(cfg["dep"])
+    arr_code = resolve(cfg["arr"])
+    date_str = cfg["date"]
+    dep_name = city_name(dep_code)
+    arr_name = city_name(arr_code)
 
-    print(f"CEAIR (CloakBrowser test): {dn}({dep}) → {an}({arr}) {date}", file=sys.stderr)
+    print(
+        f"CEAIR: {dep_name}({dep_code}) → {arr_name}({arr_code}) {date_str}",
+        file=sys.stderr,
+    )
     print("=" * 55, file=sys.stderr)
 
-    # 1. 加密
-    t0 = time.time()
-    print("[0/2] Encrypt...", file=sys.stderr)
-    payload = {
-        "currentQueryType": "FLIGHT_LIST", "currentSegIndex": 0,
-        "language": "zh", "selectedRoutes": [], "productType": "CASH",
-        "routes": [{
-            "arrCode": arr, "depCode": dep, "flightDate": date,
-            "arrCodeType": "1", "depCodeType": "1",
-            "depCityName": dn, "arrCityName": an,
-            "segIndex": 0, "leftInner": "", "rightInner": "",
-        }],
-        "tripType": "OW", "cabinGrade": "",
-    }
-    enc = encrypt(payload)
-    print(f"  ✓ {len(enc['req'])} chars  ({(time.time() - t0) * 1000:.0f}ms)", file=sys.stderr)
-
-    # 2. CloakBrowser API
-    print("[1/2] CloakBrowser API...", file=sys.stderr)
-    enc_response = call_cloak(enc["req"])
-    if enc_response is None:
+    r = search(dep_code, arr_code, date_str, dep_name, arr_name)
+    if r is None:
         print("\nSearch failed", file=sys.stderr)
         sys.exit(1)
-
-    # 3. 解密
-    result = decrypt(enc_response)
-    show(result, date)
+    show(r, date_str)
