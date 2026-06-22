@@ -1,18 +1,41 @@
 """
-东航 API 桥接 — DrissionPage（Chromium 浏览器自动化）
+东航 API 桥接 — DrissionPage（Chromium headless + 持久化 Cookie）
 用法: python api_bridge.py <enc_req>
 输出: 末尾一行 JSON {"success": true/false, "enc_response": "..."}
-
-策略:
-- 手机 UA 导航 → 阿里云 WAF 对移动端限制较松，不弹滑块
-- fetch API 从浏览器内发起 → 复用页面已加载的 WAF 脚本上下文
-- 持久化 profile → 后续复用 Cookie
 """
 import json, sys, io, time
 from pathlib import Path
 
 SD = Path(__file__).parent
 PROFILE_DIR = str(SD / "dp_user_data")
+COOKIE_MAX_AGE = 25 * 60  # Cookie 有效期：25 分钟
+
+
+def _has_valid_cookie(page):
+    """检查 profile 中是否已有有效的 ssxmod_itna"""
+    # 需要至少加载一个页面才能读取 Cookie
+    page.get("https://m.ceair.com/mapp/Home")
+    page.wait(2)
+    return "ssxmod_itna" in [c.get("name") for c in page.cookies()]
+
+
+def _refresh_cookies(page):
+    """访问 flightList 触发 SPA 加载，确保 Cookie 完整"""
+    for _ in range(3):
+        page.get("https://m.ceair.com/mapp/reserve/flightList")
+        page.wait(5)
+        if "ssxmod_itna" in [c.get("name") for c in page.cookies()]:
+            return True
+    return False
+
+
+def _ensure_page(page):
+    """确保有可用的页面上下文用于 fetch API"""
+    try:
+        page.get("https://m.ceair.com/mapp/reserve/flightList")
+        page.wait(2)
+    except Exception:
+        pass
 
 
 def run(enc_req):
@@ -22,8 +45,8 @@ def run(enc_req):
     co.set_browser_path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
     co.set_user_data_path(PROFILE_DIR)
     co.auto_port()
-    co.headless(True)                                     # 无头模式（需配合 UA 伪装）
-    co.set_user_agent(                                    # 去掉 HeadlessChrome 标识
+    co.headless(True)
+    co.set_user_agent(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     )
@@ -36,19 +59,15 @@ def run(enc_req):
     try:
         page = ChromiumPage(co)
 
-        # ── 加载页面 ──
-        for _ in range(3):
-            page.get("https://m.ceair.com/mapp/Home")
-            page.wait(3)
-
-            page.get("https://m.ceair.com/mapp/reserve/flightList")
-            page.wait(5)
-
-            if "ssxmod_itna" in [c.get("name") for c in page.cookies()]:
-                break
-
-        if "ssxmod_itna" not in [c.get("name") for c in page.cookies()]:
-            return {"success": False, "error": "ssxmod_itna missing"}
+        # ── Cookie：已有则跳过，过期则刷新 ──
+        if _has_valid_cookie(page):
+            print("[Cookie] cached (fresh)", file=sys.stderr)
+            _ensure_page(page)
+        else:
+            print("[Cookie] refresh...", file=sys.stderr)
+            if not _refresh_cookies(page):
+                return {"success": False, "error": "ssxmod_itna missing"}
+            print(f"  ssxmod ready", file=sys.stderr)
 
         # ── API ──
         page.run_js("window._encReq = arguments[0];", enc_req)
@@ -78,7 +97,7 @@ def run(enc_req):
                 resp = json.loads(raw)
             except Exception:
                 page.get("https://m.ceair.com/mapp/reserve/flightList")
-                page.wait(5)
+                page.wait(3)
                 page.run_js("window._encReq = arguments[0];", enc_req)
                 continue
 
@@ -87,7 +106,7 @@ def run(enc_req):
 
             text = resp.get("text", "")
             if "aliyun_waf" in text:
-                return {"success": False, "error": "WAF blocked — 当前IP被风控，请稍后重试或换代理"}
+                return {"success": False, "error": "WAF blocked"}
 
             data = json.loads(text)
             if data.get("res"):
