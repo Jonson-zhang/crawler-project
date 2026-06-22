@@ -19,18 +19,5 @@
     //"gitdoc.commitOnClose": true,
     //"gitdoc.commitValidationLevel": "none",
 
-    // ── 终端：复用已有终端（关闭 VSCode 后终端历史不丢失）──
-    "terminal.integrated.enablePersistentSessions": true,
-    // 回滚行数（爬虫日志长，默认 1000 不够）
-    "terminal.integrated.scrollback": 5000,
-
-    // ── 调试器终端：调试时复用终端，不创建多个 "Code" 终端 ──
-    "debug.terminal.clearBeforeReusing": true,
-
-    // ── Python 扩展终端 ──
-    // 自动激活虚拟环境
-    "python.terminal.activateEnvironment": true,
-    // 在文件所在目录执行（省去 os.chdir()）
-    "python.terminal.executeInFileDir": true,
-    "gitdoc.enabled": false
+    
 }
