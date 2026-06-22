@@ -29,8 +29,6 @@
     "debug.terminal.reuse": true,
 
     // ── Python 扩展终端 ──
-    // 运行 Python 文件时复用终端（核心配置）
-    "python.terminal.reuseSession": true,
     // 自动激活虚拟环境
     "python.terminal.activateEnvironment": true,
     // 在文件所在目录执行（省去 os.chdir()）
