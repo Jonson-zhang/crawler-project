@@ -22,14 +22,10 @@ def run(enc_req):
     co.set_browser_path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
     co.set_user_data_path(PROFILE_DIR)
     co.auto_port()
-    co.set_user_agent(
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
-    )
     co.set_argument("--no-sandbox")
     co.set_argument("--disable-gpu")
     co.set_argument("--disable-blink-features=AutomationControlled")
-    co.set_argument("--window-size=390,844")
+    co.set_argument("--window-size=412,915")
 
     page = None
     try:
