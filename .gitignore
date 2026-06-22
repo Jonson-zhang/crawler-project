@@ -24,14 +24,6 @@ wheels/
 .claude/skills/web-reverse-env/
 .claude/skills/playwright-skill/
 
-# 好医生 — 敏感数据不追踪
-好医生/cookies.json
-好医生/state.json
-好医生/browser_data/
-好医生_v2/
-
-# 东航 — 敏感数据不追踪
-东航/cookies.json
 
 # 浏览器残留
 browser_cookies.txt
