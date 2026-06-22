@@ -178,7 +178,11 @@ say "MCP + Skills OK"
 # 第 3 步：生成本机 .mcp.json（机器相关的绝对路径）
 # ============================================================
 echo "[3/3] 生成 .mcp.json（本机绝对路径）..."
-"$SCRIPT_DIR/mcp-servers/.venv/Scripts/python.exe" "$SCRIPT_DIR/fix-paths.py"
+if [ "$USE_PROXY" = "1" ]; then
+  CAMOUFOX_PROXY="$PROXY" "$SCRIPT_DIR/mcp-servers/.venv/Scripts/python.exe" "$SCRIPT_DIR/fix-paths.py"
+else
+  "$SCRIPT_DIR/mcp-servers/.venv/Scripts/python.exe" "$SCRIPT_DIR/fix-paths.py"
+fi
 
 echo ""
 echo "=========================================="
