@@ -21,7 +21,7 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 SD = Path(__file__).parent
-SIGN_JS = SD.parent / "sign.js"
+SIGN_JS = SD / "sign.js"
 CLOAK_BRIDGE = SD / "cloak_bridge.py"
 CONFIG_FILE = SD / "config.json"
 
@@ -64,7 +64,7 @@ def city_name(code):
 def _node(cmd, data=""):
     p = subprocess.Popen(
         ["node", str(SIGN_JS), cmd],
-        cwd=str(SD.parent),
+        cwd=str(SD),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -94,7 +94,7 @@ def decrypt(b64):
 
 def _venv():
     """返回装有依赖的 Python 路径"""
-    venv = SD.parent.parent / ".venv" / "Scripts" / "python.exe"
+    venv = SD.parent.parent / ".venv" / "Scripts" / "python.exe"  # cloak_test → 东航 → 项目根
     return str(venv) if venv.exists() else sys.executable
 
 
@@ -106,7 +106,7 @@ def call_api(enc_req):
         capture_output=True,
         text=True,
         timeout=180,
-        cwd=str(SD.parent),
+        cwd=str(SD),
     )
     for line in r.stderr.splitlines():
         if line.strip():
