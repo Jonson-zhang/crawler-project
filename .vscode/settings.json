@@ -1,4 +1,5 @@
 {
+    "python.defaultInterpreterPath": "E:/crawler-project/.venv/Scripts/python.exe",
     "code-runner.clearPreviousOutput": true,
     "code-runner.runInTerminal": true,
     "code-runner.saveFileBeforeRun": true

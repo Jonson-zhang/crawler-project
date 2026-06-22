@@ -30,24 +30,41 @@ echo "Windows 用户: 用 Git Bash 运行此脚本 (开始菜单 → Git Bash)"
 echo ""
 
 # ---- 依赖检查 ----
-echo "[1/4] 检查基础依赖 ..."
-# Windows: 优先找 python, 找不到再试 python3
-if command -v python >/dev/null 2>&1; then
-  PYTHON=python
-elif command -v python3 >/dev/null 2>&1; then
-  PYTHON=python3
-else
-  die "请先安装 Python 3.10+"
-fi
+echo "[1/6] 检查基础依赖 ..."
+
+# 按优先级找可用的 Python（Windows Store 空壳 --version 会 exit 49，被过滤）
+find_python() {
+  for candidate in python3 python py; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      if "$candidate" --version >/dev/null 2>&1; then
+        command -v "$candidate"
+        return 0
+      fi
+    fi
+  done
+  # py launcher 指定版本
+  if command -v py >/dev/null 2>&1; then
+    if py -3.13 --version >/dev/null 2>&1; then
+      echo "py -3.13"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+PYTHON="$(find_python)" || die "请先安装 Python 3.10+"
 command -v node >/dev/null 2>&1 || die "请先安装 Node.js 20+"
 command -v npm  >/dev/null 2>&1 || die "请先安装 npm"
 
-$PYTHON --version 2>&1 || die "Python 无法运行"
+case "$PYTHON" in
+  py*) $PYTHON --version ;;
+  *)   "$PYTHON" --version ;;
+esac
 node --version
 say "Python + Node.js OK"
 
 # ---- MCP: camoufox-reverse-mcp (Python) ----
-echo "[2/4] camoufox-reverse-mcp ..."
+echo "[2/6] camoufox-reverse-mcp ..."
 mkdir -p "$MCP_DIR"
 
 if [ ! -d "$MCP_DIR/camoufox-reverse-mcp/src" ]; then
@@ -63,24 +80,27 @@ if [ ! -d "$MCP_DIR/camoufox-reverse-mcp/src" ]; then
 fi
 
 if [ ! -d "$MCP_DIR/.venv" ]; then
-  $PYTHON -m venv "$MCP_DIR/.venv"
+  case "$PYTHON" in
+    py*) $PYTHON -m venv "$MCP_DIR/.venv" ;;
+    *)   "$PYTHON" -m venv "$MCP_DIR/.venv" ;;
+  esac
 fi
 "$MCP_DIR/.venv/Scripts/pip" install -e "$MCP_DIR/camoufox-reverse-mcp" -q 2>&1 | tail -1
 say "camoufox-reverse-mcp installed"
 
 # ---- MCP: js-reverse-mcp (Node.js) ----
-echo "[3/4] js-reverse-mcp ..."
+echo "[3/6] js-reverse-mcp ..."
 cd "$MCP_DIR/js-reverse-mcp"
 npm install --silent 2>&1 | tail -1
 say "js-reverse-mcp installed"
 
 # ---- Git auto-backup ----
-echo "[4/5] auto-backup hook ..."
+echo "[4/6] auto-backup hook ..."
 git config core.hooksPath .githooks
 say "git post-commit auto-push enabled"
 
 # ---- Skills ----
-echo "[5/5] Skills ..."
+echo "[5/6] Skills ..."
 if [ ! -d "$SKILLS_DIR/hello_js_reverse_skill/.git" ]; then
   rm -rf "$SKILLS_DIR/hello_js_reverse_skill"
   if [ "$USE_PROXY" = "1" ]; then
@@ -92,9 +112,7 @@ if [ ! -d "$SKILLS_DIR/hello_js_reverse_skill/.git" ]; then
       "$SKILLS_DIR/hello_js_reverse_skill"
   fi
 fi
-# wasm-reverse skill 已在仓库中 (无 .git, 被 git 直接追踪), 无需额外安装
 
-# xbsReverseSkill (3 个子 skill: ast-deobfuscation / web-reverse-algorithm / web-reverse-env)
 if [ ! -f "$SKILLS_DIR/ast-deobfuscation/SKILL.md" ]; then
   echo "  git clone xbsReverseSkill ..."
   rm -rf "$SKILLS_DIR/xbsReverseSkill_temp"
@@ -112,6 +130,11 @@ if [ ! -f "$SKILLS_DIR/ast-deobfuscation/SKILL.md" ]; then
   rm -rf "$SKILLS_DIR/xbsReverseSkill_temp"
 fi
 say "Skills OK"
+
+# ---- 修正配置文件中的路径（机器相关 → 用当前实际路径覆盖） ----
+echo "[6/6] 修正配置文件路径 ..."
+"$MCP_DIR/.venv/Scripts/python.exe" "$SCRIPT_DIR/fix-paths.py"
+say ".mcp.json + .vscode/settings.json 路径已修正为当前机器"
 
 echo ""
 echo "=========================================="
