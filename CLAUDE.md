@@ -24,11 +24,11 @@
 ├── main.py                          # 项目入口
 │
 ├── .vscode/
-│   └── tasks.json                   # 打开文件夹时自动 git pull
+│   ├── settings.json                # GitDoc 配置：保存即自动 commit + push
+│   └── tasks.json                   # VSCode 任务（预留）
 │
 ├── .githooks/
-│   ├── post-commit                  # commit 后自动 git push
-│   └── pre-push                     # push 前自动提交 settings 变更
+│   └── post-commit                  # commit 后自动 git push（非 GitDoc 场景兜底）
 │
 ├── .claude/
 │   ├── settings.json                # 全局权限配置
@@ -114,25 +114,35 @@ USE_PROXY=1 bash .claude/install-mcp.sh
 
 ### 4.1 原理
 
+使用 **GitDoc** 插件（VSCode 扩展），保存文件即自动提交推送：
+
 | 触发时机 | 自动动作 | 实现 |
 |---------|---------|------|
-| 打开 VSCode | `git pull --rebase` | `.vscode/tasks.json` |
-| `git commit` 后 | 自动 `git push` | `.githooks/post-commit` |
-| `git push` 前 | 自动提交 settings 变更 | `.githooks/pre-push` |
+| 保存文件 | 5 秒后自动 `git commit` | GitDoc `autoCommitDelay: 5000` |
+| commit 后 | 自动 `git push` | GitDoc `autopush: "onCommit"` |
+| push 后 | 自动 `git pull` | GitDoc `autopull: "onPush"` |
+| 打开项目 | 自动 `git pull` | GitDoc `pullOnOpen: true` |
+| 关闭 VSCode | 提交未保存的变更 | GitDoc `commitOnClose: true` |
+| 手动 `git commit` | 自动 `git push` | `.githooks/post-commit`（兜底） |
 
-### 4.2 完整闭环
+### 4.2 监控范围
+
+监控整个工作区（`gitdoc.filePattern` 未设置，默认全部文件）。
+
+`.gitignore` 排除的内容不会提交（`node_modules/`、`.venv/` 等）。
+
+### 4.3 完整闭环
 
 ```
 电脑 A                        电脑 B
 ──────                        ──────
-写代码                          打开 VSCode
-git commit -m "xxx"            → tasks.json 自动 git pull
-→ post-commit 自动 push →      → settings / memory 同步到最新
-→ pre-push 顺带提交 settings
+保存文件                          打开 VSCode
+→ GitDoc 5s 后 commit         → GitDoc 自动 pull
+→ GitDoc 自动 push             → 所有变更同步到最新
 → GitHub 更新 ✅
 ```
 
-### 4.3 备份内容
+### 4.4 备份内容
 
 git push 即备份，以下内容随仓库走：
 
@@ -141,7 +151,7 @@ git push 即备份，以下内容随仓库走：
 - **经验库**：`.claude/memory/` 下全部 `.md` 文件
 - **wasm-reverse skill**：SKILL.md + gen_stub_template.js
 - **Git hooks**：`.githooks/` 下全部脚本
-- **VSCode 配置**：`.vscode/tasks.json`
+- **VSCode 配置**：`.vscode/settings.json`、`.vscode/tasks.json`
 
 以下**不需要备份**（`install-mcp.sh` 一键恢复）：
 
@@ -343,4 +353,5 @@ git ls-files .claude/settings.local.json
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| 1.1 | 2026-06-22 | 自动备份迁移至 GitDoc 插件：保存即 commit + push，替代 auto-watch.py + tasks.json 轮询 |
 | 1.0 | 2026-06-19 | 初始版本：MCP × 2、Skill × 2、Memory 两级索引、自动备份 |
