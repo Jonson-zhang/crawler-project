@@ -152,7 +152,7 @@ def show(result, date):
 if __name__ == "__main__":
     dep = "CTU"
     arr = "CAN"
-    date = "20250628"
+    date = "20260625"  # 默认日期控制在 3 天内，避免过期
     if len(sys.argv) > 1:
         dep = resolve(sys.argv[1])
     if len(sys.argv) > 2:
