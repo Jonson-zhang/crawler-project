@@ -18,6 +18,15 @@ metadata:
 - 解密/签名函数单独放在一个文件中（如 `sign.py`），主爬虫文件（如 `crawl.py`）import 使用
 - 无需创建额外的子目录结构
 
+**版本迭代规则（目录级分支）**
+- 代码一旦跑通（验证成功），**禁止原地修改**
+- 要换方案或迭代，创建新目录如 `cloak_v1.0`、`drission_v1.0`，或递增 `v1.1`、`v1.2`
+- 新目录必须完全自包含，复制所有依赖文件进来，不引用父级文件
+- 相当于用目录模拟 git branch，每个版本独立可运行，互不干扰
+
+**Why:** 防止改坏已验证通过的代码。每个版本独立运行，可以随时回退对比。项目结构如 `crawler.py` + `api_bridge.py`（DrissionPage v1）和 `cloak_v1.0/test_cloak.py` + `cloak_bridge.py` 并存。
+**How to apply:** 用户请求"换用 CloakBrowser"时，不修改 `crawler.py`/`api_bridge.py`，而是新建 `cloak_v1.0/` 目录，把所需文件全复制进去再改。
+
 **功能要求**
 - Python 代码只需能够从网站获取数据、跑通即可，不追求工程化
 - 提供参数控制返回多少页的数据：用顶部 `CONFIG` dict 集中配置（`start_page`、`pages`、`limit`），用户直观可改
