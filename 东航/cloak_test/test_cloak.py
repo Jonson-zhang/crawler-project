@@ -97,7 +97,7 @@ def decrypt(b64):
 
 
 def show(result, date):
-    data = result.get("data", result)
+    data = result.get("data") or result
     flights = (
         data.get("flights") or data.get("flightList") or data.get("flightlist") or []
     )
@@ -175,5 +175,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # 3. 解密
+    print(f"  [debug] enc_response type={type(enc_response).__name__} len={len(enc_response)}", file=sys.stderr)
     result = decrypt(enc_response)
+    print(f"  [debug] result type={type(result).__name__}", file=sys.stderr)
+    if result is None:
+        print("  [debug] decrypt returned None!", file=sys.stderr)
+        sys.exit(1)
     show(result, date)

@@ -3,7 +3,7 @@
 用法: python cloak_bridge.py <enc_req>
 输出: 末尾一行 JSON {"success": true/false, "enc_response": "..."}
 
-与 api_bridge.py (DrissionPage/Chromium) 并行，用于测试 CloakBrowser 是否能突破 WAF。
+所有文件均在本目录内，不影响父目录下的 DrissionPage 代码。
 """
 
 import json
@@ -12,17 +12,15 @@ import io
 import time
 from pathlib import Path
 
-SD = Path(__file__).parent.parent  # 东航/
-COOKIES_FILE = Path(__file__).parent / "cloak_cookies.json"
-COOKIE_MAX_AGE = 25 * 60  # Cookie 有效期：25 分钟
+HERE = Path(__file__).parent
+COOKIES_FILE = HERE / "cloak_cookies.json"
+WAF_DUMP = HERE / "waf_response.html"
 
 
 def _cookies_fresh():
-    """检查 cookies 文件是否在有效期内"""
     if not COOKIES_FILE.exists():
         return False
-    mtime = COOKIES_FILE.stat().st_mtime
-    return (time.time() - mtime) < COOKIE_MAX_AGE
+    return (time.time() - COOKIES_FILE.stat().st_mtime) < (25 * 60)
 
 
 def run(enc_req):
@@ -31,23 +29,19 @@ def run(enc_req):
     browser = launch(
         headless=True,
         humanize=True,
-        proxy="http://127.0.0.1:10808",
     )
 
     try:
         context = browser.new_context(
             viewport={"width": 412, "height": 915},
-            user_agent=(
-                "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Mobile Safari/537.36"
-            ),
+            # 不设自定义 UA，让 CloakBrowser 原生 Chromium 指纹保持一致
         )
-
         page = context.new_page()
 
         try:
-            # ── Cookie 管理 ──
+            # ========================================================
+            # Cookie 保鲜：必须拿到 ssxmod_itna（Tongdun + Aliyun WAF）
+            # ========================================================
             if _cookies_fresh():
                 print("[Cookie] loading cached...", file=sys.stderr)
                 page.goto("https://m.ceair.com/mapp/reserve/flightList",
@@ -80,17 +74,33 @@ def run(enc_req):
                     json.dump(cookies, f, ensure_ascii=False)
                 print(f"  saved {len(cookies)} cookies", file=sys.stderr)
 
-            # ── API 调用 ──
+            # ========================================================
+            # 环境探测（调试用）
+            # ========================================================
             page.goto("https://m.ceair.com/mapp/reserve/flightList",
                       wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(2000)
 
-            current_url = page.evaluate("() => location.href")
+            env_info = page.evaluate("""() => {
+                return {
+                    ua: navigator.userAgent,
+                    webdriver: navigator.webdriver,
+                    plugins: navigator.plugins.length,
+                    languages: navigator.languages,
+                    platform: navigator.platform,
+                    cookieEnabled: navigator.cookieEnabled,
+                    chrome: typeof window.chrome,
+                };
+            }""")
+            print(f"  UA: {env_info['ua'][:80]}...", file=sys.stderr)
+            print(f"  webdriver={env_info['webdriver']} plugins={env_info['plugins']} "
+                  f"chrome={env_info['chrome']}", file=sys.stderr)
             cookie_names = [c["name"] for c in context.cookies()]
-            print(f"  page: {current_url}", file=sys.stderr)
             print(f"  cookies: {cookie_names}", file=sys.stderr)
 
-            # 注入加密请求
+            # ========================================================
+            # API 调用
+            # ========================================================
             page.evaluate("(val) => { window._encReq = val; }", enc_req)
 
             for attempt in range(3):
@@ -112,7 +122,13 @@ def run(enc_req):
                             });
                             const ct = r.headers.get('content-type') || '';
                             const text = await r.text();
-                            return JSON.stringify({ status: r.status, contentType: ct, text: text });
+                            return JSON.stringify({
+                                status: r.status,
+                                statusText: r.statusText,
+                                contentType: ct,
+                                text: text,
+                                url: r.url
+                            });
                         }
                         """
                     )
@@ -125,22 +141,23 @@ def run(enc_req):
                     page.evaluate("(val) => { window._encReq = val; }", enc_req)
                     continue
 
-                print(f"  HTTP {resp['status']}  ct={resp.get('contentType','?')[:40]}  "
+                print(f"  HTTP {resp['status']} {resp.get('statusText','')}  "
+                      f"ct={resp.get('contentType','?')[:50]}  "
                       f"body_len={len(resp.get('text',''))}", file=sys.stderr)
-
-                if resp["status"] != 200:
-                    preview = resp.get("text", "")[:300]
-                    print(f"  response preview: {preview}", file=sys.stderr)
-                    return {"success": False, "error": f"HTTP {resp['status']}"}
 
                 text = resp.get("text", "")
 
-                # WAF 检测
+                if resp["status"] != 200:
+                    print(f"  response preview: {text[:300]}", file=sys.stderr)
+                    # 保存完整响应到文件方便分析
+                    WAF_DUMP.write_text(text, encoding="utf-8")
+                    print(f"  full response saved to {WAF_DUMP}", file=sys.stderr)
+                    return {"success": False, "error": f"HTTP {resp['status']}"}
+
                 if "aliyun_waf" in text:
                     print("[WAF] aliyun_waf detected!", file=sys.stderr)
-                    # 打印 WAF 页面片段帮助分析
-                    waf_idx = text.find("aliyun_waf")
-                    print(f"  WAF context: ...{text[max(0,waf_idx-100):waf_idx+200]}...", file=sys.stderr)
+                    WAF_DUMP.write_text(text, encoding="utf-8")
+                    print(f"  WAF page saved to {WAF_DUMP}", file=sys.stderr)
                     return {"success": False, "error": "WAF blocked"}
 
                 data = json.loads(text)
@@ -152,7 +169,6 @@ def run(enc_req):
 
         finally:
             context.close()
-
     finally:
         browser.close()
 
@@ -162,7 +178,6 @@ if __name__ == "__main__":
 
     if len(sys.argv) < 2:
         print("Usage: python cloak_bridge.py <enc_req>", file=sys.stderr)
-        print("  Encrypt via sign.js first, then pass the result here.", file=sys.stderr)
         sys.exit(1)
 
     result = run(sys.argv[1])
