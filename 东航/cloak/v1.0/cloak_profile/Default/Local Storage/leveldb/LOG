@@ -1,2 +1,5 @@
-2026/06/23-08:27:55.990 2c50 Creating DB e:\crawler-project\东航\cloak\v1.0\cloak_profile\Default\Local Storage\leveldb since it was missing.
-2026/06/23-08:27:56.013 2c50 Reusing MANIFEST e:\crawler-project\东航\cloak\v1.0\cloak_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/23-08:29:23.277 231c Reusing MANIFEST e:\crawler-project\东航\cloak\v1.0\cloak_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/23-08:29:23.283 231c Recovering log #3
+2026/06/23-08:29:23.283 231c Level-0 table #3: started
+2026/06/23-08:29:23.290 231c Level-0 table #3: 39127 bytes OK
+2026/06/23-08:29:23.295 231c Delete type=0 #3
