@@ -1,5 +1,5 @@
 """
-东航 API 桥接 — CloakBrowser（Chromium 持久化 profile + Cookie）
+东航 API 桥接 — CloakBrowser Pro v148（Chromium 持久化 profile + Cookie）
 用法: python cloak_bridge.py <enc_req>
 输出: 末尾一行 JSON {"success": true/false, "enc_response": "..."}
 """
@@ -49,90 +49,77 @@ def _ensure_page(context):
 
 
 def run(enc_req):
-    from cloakbrowser import launch
+    from cloakbrowser import launch_persistent_context
 
-    browser = launch(
+    context = launch_persistent_context(
+        user_data_dir=PROFILE_DIR,
         headless=True,
         humanize=True,
+        viewport={"width": 412, "height": 915},
     )
 
     try:
-        # ── 持久化 profile，跨运行复用 Cookie ──
-        try:
-            context = browser.new_context(
-                viewport={"width": 412, "height": 915},
-                storage_state=str(HERE / "cloak_state.json") if (HERE / "cloak_state.json").exists() else None,
-            )
-        except Exception:
-            context = browser.new_context(
-                viewport={"width": 412, "height": 915},
-            )
-
         page = context.pages[0] if context.pages else context.new_page()
 
-        try:
-            # ── Cookie：已有则跳过，过期则刷新 ──
-            if _has_valid_cookie(context):
-                print("[Cookie] cached (fresh)", file=sys.stderr)
-                _ensure_page(context)
-            else:
-                print("[Cookie] refresh...", file=sys.stderr)
-                if not _refresh_cookies(context):
-                    return {"success": False, "error": "ssxmod_itna missing"}
-                # 保存状态以供后续复用
-                context.storage_state(path=str(HERE / "cloak_state.json"))
-                print("  ssxmod ready", file=sys.stderr)
-
-            # ── API ──
-            page = context.pages[0] if context.pages else context.new_page()
+        # ── Cookie：已有则跳过，过期则刷新 ──
+        if _has_valid_cookie(context):
+            print("[Cookie] cached (fresh)", file=sys.stderr)
             _ensure_page(context)
-            page.evaluate("(val) => { window._encReq = val; }", enc_req)
+        else:
+            print("[Cookie] refresh...", file=sys.stderr)
+            if not _refresh_cookies(context):
+                return {"success": False, "error": "ssxmod_itna missing"}
+            print("  ssxmod ready", file=sys.stderr)
 
-            for _ in range(3):
-                try:
-                    raw = page.evaluate(
-                        """
-                        async () => {
-                            const r = await fetch('/m-base/sale/shoppingv2', {
-                                method: 'POST', credentials: 'include',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json, text/plain, */*',
-                                    'M-CEAIR-ENCRYPTED': 'true', 'X-CEAIR-OS': 'M',
-                                },
-                                body: JSON.stringify({ req: window._encReq })
-                            });
-                            const ct = r.headers.get('content-type') || '';
-                            const text = await r.text();
-                            return JSON.stringify({ status: r.status, contentType: ct, text: text });
-                        }
-                        """
-                    )
-                    resp = json.loads(raw)
-                except Exception as e:
-                    print(f"  fetch error: {e}", file=sys.stderr)
-                    _ensure_page(context)
-                    page.evaluate("(val) => { window._encReq = val; }", enc_req)
-                    continue
+        # ── API ──
+        page = context.pages[0] if context.pages else context.new_page()
+        _ensure_page(context)
+        page.evaluate("(val) => { window._encReq = val; }", enc_req)
 
-                if resp["status"] != 200:
-                    return {"success": False, "error": f"HTTP {resp['status']}"}
+        for _ in range(3):
+            try:
+                raw = page.evaluate(
+                    """
+                    async () => {
+                        const r = await fetch('/m-base/sale/shoppingv2', {
+                            method: 'POST', credentials: 'include',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json, text/plain, */*',
+                                'M-CEAIR-ENCRYPTED': 'true', 'X-CEAIR-OS': 'M',
+                            },
+                            body: JSON.stringify({ req: window._encReq })
+                        });
+                        const ct = r.headers.get('content-type') || '';
+                        const text = await r.text();
+                        return JSON.stringify({ status: r.status, contentType: ct, text: text });
+                    }
+                    """
+                )
+                resp = json.loads(raw)
+            except Exception as e:
+                print(f"  fetch error: {e}", file=sys.stderr)
+                _ensure_page(context)
+                page.evaluate("(val) => { window._encReq = val; }", enc_req)
+                continue
 
-                text = resp.get("text", "")
-                if "aliyun_waf" in text:
-                    return {"success": False, "error": "WAF blocked"}
+            if resp["status"] != 200:
+                return {"success": False, "error": f"HTTP {resp['status']}"}
 
-                data = json.loads(text)
-                if data.get("res"):
-                    return {"success": True, "enc_response": data["res"]}
-                return {"success": True, "enc_response": json.dumps(data, ensure_ascii=False)}
+            text = resp.get("text", "")
+            if "aliyun_waf" in text:
+                return {"success": False, "error": "WAF blocked"}
 
-            return {"success": False, "error": "API: max retries"}
+            data = json.loads(text)
+            if data.get("res"):
+                return {"success": True, "enc_response": data["res"]}
+            return {"success": True, "enc_response": json.dumps(data, ensure_ascii=False)}
 
-        finally:
-            context.close()
+        return {"success": False, "error": "API: max retries"}
+
     finally:
-        browser.close()
+        # launch_persistent_context: context.close() 同时关闭浏览器
+        context.close()
 
 
 if __name__ == "__main__":
