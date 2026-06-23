@@ -54,7 +54,6 @@ def run(enc_req):
     context = launch_persistent_context(
         user_data_dir=PROFILE_DIR,
         headless=True,
-        humanize=True,
         viewport={"width": 412, "height": 915},
     )
 
