@@ -7,15 +7,7 @@
 import json
 import sys
 import io
-import subprocess
 from pathlib import Path
-
-# 如果用系统 Python 而非 uv 环境，自动重调到 venv
-PROJECT = Path(__file__).resolve().parent.parent.parent.parent
-UV_PYTHON = PROJECT / ".venv" / "Scripts" / "python.exe"
-if UV_PYTHON.exists() and sys.executable != str(UV_PYTHON):
-    result = subprocess.run([str(UV_PYTHON), __file__, *sys.argv[1:]], cwd=str(PROJECT))
-    sys.exit(result.returncode)
 
 HERE = Path(__file__).parent
 PROFILE_DIR = str(HERE / "cloak_profile")

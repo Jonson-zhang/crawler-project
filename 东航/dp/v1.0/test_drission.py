@@ -14,13 +14,6 @@ import sys
 import time
 from pathlib import Path
 
-# 如果用系统 Python 而非 uv 环境，自动重调到 venv
-PROJECT = Path(__file__).resolve().parent.parent.parent.parent
-UV_PYTHON = PROJECT / ".venv" / "Scripts" / "python.exe"
-if UV_PYTHON.exists() and sys.executable != str(UV_PYTHON):
-    result = subprocess.run([str(UV_PYTHON), __file__, *sys.argv[1:]], cwd=str(PROJECT))
-    sys.exit(result.returncode)
-
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
