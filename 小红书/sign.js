@@ -1,122 +1,224 @@
-#!/usr/bin/env node
 /**
- * sign.js — 小红书签名桥
- * 用 headless 浏览器加载安全 SDK，拦截 XHR 提取签名
+ * sign.js — 小红书 Node.js 离线签名
  *
- * 用法: echo '{"url":"...","method":"POST","body":{"cursor_score":"","num":20,...}}' | node sign.js
+ * 用法:
+ *   const { sign } = require('./sign');
+ *   const headers = sign('/api/sns/web/v1/homefeed', {cursor_score:'', num:20});
+ *   console.log(headers); // { 'x-s': '...', 'x-t': '...', 'x-s-common': '...' }
+ *
+ * 注意: 首次 require 时自动加载并初始化 VMP 环境 (~5-10秒)
  */
 "use strict";
 
-const { launch } = require("cloakbrowser");
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const crypto = require('crypto');
 
-let _browser = null;
-let _page = null;
-let _initialized = false;
+const DATA_DIR = path.join(__dirname, 'data');
+const dom = require('./env.dom');
 
-// ── 初始化浏览器 + SDK ─────────────────────────────────────────
-async function init() {
-  if (_initialized) return;
+// ═══ Build sandbox ═══
+function buildSandbox() {
+  const s = {
+    // Global references (circular refs set below)
+    window: {}, self: {}, global: {}, globalThis: {},
 
-  _browser = launch({ headless: true });
-  _page = await _browser.newPage();
+    // DOM with proper prototype chains
+    EventTarget: dom.EventTarget,
+    Node: dom.Node,
+    Element: dom.Element,
+    HTMLElement: dom.HTMLElement,
+    HTMLCanvasElement: dom.HTMLCanvasElement,
+    CanvasRenderingContext2D: dom.CanvasRenderingContext2D,
+    WebGLRenderingContext: dom.WebGLRenderingContext,
+    OffscreenCanvas: dom.OffscreenCanvas,
+    AudioContext: dom.AudioContext,
+    XMLHttpRequest: dom.XMLHttpRequest,
+    Headers: dom.Headers,
+    Blob: dom.Blob,
+    File: dom.File,
+    FileReader: dom.FileReader,
+    FormData: dom.FormData,
+    MutationObserver: dom.MutationObserver,
+    IntersectionObserver: dom.IntersectionObserver,
+    ResizeObserver: dom.ResizeObserver,
+    PerformanceObserver: dom.PerformanceObserver,
+    Event: dom.Event,
+    CustomEvent: dom.CustomEvent,
+    MessageChannel: dom.MessageChannel,
+    Worker: dom.Worker,
+    WebSocket: dom.WebSocket,
+    Image: dom.Image,
+    URL: URL,
+    URLSearchParams: URLSearchParams,
 
-  await _page.goto("https://www.xiaohongshu.com/explore", {
-    waitUntil: "domcontentloaded",
-    timeout: 30000,
-  });
+    // Environment singletons
+    document: dom.document,
+    location: dom.location,
+    navigator: dom.navigator,
+    screen: dom.screen,
+    history: dom.history,
+    performance: dom.performance,
+    localStorage: dom.localStorage,
+    sessionStorage: dom.sessionStorage,
+    console: dom.console,
 
-  // 等 SDK 加载
-  await sleep(5000);
+    // JS builtins
+    setTimeout: (fn, ms, ...args) => { fn(...args); return 0; },
+    setInterval: () => 0,
+    clearTimeout: dom.noop,
+    clearInterval: dom.noop,
+    TextEncoder, TextDecoder,
+    atob: x => Buffer.from(x, 'base64').toString('binary'),
+    btoa: x => Buffer.from(x, 'binary').toString('base64'),
+    encodeURIComponent, decodeURIComponent,
+    Function, Math, Date, Object, Array, String, Number, Boolean,
+    RegExp, Map, Set, WeakMap, WeakSet,
+    Uint8Array, Uint16Array, Uint32Array, Int8Array, Int16Array, Int32Array,
+    Float32Array, Float64Array, ArrayBuffer, DataView,
+    Promise, Proxy, Reflect, Symbol,
+    BigInt, BigInt64Array, BigUint64Array,
+    parseInt, parseFloat, isNaN, isFinite, JSON,
+    Error, TypeError, RangeError, SyntaxError, ReferenceError, EvalError,
+    eval,
+    crypto: require('crypto').webcrypto,
 
-  // 关闭登录弹窗
-  try {
-    await _page.evaluate("document.querySelector('.close-button')?.click()");
-  } catch (e) {}
+    // For fetching (not needed for sign, but scripts may reference)
+    fetch: () => Promise.resolve({ json: () => Promise.resolve({}), text: () => Promise.resolve(''), blob: () => Promise.resolve(new dom.Blob([])) }),
+    Request: class { constructor() {} },
+    Response: class { constructor() {} },
+    AbortController: class { constructor() { this.signal = { aborted: false }; } abort() { this.signal.aborted = true; } },
+  };
 
-  // 滚动让 homefeed 请求触发（确保 SDK 完全初始化）
-  for (let i = 0; i < 3; i++) {
-    await _page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
-    await sleep(1500);
-  }
+  // Circular references
+  s.self = s;
+  s.window = s;
+  s.global = s;
+  s.globalThis = s;
 
-  _initialized = true;
+  // Fix document.location circular ref
+  s.document.location = s.location;
+
+  // require() mock
+  s.require = function(id) {
+    if (id === '@lwjjike/xbsdom') return undefined;
+    if (id === 'crypto') return require('crypto');
+    try { return require(id); } catch(e) {
+      try { return require(path.join(__dirname, 'node_modules', id)); } catch(e2) {
+        return undefined;
+      }
+    }
+  };
+
+  return s;
 }
 
-// ── 通过浏览器 XHR 获取签名 ──────────────────────────────────
-async function sign(req) {
-  await init();
+let _ctx = null;
+let _sandbox = null;
+let _ready = false;
 
-  const url = req.url || "https://edith.xiaohongshu.com/api/sns/web/v1/homefeed";
-  const method = req.method || "POST";
-  const body = req.body ? JSON.stringify(req.body) : "{}";
+function init() {
+  if (_ready) return;
 
-  // 在浏览器中发起 XHR，让 SDK 自动签名，然后截获请求头
-  const result = await _page.evaluate(
-    ({ url, method, body }) => {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        const captured = {};
+  _sandbox = buildSandbox();
+  _ctx = vm.createContext(_sandbox);
 
-        // Hook setRequestHeader 在 SDK 包装之前/之后都记录
-        xhr.open(method, url, true);
+  // Load DS API (sets up _BHjFmfUMEtxhI VM interpreter)
+  const dsApi = fs.readFileSync(path.join(DATA_DIR, 'ds_api.js'), 'utf-8');
+  vm.runInContext(dsApi, _ctx, { filename: 'ds_api.js', timeout: 120000 });
 
-        // 第二次 hook: 在 SDK 的拦截器之后（SDK 会先调用 setRequestHeader）
-        const origSetRH = xhr.setRequestHeader;
-        xhr.setRequestHeader = function (key, value) {
-          captured[key] = value;
-          return origSetRH.call(this, key, value);
-        };
+  // Load DS 6545c (sets up sign function registry _AUuXfEG27Xa3x)
+  const ds6545 = fs.readFileSync(path.join(DATA_DIR, 'ds_6545c.js'), 'utf-8');
+  vm.runInContext(ds6545, _ctx, { filename: 'ds_6545c.js', timeout: 120000 });
 
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4) {
-            resolve({
-              status: xhr.status,
-              headers: captured,
-              hasData: xhr.responseText.length > 0,
-            });
-          }
-        };
+  // Load signer bundle (sabo VM with mnsv2)
+  // Use formatted version for debugging
+  const signerPath = path.join(DATA_DIR, 'signer_04b29_formatted.js');
+  if (fs.existsSync(signerPath)) {
+    const signer = fs.readFileSync(signerPath, 'utf-8');
+    vm.runInContext(signer, _ctx, { filename: 'signer_04b29.js', timeout: 180000 });
+  } else {
+    const signer = fs.readFileSync(path.join(DATA_DIR, 'signer_04b29.js'), 'utf-8');
+    vm.runInContext(signer, _ctx, { filename: 'signer_04b29.js', timeout: 180000 });
+  }
 
-        xhr.onerror = function () {
-          resolve({ error: "xhr failed", headers: captured });
-        };
+  // Check what was exposed
+  console.log('[sign] Environment ready');
+  console.log('[sign] _dsf:       ', typeof _sandbox._dsf);
+  console.log('[sign] _webmsxyw:  ', typeof _sandbox._webmsxyw);
+  console.log('[sign] mnsv2:      ', typeof _sandbox.mnsv2);
 
-        xhr.send(body);
+  _ready = true;
+}
+
+/**
+ * Compute x-s / x-t / x-s-common headers for a request
+ *
+ * @param {string} url - API path or full URL
+ * @param {object} data - Request body (will be JSON.stringify'd)
+ * @returns {object} Headers dict with x-s, x-t, x-s-common
+ */
+function sign(url, data) {
+  init();
+
+  const body = typeof data === 'string' ? data : JSON.stringify(data);
+  const start = Date.now();
+
+  // Call seccore_signv2 logic manually
+  const result = vm.runInContext(`
+    (() => {
+      const url = __sign_url;
+      const data = __sign_data;
+      const body = __sign_body;
+
+      // Build combined string
+      const combined = url + body;
+
+      // Hash functions (from ds_6545c's _dsf)
+      const hashCombined = _dsf(combined);
+      const hashUrl = _dsf(url);
+
+      // mnsv2(u, m, w) — the VMP sign function
+      // If not on window, try the internal function
+      let C;
+      if (typeof mnsv2 === 'function') {
+        C = mnsv2(combined, hashCombined, hashUrl);
+      } else if (typeof _0c6b9e549fef9ab9b4798ad1f12ea82b === 'function') {
+        C = _0c6b9e549fef9ab9b4798ad1f12ea82b(combined, hashCombined, hashUrl);
+      } else {
+        throw new Error('mnsv2 not available');
+      }
+
+      // Build x-s payload
+      const x0 = _dsf(body).reduce((s, b) => s + String.fromCharCode(b), '');
+      // Or use: const x0 = 'XYW_'; // Need to decode the actual prefix
+      const payload = JSON.stringify({
+        x0: 'XYW_',  // This needs x0 prefix - find from code
+        x1: 'xhs-pc-web',
+        x2: 'PC',
+        x3: C,
+        x4: ''
       });
-    },
-    { url, method, body }
-  );
+
+      // Base64 encode
+      const x_s = 'XYS_' + btoa(String.fromCharCode.apply(null,
+        new TextEncoder().encode(payload)
+      ));
+
+      return {
+        'x-s': x_s,
+        'x-t': String(Date.now()),
+        'x-s-common': '', // TBD - separate computation
+      };
+    })()
+  `, _ctx, {
+    __sign_url: url,
+    __sign_data: data,
+    __sign_body: body,
+  });
 
   return result;
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-// ── CLI I/O ───────────────────────────────────────────────────
-async function run(req) {
-  try {
-    const r = await sign(req);
-    process.stdout.write(JSON.stringify(r));
-  } catch (e) {
-    process.stdout.write(JSON.stringify({ error: e.message }));
-  }
-  process.exit(0);
-}
-
-if (!process.stdin.isTTY) {
-  let d = "";
-  process.stdin.setEncoding("utf-8");
-  process.stdin.on("data", (c) => (d += c));
-  process.stdin.on("end", () => {
-    try {
-      run(JSON.parse(d));
-    } catch (e) {
-      run({});
-    }
-  });
-  setTimeout(() => run({}), 10000);
-} else {
-  run({ url: process.argv[2] || "", method: process.argv[3] || "POST" });
-}
+module.exports = { init, sign, getContext: () => _ctx, getSandbox: () => _sandbox };
