@@ -2069,6 +2069,16 @@ function F() {
                 var F1 = N[bB(0x251)](C['lHsxx'](N[bB(0x230)], F0), F0)[bB(0x2c9)](j),
                     F2 = N['pop'](),
                     F3 = C['ckdoI'](j, F2);
+                if (typeof F3 === 'undefined') {
+                    console.log('[SIGNER-DEBUG] F3 (module factory) is undefined!');
+                    console.log('[SIGNER-DEBUG] F2:', JSON.stringify(F2));
+                    console.log('[SIGNER-DEBUG] F2 type:', typeof F2);
+                    if (typeof F2 === 'object' && F2) console.log('[SIGNER-DEBUG] F2 keys:', Object.keys(F2).slice(0, 15));
+                    console.log('[SIGNER-DEBUG] j type:', typeof j);
+                    if (typeof j === 'object' && j) console.log('[SIGNER-DEBUG] j keys:', Object.keys(j).slice(0, 30));
+                    console.log('[SIGNER-DEBUG] N length:', N.length);
+                    console.log('[SIGNER-DEBUG] Stack:', new Error().stack);
+                }
                 V(F3[bB(WN.h)](typeof F2['_sabo_c724'] == C[bB(0x203)] ? R : F2[bB(WN.b)], F1), E, E, 0x0);
                 return ++z;
             }, function(q, I, s, w, z, O, J) {
