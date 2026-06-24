@@ -1,13 +1,7 @@
 /**
  * sign.js — 小红书 X-s 离线签名
  *
- * 用法:
- *   node sign.js <url> <body_json>
- *
- * Python:
- *   const {init, sign} = require('./sign');
- *   init();
- *   const h = sign(url, body);
+ * 用法: node sign.js <url> <body_json>
  */
 "use strict";
 const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto');
@@ -27,45 +21,6 @@ function customBase64Encode(bytes) {
     r += i+2<len ? XHS_B64[c&63] : XHS_B64[0];
   }
   return r;
-}
-
-// ═══ 构建沙箱 ═══
-function buildSandbox() {
-  const s = {
-    window:{}, self:{}, global:{}, globalThis:{},
-    EventTarget:dom.EventTarget, Node:dom.Node, Element:dom.Element, HTMLElement:dom.HTMLElement,
-    HTMLCanvasElement:dom.HTMLCanvasElement, CanvasRenderingContext2D:dom.CanvasRenderingContext2D,
-    WebGLRenderingContext:dom.WebGLRenderingContext, OffscreenCanvas:dom.OffscreenCanvas,
-    AudioContext:dom.AudioContext, XMLHttpRequest:dom.XMLHttpRequest, Headers:dom.Headers,
-    Blob:dom.Blob, File:dom.File, FileReader:dom.FileReader, FormData:dom.FormData,
-    MutationObserver:dom.MutationObserver, IntersectionObserver:dom.IntersectionObserver,
-    ResizeObserver:dom.ResizeObserver, PerformanceObserver:dom.PerformanceObserver,
-    Event:dom.Event, CustomEvent:dom.CustomEvent, MessageChannel:dom.MessageChannel,
-    Worker:dom.Worker, WebSocket:dom.WebSocket, Image:dom.Image,
-    Performance:dom.Performance, Document:dom.Document, Navigator:dom.Navigator,
-    Screen:dom.Screen, Location:dom.Location, History:dom.History,
-    document:dom.document, location:dom.location, navigator:dom.navigator,
-    screen:dom.screen, performance:dom.performance,
-    localStorage:dom.localStorage, sessionStorage:dom.sessionStorage,
-    console:{log:()=>{},error:()=>{},warn:()=>{},info:()=>{},debug:()=>{}},
-    setTimeout:(fn)=>{try{fn()}catch(e){}return 0;},
-    setInterval:()=>0,clearTimeout:()=>{},clearInterval:()=>{},
-    TextEncoder,TextDecoder,URL,URLSearchParams,
-    atob:x=>Buffer.from(x,'base64').toString('binary'),btoa:x=>Buffer.from(x,'binary').toString('base64'),
-    encodeURIComponent,decodeURIComponent,
-    crypto:require('crypto').webcrypto,
-    fetch:()=>Promise.resolve({json:()=>Promise.resolve({}),text:()=>Promise.resolve('')}),
-    Function,Math,Date,Object,Array,String,Number,Boolean,RegExp,Map,Set,WeakMap,WeakSet,
-    Uint8Array,Uint16Array,Uint32Array,Int8Array,Int16Array,Int32Array,
-    Float32Array,Float64Array,ArrayBuffer,DataView,Promise,Proxy,Reflect,Symbol,
-    BigInt,BigInt64Array,BigUint64Array,
-    parseInt,parseFloat,isNaN,isFinite,JSON,eval,
-    Error,TypeError,RangeError,SyntaxError,ReferenceError,
-    require:function(id){if(id==='crypto')return require('crypto')},
-    process:{env:{},platform:'win32',arch:'x64'},
-  };
-  s.self=s;s.window=s;s.global=s;s.globalThis=s;s.document.location=s.location;
-  return s;
 }
 
 // ═══ Webpack Runtime ═══
@@ -93,53 +48,65 @@ self.s=r;
 })();`;
 
 // ═══ 状态 ═══
-let _sandbox, _ctx, _mnsv2fn = null, _ready = false;
+let _mnsv2fn = null, _ready = false;
 
 function init() {
   if (_ready) return;
-  _sandbox = buildSandbox();
-  _ctx = vm.createContext(_sandbox);
   const t0 = Date.now();
 
-  // 1. ═══ 注入浏览器环境到 Node global（VMP eval 用 typeof 检查）═══
-  //    注意: navigator/performance 有 getter 无 setter，必须用 defineProperty 覆盖
-  Object.defineProperty(global, 'navigator', { value: _sandbox.navigator, configurable: true, writable: true });
-  Object.defineProperty(global, 'performance', { value: _sandbox.performance, configurable: true, writable: true });
-  global.document = _sandbox.document;
-  global.screen = _sandbox.screen;
-  global.top = _sandbox;
+  // 构建最小沙箱（只需 webpack 模块系统工作）
+  const s = {
+    window:{}, self:{}, global:{}, globalThis:{},
+    document:dom.document, location:dom.location, navigator:dom.navigator,
+    screen:dom.screen, performance:dom.performance,
+    localStorage:dom.localStorage, sessionStorage:dom.sessionStorage,
+    console:{log:()=>{},error:()=>{},warn:()=>{},info:()=>{}},
+    setTimeout:(fn)=>{try{fn()}catch(e){}return 0;},
+    TextEncoder,TextDecoder,URL,URLSearchParams,
+    atob:x=>Buffer.from(x,'base64').toString('binary'),btoa:x=>Buffer.from(x,'binary').toString('base64'),
+    encodeURIComponent,decodeURIComponent,
+    crypto:require('crypto').webcrypto,
+    fetch:()=>Promise.resolve({json:()=>Promise.resolve({}),text:()=>Promise.resolve('')}),
+    Function,Math,Date,Object,Array,String,Number,Boolean,RegExp,Map,Set,
+    Uint8Array,Uint16Array,Int8Array,Int16Array,Int32Array,
+    Float32Array,Float64Array,ArrayBuffer,DataView,Promise,Proxy,Reflect,Symbol,
+    parseInt,parseFloat,isNaN,isFinite,JSON,eval,
+    Error,TypeError,RangeError,SyntaxError,ReferenceError,
+    process:{env:{},platform:'win32'},
+  };
+  s.self=s;s.window=s;s.global=s;s.globalThis=s;s.document.location=s.location;
+  const ctx = vm.createContext(s);
 
-  // 2. 抑制 VMP eval 代码的 console.error 噪音
-  const _origConsoleError = console.error;
+  // ═══ 注入浏览器变量到 Node global（eval 代码用 typeof 检查）═══
+  // navigator/performance: Node 有 getter 无 setter，必须 defineProperty 覆盖
+  Object.defineProperty(global, 'navigator', {value: s.navigator, configurable: true, writable: true});
+  Object.defineProperty(global, 'performance', {value: s.performance, configurable: true, writable: true});
+  global.document = s.document;
+  global.screen = s.screen;
+  global.top = s;
+
+  // 抑制 eval 代码的 console.error dump
+  const _oe = console.error;
   console.error = () => {};
 
-  // 3. runtime + vendor
-  vm.runInContext(WEBPACK_RUNTIME, _ctx, { filename: 'runtime' });
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'data','vendor.js'),'utf-8'),
-    _ctx, { filename: 'vendor', timeout: 120000 });
+  // 加载 vendor
+  vm.runInContext(WEBPACK_RUNTIME, ctx, { filename:'runtime' });
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'data','vendor.js'),'utf-8'), ctx, { filename:'vendor', timeout:120000 });
 
-  // 4. 恢复 console.error
-  console.error = _origConsoleError;
-
-  // 5. 手动触发 signV2Init（如果 vendor 的 auto-init 没触发）
-  if (!global.glb || !global.glb.mnsv2) {
-    try {
-      vm.runInContext('__webpack_require__(68274).a()', _ctx);
-    } catch(e) {}
+  // 如果 vendor 的 auto-init (P.ZP.isBrowser && signV2Init) 没触发，手动调用
+  if (!global.glb?.mnsv2 && !global.mnsv2) {
+    try { vm.runInContext('__webpack_require__(68274).a()', ctx); } catch(e) {}
   }
 
-  // 5. 从 glb 获取 mnsv2
-  if (global.glb && typeof global.glb.mnsv2 === 'function') {
-    _mnsv2fn = global.glb.mnsv2;
-  }
+  console.error = _oe;
 
-  // 6. 清理 Node global（避免污染后续 require 的模块）
-  //    注意: var 创建的变量不能 delete，用 = undefined
-  try { delete global.document; } catch(e) { global.document = undefined; }
-  try { delete global.top; } catch(e) { global.top = undefined; }
-  global.glb = undefined; global._0x5ae8 = undefined; global._0xc8b2 = undefined;
-  global._0xe762c0 = undefined; global.__$c = undefined;
-  global._AUuXfEG27Xa3x = undefined; global.__bc = undefined;
+  // 获取 mnsv2（eval 中的 var 声明泄漏到 Node global）
+  _mnsv2fn = global.mnsv2 || global.glb?.mnsv2 || null;
+
+  // 清理 Node global（只清理注入的浏览器变量，保留 VMP 泄漏变量）
+  delete global.document; delete global.top; delete global.screen;
+  Object.defineProperty(global, 'navigator', {value: undefined, configurable: true, writable: true});
+  Object.defineProperty(global, 'performance', {value: undefined, configurable: true, writable: true});
 
   console.error('[sign] ready in', Date.now()-t0, 'ms, mnsv2:', typeof _mnsv2fn);
   _ready = true;
@@ -148,21 +115,17 @@ function init() {
 function sign(url, data) {
   init();
   const bodyStr = typeof data === 'string' ? data : JSON.stringify(data);
-  const combined = url + bodyStr;
   const md5 = s => crypto.createHash('md5').update(s,'utf8').digest('hex');
-  const hc = md5(combined), hu = md5(url);
+  const hc = md5(url + bodyStr), hu = md5(url);
 
-  let mnsv2Result;
+  let x3;
   if (_mnsv2fn) {
-    try { mnsv2Result = String(_mnsv2fn(combined, hc, hu)); }
-    catch(e) { mnsv2Result = 'VMP_ERR'; }
-  } else {
-    mnsv2Result = 'NOMNSV2';
-  }
+    try { x3 = String(_mnsv2fn(url + bodyStr, hc, hu)); }
+    catch(e) { x3 = 'ERR'; }
+  } else { x3 = 'NOMNSV2'; }
 
   const payload = JSON.stringify({
-    x0:'4.3.5', x1:'xhs-pc-web', x2:'Windows',
-    x3: mnsv2Result, x4: typeof data === 'string' ? 'string' : 'object'
+    x0:'4.3.5', x1:'xhs-pc-web', x2:'Windows', x3, x4: typeof data === 'string' ? 'string' : 'object'
   });
 
   return {
@@ -175,7 +138,7 @@ function sign(url, data) {
 // ═══ CLI ═══
 if (require.main === module) {
   const url = process.argv[2] || '/api/sns/web/v1/homefeed';
-  const bodyStr = process.argv[3] || '{"cursor_score":"","num":20,"refresh_type":1,"note_index":0}';
+  const bodyStr = process.argv[3] || '{"cursor_score":"","num":20}';
   let body;
   try { body = JSON.parse(bodyStr); } catch(e) { body = bodyStr; }
   init();
