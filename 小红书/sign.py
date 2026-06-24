@@ -163,8 +163,15 @@ def _mns0301_sign(combined: str, hash_combined: str, hash_url: str,
 
 
 # ═══ seccore_signv2 ═══
+def _load_cookies():
+    cf = Path(__file__).parent / "data" / "cookies.json"
+    if cf.exists():
+        return json.loads(cf.read_text())
+    return {}
+
 def sign(url: str, data) -> dict:
     """小红书 X-s 签名"""
+    cookies = _load_cookies()
     body_str = data if isinstance(data, str) else json.dumps(data, separators=(',', ':'))
     combined = url + body_str
 
@@ -182,10 +189,30 @@ def sign(url: str, data) -> dict:
         "x4": "string" if isinstance(data, str) else "object",
     }, separators=(',', ':'))
 
+    # x-s-common: 静态设备指纹 JSON
+    a1 = cookies.get("a1", "")
+    xsc = {
+        "s0": 5,
+        "s1": "",
+        "x0": "1",
+        "x1": "4.3.5",
+        "x2": "Windows",
+        "x3": "xhs-pc-web",
+        "x4": "6.23.0",
+        "x5": a1,
+        "x6": "",
+        "x7": "",
+        "x8": "",
+        "x9": -1867254643,
+        "x10": 0,
+        "x11": "normal",
+        "x12": f"{int(time.time()*1000)};1780544914310",
+    }
+
     return {
         "x-s": "XYS_" + custom_base64_encode(payload.encode('utf-8')),
         "x-t": str(int(time.time() * 1000)),
-        "x-s-common": "",
+        "x-s-common": custom_base64_encode(json.dumps(xsc, separators=(',', ':')).encode('utf-8')),
     }
 
 
