@@ -3,13 +3,11 @@
 知乎 — 完整方案 (登录 + x-zse 签名 + 爬取)
 
 用法:
-  python main.py login               浏览器辅助登录, 保存 Cookie
-  python main.py login --paste       手动粘贴 Cookie 字符串
-  python main.py login --check       检查 Cookie 是否有效
-
   python main.py feed                获取推荐流 (默认 1 页)
   python main.py feed --pages 3      获取 3 页
   python main.py me                  获取用户信息
+
+Cookie 自动管理: feed / me 启动时自动检查，失效则弹浏览器手工登录并保存。
 
 项目文件:
   main.py        本文件
@@ -105,20 +103,6 @@ def login_browser():
         safe_print(f"[FAIL] {e}"); return None
 
 
-def login_paste():
-    """粘贴 Cookie 字符串"""
-    safe_print("请粘贴浏览器中的完整 Cookie 字符串 (一行):")
-    try: raw = input("Cookie: ").strip()
-    except (EOFError, KeyboardInterrupt): return
-    d = {}
-    for item in raw.split("; "):
-        if "=" in item: k, v = item.split("=", 1); d[k] = v
-    if not d: safe_print("[FAIL] 空输入"); return
-    cookies_save(d)
-    safe_print(f"[OK] {len(d)} 个 Cookie 已保存")
-    cookies_check()
-
-
 # ═══════════════════════════════════════════════════════════════
 #  API 客户端 (签名 + 协议请求)
 # ═══════════════════════════════════════════════════════════════
@@ -173,11 +157,6 @@ class ZhihuAPI:
 #  命令处理
 # ═══════════════════════════════════════════════════════════════
 
-def cmd_login(args):
-    if args.check: cookies_check()
-    elif args.paste: login_paste()
-    else: login_browser()
-
 def cmd_feed(args):
     if not ensure_login(): return
     api = ZhihuAPI()
@@ -218,10 +197,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description="知乎 — 登录 + x-zse 签名 + 爬取")
     sp = p.add_subparsers(dest="cmd")
 
-    p_login = sp.add_parser("login")
-    p_login.add_argument("--check", action="store_true")
-    p_login.add_argument("--paste", action="store_true")
-
     p_feed = sp.add_parser("feed")
     p_feed.add_argument("--pages", type=int, default=1)
     p_feed.add_argument("--output", type=str, default="")
@@ -229,9 +204,7 @@ if __name__ == "__main__":
     sp.add_parser("me")
 
     args = p.parse_args()
-    if args.cmd == "login":   cmd_login(args)
-    elif args.cmd == "feed":  cmd_feed(args)
+    if args.cmd == "feed":  cmd_feed(args)
     elif args.cmd == "me":    cmd_me(args)
     else:
-        # 默认：获取推荐流
         cmd_feed(args)
