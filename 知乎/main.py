@@ -235,10 +235,10 @@ def cmd_feed(args):
             break
         all_items.extend(items)
         safe_print(f"{len(items)} 条")
-        for it in items[:3]:
+        for i, it in enumerate(items, 1):
             t = it.get("target", {})
             q = t.get("question", {})
-            safe_print(f"    · {(q.get('title') or t.get('title', ''))[:60]}")
+            safe_print(f"    {i:2d}. {(q.get('title') or t.get('title', ''))[:60]}")
         time.sleep(REQUEST_INTERVAL)
 
     out = args.output if hasattr(args, "output") and args.output else OUTPUT_FILE
