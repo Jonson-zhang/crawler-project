@@ -106,12 +106,19 @@ function init() {
   global.document = _sandbox.document;
   global.top = _sandbox; // top = window
 
-  // 2. runtime + vendor（vendor 末尾自动触发 signV2Init）
+  // 2. 抑制 VMP eval 代码的 console.error 噪音
+  const _origConsoleError = console.error;
+  console.error = () => {};
+
+  // 3. runtime + vendor
   vm.runInContext(WEBPACK_RUNTIME, _ctx, { filename: 'runtime' });
   vm.runInContext(fs.readFileSync(path.join(__dirname,'data','vendor.js'),'utf-8'),
     _ctx, { filename: 'vendor', timeout: 120000 });
 
-  // 3. 如果 vendor 的 auto-init 没触发，手动调用
+  // 4. 恢复 console.error
+  console.error = _origConsoleError;
+
+  // 5. 手动触发 signV2Init（如果 vendor 的 auto-init 没触发）
   if (!global.glb || !global.glb.mnsv2) {
     try {
       vm.runInContext('__webpack_require__(68274).a()', _ctx);
