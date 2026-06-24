@@ -66,10 +66,31 @@ function parseList(dom) {
       if (dm2) date = dm2[1];
     }
 
-    // 构建完整 URL
-    const fullUrl = href.startsWith('http') ? href :
-      href.startsWith('/') ? BASE_URL + href :
-      BASE_URL + '/' + href;
+    // 构建完整 URL（处理 ../../info/10446/89194.htm 等相对路径）
+    let fullUrl;
+    if (href.startsWith('http')) {
+      fullUrl = href;
+    } else if (href.startsWith('/')) {
+      fullUrl = BASE_URL + href;
+    } else {
+      // 相对路径（含 ../）→ 相对于当前分类页面解析
+      // ../info/10446/89194.htm → /info/10446/89194.htm
+      const basePath = CATEGORIES[key] ? CATEGORIES[key].path : '/zbxx/hwl.htm';
+      const baseDir = basePath.substring(0, basePath.lastIndexOf('/') + 1); // /zbxx/
+      const resolved = baseDir + href; // /zbxx/../info/10446/89194.htm
+      // 简化 ../
+      const parts = resolved.split('/');
+      const cleanParts = [];
+      for (const p of parts) {
+        if (p === '..') cleanParts.pop();
+        else if (p !== '.') cleanParts.push(p);
+      }
+      fullUrl = BASE_URL + '/' + cleanParts.join('/');
+    }
+
+    // 需要知道当前分类来解析相对路径
+    // 用 IIFE 包装一次确定 catKey
+    const catKey = currentCategoryKey || 'hwl';
 
     items.push({
       title,
@@ -166,7 +187,7 @@ async function crawlCategory(categoryKey, cookieJar) {
     try {
       dom = await loadPage(currentUrl, cookieJar);
       // 首次加载后保存 cookieJar
-      if (!cookieJar) cookieJar = dom.cookieJar;
+      if (!cookieJar) cookieJar = dom._capturedJar || dom.cookieJar;
     } catch (e) {
       console.error(`  ❌ 加载失败: ${e.message}`);
       break;
