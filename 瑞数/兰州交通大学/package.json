@@ -1,0 +1,7 @@
+{
+  "name": "lzjtu-bidding",
+  "version": "1.0.0",
+  "private": true,
+  "description": "兰州交通大学招标信息获取",
+  "main": "main.js",
+ 
