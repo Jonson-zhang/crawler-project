@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         通用反调试绕过Debugger v 4.1
+// @name         通用反调试绕过Debugger v 4.2
 // @namespace    https://github.com/Cunninger/anti-debug-bypass
-// @version      4.1.0
-// @description  通用反调试绕过 v4.1 — 新增 script.src 拦截（同步清洗外部JS）+ 全防御层
+// @version      4.2.0
+// @description  通用反调试绕过 v4.2 — 修复 setAttribute 拦截（根治HTML解析器绕过）+ 全防御层
 // @author       Claude (Enhanced)
 // @match        *://*/*
 // @run-at       document-start
@@ -644,14 +644,98 @@
     } catch (e) { log('Blob hook 失败:', e); }
 
     // ============================================================
-    //  ★ v4.1 关键新增：HTMLScriptElement.prototype.src setter 拦截
-    //  拦截浏览器 HTML 解析器对 <script src="..."> 的加载（包括初始 HTML），
-    //  同步抓取同源 JS 文件、清洗 debugger 后替换为 Blob URL。
-    //  这是对抗「VM 解释器源码中嵌入 debugger」的唯一用户态方案。
+    //  ★ v4.2：外部 JS 清洗器（双路径拦截）
+    //
+    //  v4.1 只 hook 了 src property setter，但 HTML 解析器处理
+    //  <script src="..."> 时走 C++ Element::setAttribute 内部代码，
+    //  根本不调用 JS 的 src setter，导致拦不住。
+    //
+    //  v4.2 双路径：
+    //    路径 A — setAttribute hook    → 拦截 HTML 解析器（根治）
+    //    路径 B — src property setter   → 拦截 JS 动态赋值（兜底）
     // ============================================================
     var scriptSrcInterceptorEnabled = true;
     var cleanedScripts = {};  // url → blobUrl 缓存
 
+    function fetchAndCleanScript(url) {
+        // 返回 { cleanedCode, blobUrl } 或 null
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', url, false);  // 同步
+            xhr.send();
+
+            if (xhr.status === 200 && xhr.responseText &&
+                /\bdebugger\b/i.test(xhr.responseText)) {
+
+                var cleanedCode = removeDebuggerStatements(xhr.responseText);
+                if (cleanedCode !== xhr.responseText) {
+                    var blob = new Blob([cleanedCode], { type: 'application/javascript' });
+                    var blobUrl = URL.createObjectURL(blob);
+                    cleanedScripts[url] = blobUrl;
+
+                    // 延迟清理 Blob URL
+                    setTimeout(function() {
+                        URL.revokeObjectURL(blobUrl);
+                        delete cleanedScripts[url];
+                    }, 30000);  // 30s，给足脚本执行时间
+
+                    return { cleanedCode: cleanedCode, blobUrl: blobUrl };
+                }
+            }
+        } catch(e) {
+            log('⚠️ 同步抓取脚本失败:', url, e.message);
+        }
+        return null;
+    }
+
+    function shouldInterceptScriptUrl(url) {
+        if (!scriptSrcInterceptorEnabled || !url || typeof url !== 'string') return false;
+
+        // 跳过 data: / blob: / javascript: URI
+        if (/^(data|blob|javascript):/i.test(url)) return false;
+
+        // 只处理同源（包括相对路径）
+        try {
+            var parsed = new URL(url, location.href);
+            if (parsed.origin !== location.origin) return false;
+        } catch(e) {
+            // 相对路径 → 同源
+            if (url.indexOf('//') === 0 || url.indexOf('://') !== -1) return false;
+        }
+
+        return true;
+    }
+
+    // ── 路径 A：setAttribute hook（拦截 HTML 解析器的 src 属性设置）──
+    try {
+        var _scriptSetAttr = HTMLScriptElement.prototype.setAttribute;
+        HTMLScriptElement.prototype.setAttribute = function(name, value) {
+            if (name === 'src' || name === 'SRC') {
+                if (shouldInterceptScriptUrl(value)) {
+                    // 检查缓存
+                    if (cleanedScripts[value]) {
+                        this.setAttribute('__ad_orig_src__', value);
+                        log('🔧 [setAttribute] 清洗外部脚本 (缓存):', value.substring(value.lastIndexOf('/') + 1));
+                        blockCount++;
+                        return _scriptSetAttr.call(this, 'src', cleanedScripts[value]);
+                    }
+
+                    var result = fetchAndCleanScript(value);
+                    if (result) {
+                        this.setAttribute('__ad_orig_src__', value);
+                        log('🔧 [setAttribute] 清洗外部脚本:', value.substring(value.lastIndexOf('/') + 1));
+                        blockCount++;
+                        return _scriptSetAttr.call(this, 'src', result.blobUrl);
+                    }
+                }
+            }
+            return _scriptSetAttr.call(this, name, value);
+        };
+        tagAsNative(HTMLScriptElement.prototype.setAttribute, 'setAttribute');
+        log('✅ [setAttribute] 外部脚本拦截器已激活 (路径 A — 拦截HTML解析器)');
+    } catch(e) { log('[setAttribute] 拦截器安装失败:', e); }
+
+    // ── 路径 B：src property setter（拦截 JS 动态赋值 script.src = "..."）──
     try {
         var _srcDesc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
         if (_srcDesc && _srcDesc.set) {
@@ -665,70 +749,22 @@
                     return origUrl || _origSrcGet.call(this);
                 },
                 set: function(url) {
-                    if (!scriptSrcInterceptorEnabled || !url || typeof url !== 'string') {
-                        return _origSrcSet.call(this, url);
-                    }
+                    if (shouldInterceptScriptUrl(url)) {
+                        if (cleanedScripts[url]) {
+                            this.setAttribute('__ad_orig_src__', url);
+                            log('🔧 [src setter] 清洗外部脚本 (缓存):', url.substring(url.lastIndexOf('/') + 1));
+                            blockCount++;
+                            return _origSrcSet.call(this, cleanedScripts[url]);
+                        }
 
-                    // 只处理同源脚本
-                    var isSameOrigin = false;
-                    try {
-                        var parsed = new URL(url, location.href);
-                        isSameOrigin = parsed.origin === location.origin;
-                    } catch(e) {
-                        // 相对路径 → 同源
-                        if (url.indexOf('//') !== 0 && url.indexOf('://') === -1) {
-                            isSameOrigin = true;
+                        var result = fetchAndCleanScript(url);
+                        if (result) {
+                            this.setAttribute('__ad_orig_src__', url);
+                            log('🔧 [src setter] 清洗外部脚本:', url.substring(url.lastIndexOf('/') + 1));
+                            blockCount++;
+                            return _origSrcSet.call(this, result.blobUrl);
                         }
                     }
-
-                    // 跳过 data: / blob: / 非同源
-                    if (!isSameOrigin || /^(data|blob|javascript):/i.test(url)) {
-                        return _origSrcSet.call(this, url);
-                    }
-
-                    // 检查缓存
-                    if (cleanedScripts[url]) {
-                        this.setAttribute('__ad_orig_src__', url);
-                        return _origSrcSet.call(this, cleanedScripts[url]);
-                    }
-
-                    // ★ 同步抓取原始 JS 内容
-                    var cleaned = false;
-                    try {
-                        var xhr = new XMLHttpRequest();
-                        xhr.open('GET', url, false);  // 同步
-                        xhr.send();
-
-                        if (xhr.status === 200 && xhr.responseText &&
-                            /\bdebugger\b/i.test(xhr.responseText)) {
-
-                            var cleanedCode = removeDebuggerStatements(xhr.responseText);
-                            if (cleanedCode !== xhr.responseText) {
-                                var blob = new Blob([cleanedCode], { type: 'application/javascript' });
-                                var blobUrl = URL.createObjectURL(blob);
-                                cleanedScripts[url] = blobUrl;
-
-                                this.setAttribute('__ad_orig_src__', url);
-                                log('🔧 清洗外部脚本:', url.substring(url.lastIndexOf('/') + 1));
-                                blockCount++;
-
-                                // 延迟清理 Blob URL（脚本执行后）
-                                var self = this;
-                                self.addEventListener('load', function() {
-                                    setTimeout(function() {
-                                        URL.revokeObjectURL(blobUrl);
-                                        delete cleanedScripts[url];
-                                    }, 1000);
-                                }, { once: true });
-
-                                return _origSrcSet.call(this, blobUrl);
-                            }
-                        }
-                    } catch(e) {
-                        // 同步 XHR 可能在部分环境被阻止，静默回退
-                        log('⚠️ 无法同步抓取脚本:', url, e.message);
-                    }
-
                     // 未清洗或无法清洗 → 原样加载
                     return _origSrcSet.call(this, url);
                 },
@@ -736,12 +772,12 @@
                 enumerable: true
             });
 
-            log('✅ script.src 拦截器已激活');
+            log('✅ [src setter] 外部脚本拦截器已激活 (路径 B — 拦截JS动态赋值)');
         }
-    } catch(e) { log('script.src 拦截器安装失败:', e); }
+    } catch(e) { log('[src setter] 拦截器安装失败:', e); }
 
     // ============================================================
-    //  v4.0 / v4.1：document.write / writeln hook
+    //  v4.0+：document.write / writeln hook
     // ============================================================
     try {
         var _docWrite = document.write.bind(document);
@@ -783,9 +819,9 @@
     } catch(e) { log('document.write hook 失败:', e); }
 
     // ============================================================
-    //  ★ v4.0/v4.1：HTMLScriptElement.prototype.text setter hook
+    //  ★ v4.0+：HTMLScriptElement.prototype.text setter hook
     //  反调试代码会做: script.text = "debugger;" 然后 appendChild
-    //  配合 src setter 拦截器（上方），形成对静态+动态脚本加载的完整覆盖
+    //  配合 setAttribute/src setter 拦截（上方），形成对静态+动态脚本加载的完整覆盖
     // ============================================================
     try {
         var _scriptTextDesc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'text');
@@ -1136,26 +1172,26 @@
     //  Tampermonkey 菜单
     // ============================================================
     if (typeof GM_registerMenuCommand === 'function') {
-        GM_registerMenuCommand('[反调试 v4.1] 切换日志', function () {
+        GM_registerMenuCommand('[反调试 v4.2] 切换日志', function () {
             CONFIG.verbose = !CONFIG.verbose;
-            safeConsole.log('[AD v4.1] verbose =', CONFIG.verbose);
+            safeConsole.log('[AD v4.2] verbose =', CONFIG.verbose);
             if (CONFIG.verbose) installVerboseHooks();
         });
-        GM_registerMenuCommand('[反调试 v4.1] 切换 console.clear 拦截', function () {
+        GM_registerMenuCommand('[反调试 v4.2] 切换 console.clear 拦截', function () {
             CONFIG.blockConsoleClear = !CONFIG.blockConsoleClear;
-            safeConsole.log('[AD v4.1] blockConsoleClear =', CONFIG.blockConsoleClear);
+            safeConsole.log('[AD v4.2] blockConsoleClear =', CONFIG.blockConsoleClear);
         });
-        GM_registerMenuCommand('[反调试 v4.1] 切换 script.src 拦截', function () {
+        GM_registerMenuCommand('[反调试 v4.2] 切换 script.src 拦截', function () {
             scriptSrcInterceptorEnabled = !scriptSrcInterceptorEnabled;
-            safeConsole.log('[AD v4.1] scriptSrcInterceptorEnabled =', scriptSrcInterceptorEnabled);
+            safeConsole.log('[AD v4.2] scriptSrcInterceptorEnabled =', scriptSrcInterceptorEnabled);
         });
-        GM_registerMenuCommand('[反调试 v4.1] 查看统计', function () {
-            safeConsole.log('%c[AD v4.1] 已拦截 %c' + blockCount + '%c 次 | Worker清理 %c' + workerCount + '%c 次',
+        GM_registerMenuCommand('[反调试 v4.2] 查看统计', function () {
+            safeConsole.log('%c[AD v4.2] 已拦截 %c' + blockCount + '%c 次 | Worker清理 %c' + workerCount + '%c 次',
                 '', 'color:red;font-size:18px;font-weight:bold', '',
                 'color:orange;font-size:18px;font-weight:bold', '');
         });
-        GM_registerMenuCommand('[反调试 v4.1] 诊断', function () {
-            safeConsole.group('[AD v4.1] 防御层状态');
+        GM_registerMenuCommand('[反调试 v4.2] 诊断', function () {
+            safeConsole.group('[AD v4.2] 防御层状态');
             var checks = [
                 ['setInterval', window.setInterval],
                 ['setTimeout', window.setTimeout],
@@ -1164,7 +1200,8 @@
                 ['FuncProtoCons', Function.prototype.constructor],
                 ['Blob', window.Blob],
                 ['Reflect.construct', Reflect.construct],
-                ['scriptSrc拦截', scriptSrcInterceptorEnabled ? '✅ 激活' : '⏸ 暂停'],
+                ['script.setAttribute', HTMLScriptElement.prototype.setAttribute],
+                ['scriptSrc拦截状态', scriptSrcInterceptorEnabled ? '✅ 激活' : '⏸ 暂停'],
                 ['rAF', window.requestAnimationFrame],
                 ['rIC', window.requestIdleCallback],
                 ['qMicrotask', window.queueMicrotask],
@@ -1176,10 +1213,20 @@
             ];
             checks.forEach(function(pair) {
                 try {
-                    var status = pair[1] && pair[1].toString().includes('native') ? '✅ 伪装' : '❌ 暴露';
-                    safeConsole.log(pair[0] + ':', pair[1] ? status : 'N/A');
+                    var val = pair[1];
+                    var status;
+                    if (typeof val === 'boolean') {
+                        status = val ? '✅ 激活' : '⏸ 暂停';
+                    } else if (typeof val === 'string') {
+                        status = val;
+                    } else if (val && val.toString().includes('native')) {
+                        status = '✅ 伪装';
+                    } else {
+                        status = val ? '✅ 已安装' : 'N/A';
+                    }
+                    safeConsole.log(pair[0] + ':', status);
                 } catch(e) {
-                    safeConsole.log(pair[0] + ': N/A');
+                    safeConsole.log(pair[0] + ': ❌ 错误');
                 }
             });
             try {
@@ -1195,8 +1242,8 @@
     }
 
     setTimeout(function () {
-        log('✅ v4.1 已激活 | 全防御层:',
-            'script.src拦截|script.text|doc.write|rAF/rIC/qMicrotask|Promise.then|Obj.defineProperty|Reflect.defineProperty|锁hook|全局属性防御');
+        log('✅ v4.2 已激活 | 全防御层:',
+            'setAttribute拦截|src.setter|script.text|doc.write|rAF/rIC/qMicrotask|Promise.then|Obj.defineProperty|Reflect.defineProperty|锁hook|全局属性防御');
         log('   拦截:', blockCount, '| Worker:', workerCount);
     }, 200);
 
