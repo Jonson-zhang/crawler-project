@@ -15,6 +15,7 @@ EventTarget.prototype.dispatchEvent = function(e) { return true; };
 // ═══ Level 1: Node ═══
 function Node() {}
 Node.prototype = Object.create(EventTarget.prototype);
+Node.prototype.constructor = Node;
 Node.prototype.ELEMENT_NODE = 1;
 Node.prototype.TEXT_NODE = 3;
 Node.prototype.nodeType = 1;
@@ -30,6 +31,7 @@ Node.prototype.hasChildNodes = () => false;
 // ═══ Level 2: Element ═══
 function Element() {}
 Element.prototype = Object.create(Node.prototype);
+Element.prototype.constructor = Element;
 Element.prototype.tagName = '';
 Element.prototype.getAttribute = () => null;
 Element.prototype.setAttribute = noop;
@@ -51,6 +53,7 @@ Element.prototype.getBoundingClientRect = () => ({ x:0, y:0, width:0, height:0, 
 // ═══ Level 3: HTMLElement ═══
 function HTMLElement() {}
 HTMLElement.prototype = Object.create(Element.prototype);
+HTMLElement.prototype.constructor = HTMLElement;
 HTMLElement.prototype.click = noop;
 HTMLElement.prototype.focus = noop;
 HTMLElement.prototype.blur = noop;
@@ -61,8 +64,10 @@ HTMLElement.prototype.lang = '';
 // ═══ Level 4: HTMLHeadElement, HTMLBodyElement ═══
 function HTMLHeadElement() {}
 HTMLHeadElement.prototype = Object.create(HTMLElement.prototype);
+HTMLHeadElement.prototype.constructor = HTMLHeadElement;
 function HTMLBodyElement() {}
 HTMLBodyElement.prototype = Object.create(HTMLElement.prototype);
+HTMLBodyElement.prototype.constructor = HTMLBodyElement;
 
 // ═══ HTMLCanvasElement ═══
 function HTMLCanvasElement(width, height) {
@@ -70,6 +75,7 @@ function HTMLCanvasElement(width, height) {
   this.height = height || 150;
 }
 HTMLCanvasElement.prototype = Object.create(HTMLElement.prototype);
+HTMLCanvasElement.prototype.constructor = HTMLCanvasElement;
 HTMLCanvasElement.prototype.getContext = function(type) {
   if (type === '2d') return new CanvasRenderingContext2D(this);
   if (type === 'webgl' || type === 'experimental-webgl') return new WebGLRenderingContext(this);
@@ -84,6 +90,7 @@ function CanvasRenderingContext2D(canvas) {
   this.canvas = canvas;
 }
 CanvasRenderingContext2D.prototype = Object.create(Object.prototype);
+CanvasRenderingContext2D.prototype.constructor = CanvasRenderingContext2D;
 // 核心属性
 CanvasRenderingContext2D.prototype.canvas = null;
 CanvasRenderingContext2D.prototype.fillStyle = '#000000';
@@ -154,6 +161,7 @@ CanvasGradient.prototype.addColorStop = noop;
 // ═══ WebGLRenderingContext ═══
 function WebGLRenderingContext(canvas) { this.canvas = canvas; }
 WebGLRenderingContext.prototype = Object.create(Object.prototype);
+WebGLRenderingContext.prototype.constructor = WebGLRenderingContext;
 WebGLRenderingContext.prototype.canvas = null;
 WebGLRenderingContext.prototype.drawingBufferWidth = 300;
 WebGLRenderingContext.prototype.drawingBufferHeight = 150;
@@ -208,6 +216,7 @@ WebGLRenderingContext.prototype.getContextAttributes = () => ({ alpha: true, ant
 // ═══ OffscreenCanvas ═══
 function OffscreenCanvas(w, h) { this.width = w; this.height = h; }
 OffscreenCanvas.prototype = Object.create(Object.prototype);
+OffscreenCanvas.prototype.constructor = OffscreenCanvas;
 OffscreenCanvas.prototype.getContext = function(t) {
   return t === '2d' ? new CanvasRenderingContext2D(this) : null;
 };
@@ -220,6 +229,7 @@ function AudioContext() {
   this.state = 'running';
 }
 AudioContext.prototype = Object.create(Object.prototype);
+AudioContext.prototype.constructor = AudioContext;
 AudioContext.prototype.destination = { maxChannelCount: 2 };
 AudioContext.prototype.state = 'running';
 AudioContext.prototype.sampleRate = 44100;
@@ -271,6 +281,7 @@ function OscillatorNode(ctx) {
   this.type = 'sine';
 }
 OscillatorNode.prototype = Object.create(Object.prototype);
+OscillatorNode.prototype.constructor = OscillatorNode;
 OscillatorNode.prototype.connect = noop;
 OscillatorNode.prototype.disconnect = noop;
 OscillatorNode.prototype.start = noop;
@@ -298,6 +309,7 @@ function XMLHttpRequest() {
   this.DONE = 4;
 }
 XMLHttpRequest.prototype = Object.create(Object.prototype);
+XMLHttpRequest.prototype.constructor = XMLHttpRequest;
 XMLHttpRequest.prototype.UNSENT = 0;
 XMLHttpRequest.prototype.OPENED = 1;
 XMLHttpRequest.prototype.HEADERS_RECEIVED = 2;
@@ -328,6 +340,7 @@ XMLHttpRequest.prototype.overrideMimeType = noop;
 // ═══ Headers (Fetch API) ═══
 function Headers(init) { this._h = {}; if (init) { for (var k in init) this._h[k] = init[k]; } }
 Headers.prototype = Object.create(Object.prototype);
+Headers.prototype.constructor = Headers;
 Headers.prototype.append = function(k, v) { this._h[k] = v; };
 Headers.prototype.set = function(k, v) { this._h[k] = v; };
 Headers.prototype.get = function(k) { return this._h[k]; };
@@ -338,6 +351,7 @@ Headers.prototype.forEach = function(cb) { for (var k in this._h) cb(this._h[k],
 // ═══ Blob ═══
 function Blob(parts, options) { this.size = parts ? parts.join('').length : 0; this.type = options && options.type || ''; }
 Blob.prototype = Object.create(Object.prototype);
+Blob.prototype.constructor = Blob;
 Blob.prototype.arrayBuffer = function() { return Promise.resolve(new ArrayBuffer(0)); };
 Blob.prototype.text = function() { return Promise.resolve(''); };
 Blob.prototype.stream = function() { return null; };
@@ -350,12 +364,14 @@ function File(parts, name, options) {
   this.lastModified = (options && options.lastModified) || Date.now();
 }
 File.prototype = Object.create(Blob.prototype);
+File.prototype.constructor = File;
 File.prototype.name = '';
 File.prototype.lastModified = 0;
 
 // ═══ FileReader ═══
 function FileReader() {}
 FileReader.prototype = Object.create(Object.prototype);
+FileReader.prototype.constructor = FileReader;
 FileReader.prototype.readAsArrayBuffer = function(blob) {
   this.result = new ArrayBuffer(blob.size || 0);
   if (this.onload) this.onload();
@@ -373,6 +389,7 @@ FileReader.prototype.abort = noop;
 // ═══ FormData ═══
 function FormData() { this._data = []; }
 FormData.prototype = Object.create(Object.prototype);
+FormData.prototype.constructor = FormData;
 FormData.prototype.append = function(k, v) { this._data.push([k, v]); };
 FormData.prototype.delete = function(k) { this._data = this._data.filter(function(e) { return e[0] !== k; }); };
 FormData.prototype.get = function(k) { var e = this._data.find(function(e) { return e[0] === k; }); return e ? e[1] : null; };
@@ -386,6 +403,7 @@ FormData.prototype.set = function(k, v) { this.delete(k); this.append(k, v); };
 // ═══ MutationObserver ═══
 function MutationObserver(callback) { this._cb = callback; }
 MutationObserver.prototype = Object.create(Object.prototype);
+MutationObserver.prototype.constructor = MutationObserver;
 MutationObserver.prototype.observe = noop;
 MutationObserver.prototype.disconnect = noop;
 MutationObserver.prototype.takeRecords = function() { return []; };
@@ -393,6 +411,7 @@ MutationObserver.prototype.takeRecords = function() { return []; };
 // ═══ IntersectionObserver ═══
 function IntersectionObserver(cb, opts) { this._cb = cb; }
 IntersectionObserver.prototype = Object.create(Object.prototype);
+IntersectionObserver.prototype.constructor = IntersectionObserver;
 IntersectionObserver.prototype.observe = noop;
 IntersectionObserver.prototype.unobserve = noop;
 IntersectionObserver.prototype.disconnect = noop;
@@ -401,6 +420,7 @@ IntersectionObserver.prototype.takeRecords = function() { return []; };
 // ═══ ResizeObserver ═══
 function ResizeObserver(cb) { this._cb = cb; }
 ResizeObserver.prototype = Object.create(Object.prototype);
+ResizeObserver.prototype.constructor = ResizeObserver;
 ResizeObserver.prototype.observe = noop;
 ResizeObserver.prototype.unobserve = noop;
 ResizeObserver.prototype.disconnect = noop;
@@ -408,6 +428,7 @@ ResizeObserver.prototype.disconnect = noop;
 // ═══ PerformanceObserver ═══
 function PerformanceObserver(cb) {}
 PerformanceObserver.prototype = Object.create(Object.prototype);
+PerformanceObserver.prototype.constructor = PerformanceObserver;
 PerformanceObserver.prototype.observe = noop;
 PerformanceObserver.prototype.disconnect = noop;
 PerformanceObserver.prototype.takeRecords = function() { return []; };
@@ -423,6 +444,7 @@ function Event(type, opts) {
   this.timeStamp = Date.now();
 }
 Event.prototype = Object.create(Object.prototype);
+Event.prototype.constructor = Event;
 Event.prototype.preventDefault = function() { this.defaultPrevented = true; };
 Event.prototype.stopPropagation = noop;
 Event.prototype.stopImmediatePropagation = noop;
@@ -434,6 +456,7 @@ function CustomEvent(type, opts) {
   this.detail = (opts && opts.detail) || null;
 }
 CustomEvent.prototype = Object.create(Event.prototype);
+CustomEvent.prototype.constructor = CustomEvent;
 
 // ═══ MessageChannel ═══
 function MessageChannel() {
@@ -463,6 +486,7 @@ function Worker(url) {
   this.onerror = null;
 }
 Worker.prototype = Object.create(Object.prototype);
+Worker.prototype.constructor = Worker;
 Worker.prototype.postMessage = noop;
 Worker.prototype.terminate = noop;
 Worker.prototype.addEventListener = noop;
@@ -479,6 +503,7 @@ function WebSocket(url, protocols) {
   this.onerror = null;
 }
 WebSocket.prototype = Object.create(Object.prototype);
+WebSocket.prototype.constructor = WebSocket;
 WebSocket.prototype.CONNECTING = 0;
 WebSocket.prototype.OPEN = 1;
 WebSocket.prototype.CLOSING = 2;
@@ -501,12 +526,14 @@ function Image(width, height) {
   this.onerror = null;
 }
 Image.prototype = Object.create(HTMLElement.prototype);
+Image.prototype.constructor = Image;
 
 // ═══ Performance ═══
 function Performance() {
   this.timeOrigin = Date.now() - 1000;
 }
 Performance.prototype = Object.create(Object.prototype);
+Performance.prototype.constructor = Performance;
 Performance.prototype.now = function() { return Date.now() - this.timeOrigin; };
 Performance.prototype.toJSON = function() { return { timeOrigin: this.timeOrigin }; };
 Performance.prototype.getEntriesByType = function() { return []; };
@@ -521,6 +548,7 @@ Performance.prototype.setResourceTimingBufferSize = noop;
 
 function PerformanceTiming() {}
 PerformanceTiming.prototype = Object.create(Object.prototype);
+PerformanceTiming.prototype.constructor = PerformanceTiming;
 PerformanceTiming.prototype.navigationStart = 0;
 PerformanceTiming.prototype.unloadEventStart = 0;
 PerformanceTiming.prototype.unloadEventEnd = 0;
@@ -546,6 +574,7 @@ PerformanceTiming.prototype.toJSON = function() { return {}; };
 
 function PerformanceNavigation() {}
 PerformanceNavigation.prototype = Object.create(Object.prototype);
+PerformanceNavigation.prototype.constructor = PerformanceNavigation;
 PerformanceNavigation.prototype.TYPE_NAVIGATE = 0;
 PerformanceNavigation.prototype.TYPE_RELOAD = 1;
 PerformanceNavigation.prototype.TYPE_BACK_FORWARD = 2;
@@ -738,6 +767,7 @@ var console = {
 // ═══ Document (base class) ═══
 function Document() {}
 Document.prototype = Object.create(Node.prototype);
+Document.prototype.constructor = Document;
 Document.prototype.nodeType = 9;
 Document.prototype.characterSet = 'UTF-8';
 Document.prototype.readyState = 'complete';
@@ -752,12 +782,14 @@ Document.prototype.domain = 'www.xiaohongshu.com';
 // ═══ HTMLDocument (extends Document) ═══
 function HTMLDocument() {}
 HTMLDocument.prototype = Object.create(Document.prototype);
+HTMLDocument.prototype.constructor = HTMLDocument;
 // Patch document to use HTMLDocument prototype
 Object.setPrototypeOf(document, HTMLDocument.prototype);
 
 // ═══ Navigator (proper class for instanceof checks) ═══
 function Navigator() {}
 Navigator.prototype = Object.create(Object.prototype);
+Navigator.prototype.constructor = Navigator;
 // Copy properties from navigator plain object
 for (var k in navigator) {
   if (typeof navigator[k] !== 'function') {
@@ -773,11 +805,13 @@ Object.defineProperty(Navigator, Symbol.hasInstance, {
 // ═══ Screen class ═══
 function Screen() {}
 Screen.prototype = Object.create(Object.prototype);
+Screen.prototype.constructor = Screen;
 for (var sk in screen) { Screen.prototype[sk] = screen[sk]; }
 
 // ═══ Location class ═══
 function Location() {}
 Location.prototype = Object.create(Object.prototype);
+Location.prototype.constructor = Location;
 Location.prototype.href = '';
 Location.prototype.protocol = '';
 Location.prototype.host = '';
@@ -795,6 +829,7 @@ Location.prototype.toString = function() { return this.href; };
 // ═══ History class ═══
 function History() {}
 History.prototype = Object.create(Object.prototype);
+History.prototype.constructor = History;
 History.prototype.length = 1;
 History.prototype.state = null;
 History.prototype.scrollRestoration = 'auto';
