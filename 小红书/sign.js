@@ -21,7 +21,7 @@ const dom = require('./env.dom');
 // ═══ Build sandbox ═══
 function buildSandbox() {
   const s = {
-    // Global references (circular refs set below)
+    // Global references
     window: {}, self: {}, global: {}, globalThis: {},
 
     // DOM with proper prototype chains
@@ -29,6 +29,7 @@ function buildSandbox() {
     Node: dom.Node,
     Element: dom.Element,
     HTMLElement: dom.HTMLElement,
+    HTMLDocument: dom.HTMLDocument,
     HTMLCanvasElement: dom.HTMLCanvasElement,
     CanvasRenderingContext2D: dom.CanvasRenderingContext2D,
     WebGLRenderingContext: dom.WebGLRenderingContext,
@@ -44,6 +45,13 @@ function buildSandbox() {
     IntersectionObserver: dom.IntersectionObserver,
     ResizeObserver: dom.ResizeObserver,
     PerformanceObserver: dom.PerformanceObserver,
+    Performance: dom.Performance,
+    PerformanceTiming: dom.PerformanceTiming,
+    PerformanceNavigation: dom.PerformanceNavigation,
+    Navigator: dom.Navigator,
+    Screen: dom.Screen,
+    Location: dom.Location,
+    History: dom.History,
     Event: dom.Event,
     CustomEvent: dom.CustomEvent,
     MessageChannel: dom.MessageChannel,

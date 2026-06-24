@@ -503,39 +503,80 @@ function Image(width, height) {
 Image.prototype = Object.create(HTMLElement.prototype);
 
 // ═══ Performance ═══
-var performance = {
-  now: function() { return Date.now(); },
-  timing: {
-    navigationStart: Date.now() - 1000,
-    unloadEventStart: 0,
-    unloadEventEnd: 0,
-    redirectStart: 0,
-    redirectEnd: 0,
-    fetchStart: Date.now() - 900,
-    domainLookupStart: Date.now() - 850,
-    domainLookupEnd: Date.now() - 840,
-    connectStart: Date.now() - 830,
-    connectEnd: Date.now() - 800,
-    secureConnectionStart: Date.now() - 810,
-    requestStart: Date.now() - 750,
-    responseStart: Date.now() - 500,
-    responseEnd: Date.now() - 400,
-    domLoading: Date.now() - 350,
-    domInteractive: Date.now() - 200,
-    domContentLoadedEventStart: Date.now() - 100,
-    domContentLoadedEventEnd: Date.now() - 50,
-    domComplete: Date.now() - 10,
-    loadEventStart: Date.now() - 5,
-    loadEventEnd: Date.now(),
-  },
-  getEntriesByType: function() { return []; },
-  getEntriesByName: function() { return []; },
-  getEntries: function() { return []; },
-  clearMarks: noop,
-  clearMeasures: noop,
-  mark: noop,
-  measure: noop,
-};
+function Performance() {
+  this.timeOrigin = Date.now() - 1000;
+}
+Performance.prototype = Object.create(Object.prototype);
+Performance.prototype.now = function() { return Date.now() - this.timeOrigin; };
+Performance.prototype.toJSON = function() { return { timeOrigin: this.timeOrigin }; };
+Performance.prototype.getEntriesByType = function() { return []; };
+Performance.prototype.getEntriesByName = function() { return []; };
+Performance.prototype.getEntries = function() { return []; };
+Performance.prototype.clearMarks = noop;
+Performance.prototype.clearMeasures = noop;
+Performance.prototype.clearResourceTimings = noop;
+Performance.prototype.mark = noop;
+Performance.prototype.measure = noop;
+Performance.prototype.setResourceTimingBufferSize = noop;
+
+function PerformanceTiming() {}
+PerformanceTiming.prototype = Object.create(Object.prototype);
+PerformanceTiming.prototype.navigationStart = 0;
+PerformanceTiming.prototype.unloadEventStart = 0;
+PerformanceTiming.prototype.unloadEventEnd = 0;
+PerformanceTiming.prototype.redirectStart = 0;
+PerformanceTiming.prototype.redirectEnd = 0;
+PerformanceTiming.prototype.fetchStart = 0;
+PerformanceTiming.prototype.domainLookupStart = 0;
+PerformanceTiming.prototype.domainLookupEnd = 0;
+PerformanceTiming.prototype.connectStart = 0;
+PerformanceTiming.prototype.connectEnd = 0;
+PerformanceTiming.prototype.secureConnectionStart = 0;
+PerformanceTiming.prototype.requestStart = 0;
+PerformanceTiming.prototype.responseStart = 0;
+PerformanceTiming.prototype.responseEnd = 0;
+PerformanceTiming.prototype.domLoading = 0;
+PerformanceTiming.prototype.domInteractive = 0;
+PerformanceTiming.prototype.domContentLoadedEventStart = 0;
+PerformanceTiming.prototype.domContentLoadedEventEnd = 0;
+PerformanceTiming.prototype.domComplete = 0;
+PerformanceTiming.prototype.loadEventStart = 0;
+PerformanceTiming.prototype.loadEventEnd = 0;
+PerformanceTiming.prototype.toJSON = function() { return {}; };
+
+function PerformanceNavigation() {}
+PerformanceNavigation.prototype = Object.create(Object.prototype);
+PerformanceNavigation.prototype.TYPE_NAVIGATE = 0;
+PerformanceNavigation.prototype.TYPE_RELOAD = 1;
+PerformanceNavigation.prototype.TYPE_BACK_FORWARD = 2;
+PerformanceNavigation.prototype.TYPE_RESERVED = 255;
+PerformanceNavigation.prototype.type = 1;
+PerformanceNavigation.prototype.redirectCount = 0;
+PerformanceNavigation.prototype.toJSON = function() { return { type: 1, redirectCount: 0 }; };
+
+var performance = new Performance();
+// Add timing as proper PerformanceTiming instance
+var perfTiming = new PerformanceTiming();
+var now = Date.now();
+perfTiming.navigationStart = now - 1000;
+perfTiming.fetchStart = now - 900;
+perfTiming.domainLookupStart = now - 850;
+perfTiming.domainLookupEnd = now - 840;
+perfTiming.connectStart = now - 830;
+perfTiming.connectEnd = now - 800;
+perfTiming.secureConnectionStart = now - 810;
+perfTiming.requestStart = now - 750;
+perfTiming.responseStart = now - 500;
+perfTiming.responseEnd = now - 400;
+perfTiming.domLoading = now - 350;
+perfTiming.domInteractive = now - 200;
+perfTiming.domContentLoadedEventStart = now - 100;
+perfTiming.domContentLoadedEventEnd = now - 50;
+perfTiming.domComplete = now - 10;
+perfTiming.loadEventStart = now - 5;
+perfTiming.loadEventEnd = now;
+performance.timing = perfTiming;
+performance.navigation = new PerformanceNavigation();
 
 // ═══ Screen ═══
 var screen = {
@@ -690,13 +731,78 @@ var console = {
   assert: function() {},
 };
 
+// ═══ Navigator (with proper prototype) ═══
+// navigator already defined above as plain object; wrap it
+// Navigator is not directly constructable, but VMP might check navigator's constructor
+
+// ═══ HTMLDocument ═══
+function HTMLDocument() {}
+HTMLDocument.prototype = Object.create(document.constructor.prototype || HTMLElement.prototype);
+// Make document instanceof HTMLDocument work via Symbol.hasInstance or __proto__
+// For VMP instanceof checks: we can't easily make document pass instanceof HTMLDocument
+// Instead, use Symbol.hasInstance on HTMLDocument
+Object.defineProperty(HTMLDocument, Symbol.hasInstance, {
+  value: function(instance) {
+    return instance === document || (instance && instance.nodeType === 9);
+  }
+});
+
+// ═══ Navigator (proper class for instanceof checks) ═══
+function Navigator() {}
+Navigator.prototype = Object.create(Object.prototype);
+// Copy properties from navigator plain object
+for (var k in navigator) {
+  if (typeof navigator[k] !== 'function') {
+    Navigator.prototype[k] = navigator[k];
+  }
+}
+// Set up Symbol.hasInstance for VMP checks
+// navigator is a singleton, so we can make it pass `instanceof Navigator`
+Object.defineProperty(Navigator, Symbol.hasInstance, {
+  value: function(instance) { return instance === navigator; }
+});
+
+// ═══ Screen class ═══
+function Screen() {}
+Screen.prototype = Object.create(Object.prototype);
+for (var sk in screen) { Screen.prototype[sk] = screen[sk]; }
+
+// ═══ Location class ═══
+function Location() {}
+Location.prototype = Object.create(Object.prototype);
+Location.prototype.href = '';
+Location.prototype.protocol = '';
+Location.prototype.host = '';
+Location.prototype.hostname = '';
+Location.prototype.port = '';
+Location.prototype.pathname = '';
+Location.prototype.search = '';
+Location.prototype.hash = '';
+Location.prototype.origin = '';
+Location.prototype.assign = noop;
+Location.prototype.replace = noop;
+Location.prototype.reload = noop;
+Location.prototype.toString = function() { return this.href; };
+
+// ═══ History class ═══
+function History() {}
+History.prototype = Object.create(Object.prototype);
+History.prototype.length = 1;
+History.prototype.state = null;
+History.prototype.scrollRestoration = 'auto';
+History.prototype.pushState = noop;
+History.prototype.replaceState = noop;
+History.prototype.back = noop;
+History.prototype.forward = noop;
+History.prototype.go = noop;
+
 // ═══ Exports ═══
 module.exports = {
   // Constructor functions with proper prototypes
   EventTarget, Node, Element, HTMLElement,
-  HTMLHeadElement, HTMLBodyElement,
+  HTMLHeadElement, HTMLBodyElement, HTMLDocument,
   HTMLCanvasElement,
-  CanvasRenderingContext2D,
+  CanvasRenderingContext2D, CanvasGradient,
   WebGLRenderingContext,
   OffscreenCanvas,
   AudioContext, OscillatorNode,
@@ -706,8 +812,10 @@ module.exports = {
   IntersectionObserver,
   ResizeObserver,
   PerformanceObserver,
+  Performance, PerformanceTiming, PerformanceNavigation,
   Event, CustomEvent,
   MessageChannel, Worker, WebSocket,
+  Navigator, Screen, Location, History,
   Image,
 
   // Singleton instances/objects
