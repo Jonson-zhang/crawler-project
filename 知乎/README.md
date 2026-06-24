@@ -41,7 +41,7 @@ python main.py --pages 5
 python main.py -u
 ```
 
-Cookie 自动管理：首次弹 Camoufox 浏览器手工登录 → 保存 `cookies.json` → 后续启动自动验证有效性 → 失效则重新弹窗。
+Cookie 自动管理：首次弹 cloakbrowser 浏览器手工登录 → 保存 `cookies.json` → 后续启动自动验证有效性 → 失效则重新弹窗。
 
 > **为什么不用自动化登录？** 知乎登录页接入了易盾滑块验证码，逆向成本极高。本项目选择**绕过登录**（浏览器人工登录一次，Cookie 持久复用），把精力集中在 API 签名（x-zse-96）的逆向还原上。
 
@@ -49,7 +49,7 @@ Cookie 自动管理：首次弹 Camoufox 浏览器手工登录 → 保存 `cooki
 
 | 阶段 | 工具 | 说明 |
 |------|------|------|
-| 登录 | Camoufox（自动化浏览器）| 仅在登录时弹窗一次，用户手工扫码/密码登录后提取 Cookie |
+| 登录 | cloakbrowser（自动化浏览器）| 仅在登录时弹窗一次，用户手工扫码/密码登录后提取 Cookie |
 | Cookie 验证 | `requests`（纯 HTTP）| `/api/v4/me` 检查 Cookie 是否有效 |
 | 签名计算 | Node.js `sign.js`（本地）| `subprocess` 调用，不依赖浏览器 |
 | API 请求 | `requests`（纯 HTTP）| 全部走 `requests.Session`，不碰浏览器 |
