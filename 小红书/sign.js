@@ -1,11 +1,15 @@
 /**
  * sign.js — 小红书 X-s 离线签名
- * 最小环境: 只覆盖 Node.js v24 没有的浏览器 API
+ * 补环境方式: 先用 vmp env 创建完整浏览器环境, 然后直接 eval eval 代码
  */
 "use strict";
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
-const dom = require('./env.dom');
 
+// ═══ 加载 VMP 兼容环境到 global ═══
+// env_vmp.js 在全局 scope 创建构造函数和单例
+const envMod = require('./env_vmp');
+
+// ═══ Base64 ═══
 const XHS_B64 = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5";
 function b64enc(bytes) {
   const buf = typeof bytes === 'string' ? Buffer.from(bytes, 'utf-8') : bytes;
@@ -25,20 +29,13 @@ function getEvalCode() {
   if (_EVAL) return _EVAL;
   const v = fs.readFileSync(path.join(__dirname, 'data', 'vendor.js'), 'utf-8');
   const mt = v.indexOf('__makeTemplateObject([');
-  const arr = v.indexOf('[', mt), q = v.indexOf('"', arr);
+  const arr = v.indexOf('[', mt);
+  const q = v.indexOf('"', arr);
   let i = q + 1, raw = '';
   while (i < v.length) { if (v[i] === '\\') { raw += v[i]; raw += v[i+1]; i += 2; continue; } if (v[i] === '"') break; raw += v[i]; i++; }
   let code = '', j = 0;
   while (j < raw.length) {
-    if (raw[j] === '\\') {
-      const n = raw[j+1];
-      if (n === '"') { code += '"'; j += 2; continue; }
-      if (n === 'n') { code += '\n'; j += 2; continue; }
-      if (n === 'r') { code += '\r'; j += 2; continue; }
-      if (n === 't') { code += '\t'; j += 2; continue; }
-      if (n === 'x') { code += String.fromCharCode(parseInt(raw.slice(j+2, j+4), 16)); j += 4; continue; }
-      j += 2; continue;
-    }
+    if (raw[j] === '\\') { const n = raw[j+1]; if (n === '"') { code += '"'; j += 2; continue; } if (n === 'n') { code += '\n'; j += 2; continue; } if (n === 'r') { code += '\r'; j += 2; continue; } if (n === 't') { code += '\t'; j += 2; continue; } if (n === 'x') { code += String.fromCharCode(parseInt(raw.slice(j+2, j+4), 16)); j += 4; continue; } j += 2; continue; }
     code += raw[j]; j++;
   }
   _EVAL = code; return code;
@@ -50,84 +47,20 @@ function init() {
   if (_ready) return;
   const t0 = Date.now();
 
-  // ═══ Node.js v24 已自带: navigator, performance, crypto, Event, EventTarget,
-  //      URL, fetch, Blob, WebSocket, MessageChannel, TextEncoder 等 ═══
-  // ═══ 只补 Node 缺失的 ═══
+  t0 && console.error === console.error; // noop line for linter
 
-  // 保存将被覆盖的 Node 原生对象
-  const _saved = { navigator: undefined, performance: undefined };
-  try { _saved.navigator = global.navigator; } catch(e) {}
-  try { _saved.performance = global.performance; } catch(e) {}
-
-  // navigator: 用 env.dom.js 的完整浏览器版本替换（Node 的太简陋, userAgent="Node.js/24"）
-  Object.defineProperty(global, 'navigator', { value: dom.navigator, configurable: true, writable: true });
-
-  // performance: 用 env.dom.js 的替换（Node 的缺少 timing 等属性）
-  Object.defineProperty(global, 'performance', { value: dom.performance, configurable: true, writable: true });
-
-  // document (Node 没有 DOM)
-  global.document = dom.document;
-
-  // screen (Node 没有)
-  global.screen = dom.screen;
-
-  // location (用 setter 覆盖，Node 的 location 是 URL 模块的对象)
-  try { Object.defineProperty(global, 'location', { value: dom.location, configurable: true, writable: true }); } catch(e) {}
-
-  // top = window
-  global.top = global;
-
-  // VMP env slot 需要的变量
-  global.InstallTrigger = undefined;  // Chrome
-  global.chrome = {};                  // Chrome has chrome object
-
-  // DOM 相关 (Node 没有)
-  global.HTMLCanvasElement = dom.HTMLCanvasElement;
-  global.CanvasRenderingContext2D = dom.CanvasRenderingContext2D;
-  global.WebGLRenderingContext = dom.WebGLRenderingContext;
-  global.OffscreenCanvas = dom.OffscreenCanvas;
-  global.AudioContext = dom.AudioContext;
-  global.XMLHttpRequest = dom.XMLHttpRequest;
-  global.MutationObserver = dom.MutationObserver;
-  global.IntersectionObserver = dom.IntersectionObserver;
-  global.ResizeObserver = dom.ResizeObserver;
-  global.PerformanceObserver = dom.PerformanceObserver;
-  global.localStorage = dom.localStorage;
-  global.sessionStorage = dom.sessionStorage;
-  global.Image = dom.Image;
-  global.Worker = dom.Worker;
-  global.WebSocket = dom.WebSocket;  // 覆盖 Node 的内置 WebSocket (可能更真实)
-  global.FormData = dom.FormData;
-  global.FileReader = dom.FileReader;
-
-  // 增强 navigator (Node 自带的不够完整)
-  try {
-    Object.defineProperty(global, 'navigator', {
-      value: Object.assign({}, origNav, dom.navigator),
-      configurable: true, writable: true
-    });
-  } catch(e) {}
+  // eval 代码在当前 global scope 运行，已经注入了 env_vmp 的浏览器对象
 
   const _oe = console.error; console.error = () => {};
-
-  // ═══ 执行 eval 代码 ═══
   try {
     (0, eval)(getEvalCode());
   } catch(e) {
     console.error = _oe;
     console.error('[sign] eval error:', e.message.slice(0, 300));
   }
-
   console.error = _oe;
 
   _mnsv2fn = global.mnsv2 || null;
-
-  // 清理: 恢复 Node 原生对象
-  delete global.document; delete global.top; delete global.screen;
-  delete global.InstallTrigger; delete global.chrome;
-  if (_saved.navigator) Object.defineProperty(global, 'navigator', { value: _saved.navigator, configurable: true, writable: true });
-  if (_saved.performance) Object.defineProperty(global, 'performance', { value: _saved.performance, configurable: true, writable: true });
-
   console.error('[sign] ready in', Date.now()-t0, 'ms, mnsv2:', typeof _mnsv2fn);
   _ready = true;
 }
@@ -138,10 +71,10 @@ function sign(url, data) {
   const md5 = s => crypto.createHash('md5').update(s, 'utf8').digest('hex');
   const hc = md5(url + bodyStr), hu = md5(url);
   let x3;
-  if (_mnsv2fn) { try { x3 = String(_mnsv2fn(url + bodyStr, hc, hu)); } catch(e) { x3 = 'ERR'; } }
+  if (_mnsv2fn) { try { x3 = String(_mnsv2fn(url + bodyStr, hc, hu)); } catch(e) { x3 = 'ERR' + e.message.slice(0, 20); } }
   else { x3 = 'NOMNSV2'; }
-  const payload = JSON.stringify({ x0:'4.3.5', x1:'xhs-pc-web', x2:'Windows', x3, x4: typeof data === 'string' ? 'string' : 'object' });
-  return { 'x-s': 'XYS_' + b64enc(Buffer.from(payload, 'utf-8')), 'x-t': String(Date.now()), 'x-s-common': '' };
+  const payload = JSON.stringify({ x0:'4.3.5', x1:'xhs-pc-web', x2:'Windows', x3, x4: 'object' });
+  return { 'x-s': 'XYS_' + b64enc(Buffer.from(payload, 'utf-8')), 'x-t': String(Date.now()) };
 }
 
 if (require.main === module) {
