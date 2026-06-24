@@ -16,7 +16,7 @@ import json, sys, time
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
-COOKIE_FILE = BASE_DIR / "cookies.json"
+COOKIE_FILE = BASE_DIR / "xbs_env" / "cookies.json"
 
 
 def safe_print(*args):

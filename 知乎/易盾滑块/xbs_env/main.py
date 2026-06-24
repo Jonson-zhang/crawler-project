@@ -21,8 +21,13 @@ import requests
 import urllib3; urllib3.disable_warnings()
 
 BASE_DIR = Path(__file__).parent
-COOKIE_FILE = BASE_DIR.parent / "cookies.json"
+COOKIE_FILE = BASE_DIR / "cookies.json"
 SIGN_SCRIPT = BASE_DIR / "sign.js"
+
+if not COOKIE_FILE.exists():
+    print("[!] 未找到 cookies.json")
+    print(f"    请先运行: cd {BASE_DIR.parent} && python login.py --manual")
+    sys.exit(1)
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
 

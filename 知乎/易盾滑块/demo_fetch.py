@@ -16,7 +16,7 @@ from pathlib import Path
 import requests
 
 BASE_DIR = Path(__file__).parent
-COOKIE_FILE = BASE_DIR / "cookies.json"
+COOKIE_FILE = BASE_DIR / "xbs_env" / "cookies.json"
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
