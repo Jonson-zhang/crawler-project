@@ -3,210 +3,269 @@
  * 兰州交通大学招标信息获取 — 基于 sdenv 纯 Node.js 方案
  *
  * 原理：
- *   1. sdenv jsdomFromUrl 加载 412 页面
- *   2. RS JSVMP 在 jsdom 中真实执行 → 生成 evbSrBv8QGpBT cookie
- *   3. 携带完整 Cookie 请求招标列表页面 → cheerio 解析
+ *   1. sdenv jsdomFromUrl 加载 412 页面，RS JSVMP 在 jsdom 中真实执行
+ *   2. 生成 evbSrBv8QGpBP Cookie（客户端指纹加密包）
+ *   3. 重用 cookieJar 加载目标页面（DWR AJAX 动态加载内容）
+ *   4. 解析招标列表，支持翻页
  *
- * 依赖：sdenv, cheerio
+ * 依赖：npm i sdenv cheerio
  */
 
 'use strict';
 
-const { jsdomFromUrl, logger } = require('sdenv');
-const https = require('https');
+const { jsdomFromUrl } = require('sdenv');
+const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
 
 // ── 配置 ──
 const HOST = 'zbzx.lzjtu.edu.cn';
 const BASE_URL = `https://${HOST}`;
-const ENTRY_PATH = '/zbxx/hwl.htm';
+const CATEGORIES = {
+  hwl: { name: '货物类', path: '/zbxx/hwl.htm', output: 'goods.json' },
+  gcl: { name: '工程类', path: '/zbxx/gcl.htm', output: 'construction.json' },
+  fwl: { name: '服务类', path: '/zbxx/fwl.htm', output: 'service.json' },
+};
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
 // ── 工具函数 ──
-function httpRequest(options) {
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: HOST,
-      port: 443,
-      path: options.path,
-      method: options.method || 'GET',
-      headers: {
-        'User-Agent': UA,
-        'Host': HOST,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Referer': BASE_URL + '/',
-        'Sec-Fetch-Site': 'same-origin',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Dest': 'document',
-        ...(options.headers || {}),
-      },
-      rejectUnauthorized: false,
-    }, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        resolve({
-          status: res.statusCode,
-          headers: res.headers,
-          body,
-        });
-      });
+
+/**
+ * 从 sdenv 页面解析招标列表
+ */
+function parseList(dom) {
+  const $ = cheerio.load(dom.window.document.documentElement.outerHTML);
+  const items = [];
+
+  // 解析 listmain 下的招标条目
+  // 站点使用网站群 CMS，列表在 div.listmain 内
+  const listDiv = $('.listmain').first();
+  if (!listDiv.length) {
+    // 尝试其他选择器
+    console.log('  listmain 未找到，尝试其他选择器...');
+  }
+
+  // 遍历 listmain 中的所有链接
+  listDiv.find('a').each((i, el) => {
+    const $a = $(el);
+    const href = $a.attr('href') || '';
+    const title = $a.text().trim();
+    // 过滤掉导航链接（如"货物类""工程类"等分类标签）
+    if (!title || title.length < 5) return;
+    if (['货物类', '工程类', '服务类'].includes(title)) return;
+
+    // 获取日期（通常在紧跟的 span 或 [] 中）
+    let date = '';
+    const parentText = $a.parent().text() || '';
+    const dateMatch = parentText.match(/\[(\d{4}年\d{2}月\d{2}日)\]/);
+    if (dateMatch) date = dateMatch[1];
+    else {
+      // 尝试从兄弟节点获取
+      const nextText = $a.parent().next().text() || '';
+      const dm2 = nextText.match(/(\d{4}[-/]\d{2}[-/]\d{2})/);
+      if (dm2) date = dm2[1];
+    }
+
+    // 构建完整 URL
+    const fullUrl = href.startsWith('http') ? href :
+      href.startsWith('/') ? BASE_URL + href :
+      BASE_URL + '/' + href;
+
+    items.push({
+      title,
+      url: fullUrl,
+      date,
+      // 提取可能的项目编号
+      projectId: (title.match(/[A-Z]{2,5}\d{4,}-?\d*/) || [''])[0],
     });
-    req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('timeout')); });
-    if (options.body) req.write(options.body);
-    req.end();
   });
+
+  return items;
 }
 
-function parseBiddingList(html) {
-  // 尝试解析招标列表页面
-  const results = [];
+/**
+ * 获取分页信息
+ */
+function getPagination(dom) {
+  const $ = cheerio.load(dom.window.document.documentElement.outerHTML);
+  const pages = { current: 1, total: 1, hasNext: false, nextUrl: null, totalPages: [] };
 
-  // 提取 title
-  const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
-  const title = titleMatch ? titleMatch[1] : '';
+  // 解析分页导航（网站群 CMS 的 _simple_list_gotopage_fun 函数）
+  const pageDiv = $('.page, .pagination, #page').first();
+  if (!pageDiv.length) return pages;
 
-  // 遍历所有可能的列表结构
-  // 模式1: <a href="..."> 链接列表
-  const linkPattern = /<a[^>]*href\s*=\s*["']([^"']*show[^"']*\d+[^"']*|zb[^"']*|detail[^"']*|hwl[^"']*\.\w+)[^"']*["'][^>]*>([^<]*)<\/a>/gi;
-  let match;
-  while ((match = linkPattern.exec(html)) !== null) {
-    const href = match[1].replace(/&amp;/g, '&');
-    const text = match[2].replace(/<[^>]*>/g, '').trim();
-    if (text && text.length > 3) {
-      results.push({ title: text, url: href.startsWith('http') ? href : BASE_URL + (href.startsWith('/') ? '' : '/') + href });
-    }
+  // 查找"下页"链接
+  const nextLink = pageDiv.find('a').filter((i, el) => {
+    const t = $(el).text().trim();
+    return t === '下页' || t === '下一页' || t === '>' || t === '»';
+  }).first();
+
+  if (nextLink.length) {
+    pages.hasNext = true;
+    pages.nextUrl = nextLink.attr('href') || null;
   }
 
-  // 模式2: <tr> 表格行
-  const trPattern = /<tr[^>]*>[\s\S]*?<td[^>]*>[\s\S]*?<a[^>]*href\s*=\s*["']([^"']*)["'][^>]*>([^<]*)<\/a>[\s\S]*?<\/tr>/gi;
-  while ((match = trPattern.exec(html)) !== null) {
-    const href = match[1].replace(/&amp;/g, '&');
-    const text = match[2].replace(/<[^>]*>/g, '').trim();
-    if (text && text.length > 3 && !results.some(r => r.title === text)) {
-      results.push({ title: text, url: href.startsWith('http') ? href : BASE_URL + (href.startsWith('/') ? '' : '/') + href });
+  // 查找总页数
+  const pageText = pageDiv.text();
+  const totalMatch = pageText.match(/共\s*(\d+)\s*页/);
+  if (totalMatch) pages.total = parseInt(totalMatch[1]);
+
+  return pages;
+}
+
+/**
+ * sdenv 加载页面（带 Cookie 持久化）
+ */
+async function loadPage(url, cookieJar = null) {
+  const config = {
+    userAgent: UA,
+    consoleConfig: { error: () => {} },
+  };
+  if (cookieJar) config.cookieJar = cookieJar;
+
+  const dom = await jsdomFromUrl(url, config);
+  const { window } = dom;
+
+  // 马上捕获 cookieJar 引用（防止 close 事件后丢失）
+  const capturedJar = dom.cookieJar;
+
+  // 监听 RS 跳转（RS JSVMP 生成 Cookie 后可能触发跳转）
+  window.addEventListener('sdenv:location.replace', (e) => {
+    // 不 close，让页面自然完成
+  });
+
+  // 等待 JS 执行完成（RS JSVMP + DWR AJAX）
+  await new Promise(resolve => {
+    window.addEventListener('sdenv:exit', () => resolve());
+    setTimeout(resolve, 10000);
+  });
+
+  // 把捕获的 cookieJar 挂回去
+  dom._capturedJar = capturedJar;
+  return dom;
+}
+
+/**
+ * 获取单个分类的数据
+ */
+async function crawlCategory(categoryKey, cookieJar) {
+  const cat = CATEGORIES[categoryKey];
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`📋 分类: ${cat.name} (${categoryKey})`);
+  console.log(`${'='.repeat(60)}`);
+
+  const allItems = [];
+  let currentPage = 1;
+  let hasNext = true;
+  let currentUrl = `${BASE_URL}${cat.path}`;
+
+  while (hasNext) {
+    console.log(`\n  第 ${currentPage} 页: ${currentUrl}`);
+
+    let dom;
+    try {
+      dom = await loadPage(currentUrl, cookieJar);
+      // 首次加载后保存 cookieJar
+      if (!cookieJar) cookieJar = dom.cookieJar;
+    } catch (e) {
+      console.error(`  ❌ 加载失败: ${e.message}`);
+      break;
     }
+
+    const items = parseList(dom);
+    console.log(`  解析到 ${items.length} 条招标信息`);
+
+    if (items.length === 0) {
+      console.log('  无更多数据，停止翻页');
+      break;
+    }
+
+    allItems.push(...items);
+
+    // 检查分页
+    const pagination = getPagination(dom);
+    if (pagination.hasNext && pagination.nextUrl && currentPage < 50) {
+      currentPage++;
+      currentUrl = pagination.nextUrl.startsWith('http') ?
+        pagination.nextUrl : BASE_URL + (pagination.nextUrl.startsWith('/') ? '' : '/') + pagination.nextUrl;
+    } else {
+      hasNext = false;
+    }
+
+    try { dom.window.close(); } catch (e) {}
+
+    // 翻页间隔
+    if (hasNext) await new Promise(r => setTimeout(r, 2000));
   }
 
-  return { title, count: results.length, items: results.slice(0, 100) };
+  return { category: cat.name, items: allItems, total: allItems.length };
 }
 
 // ── 主流程 ──
 async function main() {
   console.log('='.repeat(60));
-  console.log('兰州交通大学招标信息获取 (sdenv 纯 Node.js 方案)');
+  console.log('  兰州交通大学招标信息获取');
+  console.log('  基于 sdenv 纯 Node.js 方案 (RS6 + DWR)');
   console.log('='.repeat(60));
-  console.log('');
 
-  // Step 1: sdenv 加载 412 页面，让 RS JSVMP 生成 Cookie T
-  console.log('[1/3] 正在通过 RS 挑战...');
-  console.log(`      加载 ${BASE_URL}${ENTRY_PATH}`);
+  const startTime = Date.now();
 
-  let dom;
+  // Step 1: 通过 RS 挑战，获取 Cookie
+  console.log('\n[1/4] 正在通过 RS 412 挑战（sdenv jsdom）...');
+  let cookieJar = null;
   try {
-    dom = await jsdomFromUrl(`${BASE_URL}${ENTRY_PATH}`, {
-      userAgent: UA,
-      consoleConfig: { error: () => {} },
-    });
+    const dom = await loadPage(`${BASE_URL}/zbxx/hwl.htm`);
+    cookieJar = dom._capturedJar || dom.cookieJar;
+    const cookies = (cookieJar && cookieJar.getCookieStringSync) ? cookieJar.getCookieStringSync(BASE_URL) : '';
+    console.log(`  ✅ Cookie 生成成功 (${cookies.length} 字符)`);
+    try { dom.window.close(); } catch (e) {}
   } catch (e) {
-    console.error('  sdenv 加载失败:', e.message);
-    console.log('  尝试备用方案...');
+    console.error(`  ❌ RS 挑战失败: ${e.message}`);
+    console.error(e.stack);
     process.exit(1);
   }
 
-  const { window, cookieJar } = dom;
-  const cookies = cookieJar.getCookieStringSync(BASE_URL);
-  console.log(`  Cookie 生成结果: ${cookies ? '✅ 成功' : '❌ 失败'}`);
-  console.log(`  Cookie 内容: ${cookies.substring(0, 120)}...`);
-  console.log('');
+  // Step 2-3: 按分类爬取
+  const crawlType = process.argv[2] || 'hwl'; // 默认货物类
+  const categoryKeys = crawlType === 'all' ? Object.keys(CATEGORIES) : [crawlType];
 
-  // Step 2: 监听页面跳转事件（RS JS 通常会在生成 cookie 后做 location.replace）
-  let redirectUrl = null;
-  window.addEventListener('sdenv:location.replace', (e) => {
-    redirectUrl = e.detail.url;
-    console.log(`  检测到 RS 跳转: ${redirectUrl}`);
-    e.target.close();
-  });
-  window.addEventListener('sdenv:location.assign', (e) => {
-    redirectUrl = e.detail.url;
-    console.log(`  检测到 RS assign: ${redirectUrl}`);
-    e.target.close();
-  });
+  console.log(`\n[2/4] 爬取分类: ${categoryKeys.map(k => CATEGORIES[k].name).join(', ')}`);
 
-  // 等待 JS 执行完成（RS JSVMP 需要几秒）
-  console.log('  等待 RS JSVMP 执行...');
-  await new Promise(resolve => {
-    window.addEventListener('sdenv:exit', () => resolve());
-    // 超时兜底：8秒后继续
-    setTimeout(resolve, 8000);
-  });
+  const allResults = {};
+  for (const key of categoryKeys) {
+    const result = await crawlCategory(key, cookieJar);
+    allResults[key] = result;
 
-  // 最终 cookie
-  const finalCookies = cookieJar.getCookieStringSync(BASE_URL);
-  console.log(`  最终 Cookie: ${finalCookies ? finalCookies.substring(0, 150) : '(空)'}`);
-  console.log('');
+    // 保存中间结果
+    const outPath = path.join(__dirname, result.category + '.json');
+    fs.writeFileSync(outPath, JSON.stringify(result, null, 2), 'utf-8');
+    console.log(`  💾 已保存: ${outPath}`);
+  }
 
-  // Step 3: 用 Cookie 请求招标列表页面
-  console.log('[2/3] 请求招标列表页面...');
+  // Step 4: 输出汇总
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`\n[4/4] ✅ 完成! 耗时 ${totalTime}s`);
+  console.log('='.repeat(60));
 
-  const pageUrl = redirectUrl || `${BASE_URL}${ENTRY_PATH}`;
-  let listHtml = '';
-  try {
-    const result = await httpRequest({
-      path: new URL(pageUrl).pathname + (new URL(pageUrl).search || ''),
-      headers: finalCookies ? { Cookie: finalCookies } : {},
-    });
-
-    console.log(`  响应状态: ${result.status}`);
-    console.log(`  响应长度: ${result.body.length} 字符`);
-    listHtml = result.body;
-  } catch (e) {
-    console.error(`  请求失败: ${e.message}`);
-    // 尝试直接用 sdenv 的 cookieJar 重新加载
-    try {
-      const dom2 = await jsdomFromUrl(pageUrl, {
-        cookieJar,
-        userAgent: UA,
-        consoleConfig: { error: () => {} },
-      });
-      listHtml = dom2.window.document.documentElement.outerHTML;
-      console.log(`  通过 sdenv 重载成功: ${listHtml.length} 字符`);
-    } catch (e2) {
-      console.error(`  重载也失败: ${e2.message}`);
-      process.exit(1);
+  for (const [key, result] of Object.entries(allResults)) {
+    console.log(`  ${result.category}: ${result.total} 条`);
+    if (result.items.length > 0) {
+      console.log(`    最新: ${result.items[0].title}`);
+      console.log(`    最旧: ${result.items[result.items.length - 1].title}`);
     }
   }
 
-  // Step 4: 解析招标列表
-  console.log('');
-  console.log('[3/3] 解析招标信息...');
-  const parsed = parseBiddingList(listHtml);
-
-  console.log('');
-  console.log('='.repeat(60));
-  console.log(`📋 页面标题: ${parsed.title}`);
-  console.log(`📊 共发现 ${parsed.count} 条招标信息`);
-  console.log('='.repeat(60));
-  console.log('');
-
-  if (parsed.items.length > 0) {
-    parsed.items.forEach((item, i) => {
+  // 打印货物类的前10条
+  const hwlResult = allResults['hwl'];
+  if (hwlResult && hwlResult.items.length > 0) {
+    console.log(`\n${'─'.repeat(60)}`);
+    console.log(`📋 货物类招标列表 (共 ${hwlResult.total} 条)`);
+    console.log(`${'─'.repeat(60)}`);
+    hwlResult.items.slice(0, 20).forEach((item, i) => {
       console.log(`${String(i + 1).padStart(3, ' ')}. ${item.title}`);
-      console.log(`     ${item.url}`);
-      console.log('');
+      console.log(`     📅 ${item.date || '日期未知'}  🔗 ${item.url}`);
     });
-  } else {
-    console.log('未能解析到招标列表，打印原始 HTML 前 2000 字符供分析：');
-    console.log('-'.repeat(60));
-    console.log(listHtml.substring(0, 2000));
-    console.log('-'.repeat(60));
   }
-
-  // 清理
-  try { window.close(); } catch (e) {}
-  console.log('');
-  console.log('✅ 完成');
 }
 
 main().catch(err => {
