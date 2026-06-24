@@ -208,6 +208,7 @@ async function main() {
   }
 
   console.log(`\n✅ 完成! 耗时 ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+  process.exit(0); // sdenv 保持 event loop，显式退出
 }
 
 main().catch(err => {
