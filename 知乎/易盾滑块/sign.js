@@ -2,7 +2,7 @@
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm'),crypto=require('crypto');
 
-// ═══ 补环境（标准 Node.js，无需 xbsJsEnv 专用版）═══
+// ═══ 补环境═══
 const noop=()=>{};
 const s={window:{},self:{},
  location:{href:'https://www.zhihu.com/',host:'www.zhihu.com',hostname:'www.zhihu.com',protocol:'https:',origin:'https://www.zhihu.com',pathname:'/'},
