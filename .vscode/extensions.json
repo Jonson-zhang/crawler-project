@@ -1,6 +1,5 @@
 {
     "recommendations": [
-        "formulahendry.code-runner",
         "vsls-contrib.gitdoc"
     ]
 }
