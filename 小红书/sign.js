@@ -68,6 +68,16 @@ function init() {
   // 4. 获取 mnsv2
   _mnsv2fn = s.mnsv2 || null;
 
+  // Debug: 查找所有 mnsv 相关
+  const _ms = Object.getOwnPropertyNames(s).filter(function(k){ return k.indexOf('mns')>=0 || k.indexOf('nsv')>=0 || (k.length<10 && typeof s[k]==='function' && s[k].length===0 && String(s[k]).indexOf('_0x30ce91')>0); });
+  process.stderr.write('[sign] mns-related keys: ' + _ms.join(', ') + '\n');
+
+  // Check if mnsv2 is on window or any nested object
+  if (!_mnsv2fn && s.window && typeof s.window === 'object') {
+    _mnsv2fn = s.window.mnsv2 || null;
+    if (_mnsv2fn) process.stderr.write('[sign] found mnsv2 on window\n');
+  }
+
   if (typeof _mnsv2fn === 'function') {
     try {
       const t = String(_mnsv2fn('/api/sns/web/v1/homefeed',
