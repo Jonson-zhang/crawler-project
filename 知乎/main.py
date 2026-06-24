@@ -29,7 +29,7 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 
 # ═══ 可配置参数 ═══
 FEED_PAGES = 3  # 默认抓取页数（每页 ~17 条）
-FEED_SIZE = 17  # 每页条数
+FEED_SIZE = 15  # 每页条数
 REQUEST_INTERVAL = 1  # 请求间隔（秒）
 
 
@@ -181,10 +181,9 @@ class ZhihuAPI:
             {
                 "action": "down",
                 "ad_interval": -10,
-                "after_id": FEED_SIZE * (page - 1),
                 "desktop": "true",
-                "end_offset": FEED_SIZE * page,
                 "page_number": page,
+                "limit": FEED_SIZE,
             },
         )
 
