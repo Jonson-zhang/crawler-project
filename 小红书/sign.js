@@ -41,20 +41,23 @@ function init() {
   }
   const ctx = vm.createContext(s);
 
-  // 2. 加载 v_jstools 录制的浏览器环境
+  // 2. 先让 webpack runtime 就位 (在自己设置的 self/window 上)
+  vm.runInContext('self = this; window = this; global = this; globalThis = this;', ctx);
+  const _oe = console.error; console.error = function(){};
+  vm.runInContext(WEBPACK_RUNTIME, ctx, { filename: 'runtime' });
+
+  // 3. 再加载 v_jstools 浏览器环境 (会覆盖 window/self 等)
   const envCode = fs.readFileSync(path.join(__dirname, 'v.js'), 'utf-8');
   try {
     vm.runInContext(envCode, ctx, { filename: 'v_env.js', timeout: 30000 });
   } catch(e) {
     process.stderr.write('[sign] v.js error: ' + e.message.slice(0, 300) + '\n');
   }
-  // v.js 需要 window 已存在 (浏览器中 window 是全局对象)
-  // 先设置 self/window/global/globalThis = sandbox 本身
-  vm.runInContext('self = this; window = this; global = this; globalThis = this;', ctx);
 
-  // 3. 加载 webpack runtime + vendor.js (在沙箱中, mnsv2 会泄漏到 s)
-  const _oe = console.error; console.error = function(){};
-  vm.runInContext(WEBPACK_RUNTIME, ctx, { filename: 'runtime' });
+  // 把 webpack chunk registry 从旧的 self 拷贝到 v.js 创建的 window 上
+  vm.runInContext('self.webpackChunkxhs_pc_web = webpackChunkxhs_pc_web; window.webpackChunkxhs_pc_web = webpackChunkxhs_pc_web;', ctx);
+
+  // 4. 最后加载 vendor.js (需要 v.js 提供的浏览器环境)
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'data', 'vendor.js'), 'utf-8'), ctx, { filename: 'vendor', timeout: 120000 });
 
   if (!s.mnsv2) {
