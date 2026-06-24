@@ -99,9 +99,18 @@ def fetch_412_page() -> dict:
     external_js = ext_resp.text
     print(f"[+] 外链 JS: {ext_url.split('/')[-1]} ({len(external_js)} 字符, {len(external_js)/1024:.1f}KB)")
 
-    # 4. 入口函数调用
-    entry_match = re.search(r"(_\$[a-zA-Z0-9]+)\(\)", html)
-    entry_call = entry_match.group(0) if entry_match else ""
+    # 4. 入口函数调用 — 匹配独立的入口脚本标签
+    # 模式: <script ...>_$xx();</script>  其中 xx 是 2 位字母
+    entry_call = ""
+    for m in re.finditer(r"<script[^>]*>\s*(_\$[a-zA-Z]{2}\(\))\s*</script>", html):
+        call = m.group(1)
+        if len(call) <= 10:  # _$xx() 约 7 字符
+            entry_call = call
+    if not entry_call:
+        # fallback：页尾最后一行的模式
+        m = re.search(r"(_\$[a-zA-Z]{2}\(\))", html[-200:])
+        if m:
+            entry_call = m.group(1)
     print(f"[+] 入口函数: {entry_call}")
 
     # 保存调试文件
@@ -160,8 +169,12 @@ def generate_cookie(code_parts: dict) -> str:
     )
 
     if result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace")[:500]
-        print(f"[!] Node.js 错误:\n{stderr}")
+        stderr = result.stderr.decode("utf-8", errors="replace")[-2000:]
+        # 关键：提取最后几行报错信息
+        err_lines = stderr.strip().split("\n")
+        print(f"[!] Node.js 错误 (最后 10 行):")
+        for line in err_lines[-10:]:
+            print(f"    {line[:200]}")
         return ""
 
     cookie = result.stdout.decode("utf-8", errors="replace").strip()
