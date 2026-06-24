@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
 """
-知乎 — 完整方案 (登录 + x-zse 签名 + 爬取)
+知乎 — 登录 + x-zse 签名 + 推荐流爬取
 
 用法:
-  python main.py feed                获取推荐流 (默认 1 页)
-  python main.py feed --pages 3      获取 3 页
-  python main.py me                  获取用户信息
+  python main.py            获取推荐流
+  python main.py --pages 5  获取 5 页
+  python main.py -u         仅查看用户信息
 
-Cookie 自动管理: feed / me 启动时自动检查，失效则弹浏览器手工登录并保存。
-
-项目文件:
-  main.py        本文件
-  sign.js        x-zse-96 / x-zst-81 签名引擎 (Node.js)
-  runtime.js     知乎 webpack runtime (17KB)
-  vendor.js      知乎 vendor chunk (215KB)
-  479.js         签名模块所在 chunk (3.3MB)
-  cookies.json   login 后自动生成
+Cookie 自动管理: 启动时自动检查，失效则弹浏览器手工登录并保存。
 """
 
 import json
@@ -34,6 +26,12 @@ BASE_DIR = Path(__file__).parent
 COOKIE_FILE = BASE_DIR / "cookies.json"
 SIGN_SCRIPT = BASE_DIR / "sign.js"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
+# ═══ 可配置参数 ═══
+FEED_PAGES = 3  # 默认抓取页数（每页 ~17 条）
+FEED_SIZE = 17  # 每页条数
+REQUEST_INTERVAL = 1  # 请求间隔（秒）
+OUTPUT_FILE = str(BASE_DIR / "feed.json")
 
 
 def safe_print(*args, **kwargs):
@@ -178,15 +176,15 @@ class ZhihuAPI:
     def me(self):
         return self._get("/api/v4/me")
 
-    def feed(self, page: int = 1, size: int = 17):
+    def feed(self, page: int = 1):
         return self._get(
             "/api/v3/feed/topstory/recommend",
             {
                 "action": "down",
                 "ad_interval": -10,
-                "after_id": size * (page - 1),
+                "after_id": FEED_SIZE * (page - 1),
                 "desktop": "true",
-                "end_offset": size * page,
+                "end_offset": FEED_SIZE * page,
                 "page_number": page,
             },
         )
@@ -197,17 +195,34 @@ class ZhihuAPI:
 # ═══════════════════════════════════════════════════════════════
 
 
+def show_user(api):
+    """输出用户信息"""
+    me = api.me()
+    if me and me.get("id"):
+        safe_print(
+            f"\n{'─' * 50}\n"
+            f"  👤 {me.get('name', '?')}\n"
+            f"  id: {me.get('id')}\n"
+            f"  headline: {me.get('headline', '(无)')}\n"
+            f"  follower: {me.get('follower_count', '?')}  "
+            f"following: {me.get('following_count', '?')}\n"
+            f"{'─' * 50}\n"
+        )
+    else:
+        safe_print(f"[!] 无法获取用户信息: {json.dumps(me, ensure_ascii=False)[:200]}")
+
+
 def cmd_feed(args):
     if not ensure_login():
         return
     api = ZhihuAPI()
-    me = api.me()
-    safe_print(f"[OK] 已登录: {me.get('name', '?')}")
+    show_user(api)
+
+    pages = args.pages if hasattr(args, "pages") else FEED_PAGES
 
     all_items = []
-    pages = getattr(args, "pages", 1)
     for pg in range(1, pages + 1):
-        safe_print(f"[*] 第 {pg} 页...", end=" ")
+        safe_print(f"[*] 第 {pg}/{pages} 页...", end=" ")
         sys.stdout.flush()
         try:
             data = api.feed(page=pg)
@@ -224,42 +239,27 @@ def cmd_feed(args):
             t = it.get("target", {})
             q = t.get("question", {})
             safe_print(f"    · {(q.get('title') or t.get('title', ''))[:60]}")
-        time.sleep(1)
+        time.sleep(REQUEST_INTERVAL)
 
-    out = getattr(args, "output", "") or str(BASE_DIR / "feed.json")
+    out = args.output if hasattr(args, "output") and args.output else OUTPUT_FILE
     Path(out).write_text(json.dumps(all_items, ensure_ascii=False, indent=2), "utf-8")
     safe_print(f"\n[+] 共 {len(all_items)} 条, 已保存 {out}")
-
-
-def cmd_me(args):
-    if not ensure_login():
-        return
-    api = ZhihuAPI()
-    d = api.me()
-    if d and d.get("id"):
-        safe_print(
-            f"[OK] {d.get('name')}  id={d.get('id')}  headline={d.get('headline', '')}"
-        )
-    else:
-        safe_print(f"[FAIL] {json.dumps(d, ensure_ascii=False)[:200]}")
 
 
 if __name__ == "__main__":
     import argparse
 
     p = argparse.ArgumentParser(description="知乎 — 登录 + x-zse 签名 + 爬取")
-    sp = p.add_subparsers(dest="cmd")
-
-    p_feed = sp.add_parser("feed")
-    p_feed.add_argument("--pages", type=int, default=1)
-    p_feed.add_argument("--output", type=str, default="")
-
-    sp.add_parser("me")
+    p.add_argument(
+        "--pages", type=int, default=FEED_PAGES, help=f"抓取页数（默认 {FEED_PAGES}）"
+    )
+    p.add_argument("--output", type=str, default=OUTPUT_FILE, help="输出文件")
+    p.add_argument("-u", "--user", action="store_true", help="仅查看用户信息")
 
     args = p.parse_args()
-    if args.cmd == "feed":
-        cmd_feed(args)
-    elif args.cmd == "me":
-        cmd_me(args)
+    if args.user:
+        if not ensure_login():
+            sys.exit(1)
+        show_user(ZhihuAPI())
     else:
         cmd_feed(args)
