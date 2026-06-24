@@ -86,7 +86,7 @@ HTMLCanvasElement.prototype.toDataURL = function() { return 'data:image/png;base
 HTMLCanvasElement.prototype.toBlob = function(cb) { if (cb) cb(new Blob([])); };
 
 // ═══ CanvasRenderingContext2D ═══
-undefined
+function CanvasRenderingContext2D(canvas) { this.canvas = canvas; }
 CanvasRenderingContext2D.prototype = Object.create(Object.prototype);
 CanvasRenderingContext2D.prototype.constructor = CanvasRenderingContext2D;
 // 核心属性
@@ -133,14 +133,14 @@ CanvasRenderingContext2D.prototype.clip = noop;
 CanvasRenderingContext2D.prototype.stroke = noop;
 CanvasRenderingContext2D.prototype.fill = noop;
 CanvasRenderingContext2D.prototype.clearRect = noop;
-undefined
+function CanvasRenderingContext2D(canvas) { this.canvas = canvas; }
 CanvasRenderingContext2D.prototype.strokeRect = noop;
-undefined
+function CanvasRenderingContext2D(canvas) { this.canvas = canvas; }
 CanvasRenderingContext2D.prototype.strokeText = noop;
 CanvasRenderingContext2D.prototype.drawImage = noop;
 CanvasRenderingContext2D.prototype.putImageData = noop;
 CanvasRenderingContext2D.prototype.createImageData = function(w, h) { return { data: new Uint8Array(w * h * 4), width: w, height: h }; };
-undefined
+function CanvasRenderingContext2D(canvas) { this.canvas = canvas; }
 CanvasRenderingContext2D.prototype.measureText = function(text) {
   return { width: (text || '').length * 8, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 2, fontBoundingBoxAscent: 10, fontBoundingBoxDescent: 2 };
 };
