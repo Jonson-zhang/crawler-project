@@ -49,16 +49,41 @@ def cookies_load():
 def cookies_save(d):
     COOKIE_FILE.write_text(json.dumps(d, ensure_ascii=False, indent=2), "utf-8")
 
-def cookies_check():
+def cookies_check(verbose=True):
     c = cookies_load()
-    if not c: safe_print("[FAIL] 未找到 cookies.json"); return False
+    if not c:
+        if verbose: safe_print("[!] 未找到 cookies.json")
+        return False
     s = requests.Session(); s.cookies.update(c)
     s.headers.update({"User-Agent": UA})
-    r = s.get("https://www.zhihu.com/api/v4/me", timeout=10)
-    if r.status_code == 200 and (r.json() or {}).get("id"):
-        safe_print(f"[OK] Cookie 有效: {(r.json() or {}).get('name', '?')}")
+    try:
+        r = s.get("https://www.zhihu.com/api/v4/me", timeout=10)
+        if r.status_code == 200 and (r.json() or {}).get("id"):
+            if verbose: safe_print(f"[OK] Cookie 有效: {(r.json() or {}).get('name', '?')}")
+            return True
+        if verbose: safe_print("[!] Cookie 已过期")
+        return False
+    except Exception as e:
+        if verbose: safe_print(f"[!] Cookie 检测失败: {e}")
+        return False
+
+
+def ensure_login():
+    """每次启动时检查 Cookie，失效则弹窗让用户手工登录"""
+    if cookies_check(verbose=True):
         return True
-    safe_print("[FAIL] Cookie 已过期"); return False
+
+    safe_print("\n🔐 Cookie 无效或不存在，请手工登录...")
+    for attempt in range(3):
+        c = login_browser()
+        if c and cookies_check(verbose=False):
+            safe_print("[OK] 登录成功，Cookie 已自动保存\n")
+            return True
+        if attempt < 2:
+            safe_print(f"[!] 登录未成功 (第 {attempt + 1}/3 次)，请重试...")
+
+    safe_print("[FAIL] 3 次登录均失败，退出")
+    return False
 
 
 def login_browser():
@@ -154,10 +179,10 @@ def cmd_login(args):
     else: login_browser()
 
 def cmd_feed(args):
+    if not ensure_login(): return
     api = ZhihuAPI()
     me = api.me()
-    if me and me.get("id"): safe_print(f"[OK] 已登录: {me.get('name', '?')}")
-    else: return safe_print("[FAIL] 未登录 — 请先: python main.py login")
+    safe_print(f"[OK] 已登录: {me.get('name', '?')}")
 
     all_items = []
     for pg in range(1, args.pages + 1):
@@ -179,6 +204,7 @@ def cmd_feed(args):
     safe_print(f"\n[+] 共 {len(all_items)} 条, 已保存 {out}")
 
 def cmd_me(args):
+    if not ensure_login(): return
     api = ZhihuAPI()
     d = api.me()
     if d and d.get("id"):
