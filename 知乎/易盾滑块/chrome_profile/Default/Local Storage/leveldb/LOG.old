@@ -1,0 +1,92 @@
+2026/06/24-11:56:00.056 4a3c Creating DB e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\Local Storage\leveldb since it was missing.
+2026/06/24-11:56:00.079 4a3c Reusing MANIFEST e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/24-11:57:00.099 30a4 Level-0 table #5: started
+2026/06/24-11:57:00.104 30a4 Level-0 table #5: 54833 bytes OK
+2026/06/24-11:57:00.107 30a4 Delete type=0 #3
+2026/06/24-11:58:00.313 30a4 Level-0 table #7: started
+2026/06/24-11:58:00.318 30a4 Level-0 table #7: 133316 bytes OK
+2026/06/24-11:58:00.320 30a4 Delete type=0 #4
+2026/06/24-11:59:00.302 30a4 Level-0 table #9: started
+2026/06/24-11:59:00.307 30a4 Level-0 table #9: 160859 bytes OK
+2026/06/24-11:59:00.310 30a4 Delete type=0 #6
+2026/06/24-12:01:02.804 30a4 Level-0 table #11: started
+2026/06/24-12:01:02.811 30a4 Level-0 table #11: 18361 bytes OK
+2026/06/24-12:01:02.814 30a4 Delete type=0 #8
+2026/06/24-12:03:00.304 30a4 Level-0 table #13: started
+2026/06/24-12:03:00.308 30a4 Level-0 table #13: 18353 bytes OK
+2026/06/24-12:03:00.312 30a4 Delete type=0 #10
+2026/06/24-12:05:00.311 30a4 Level-0 table #15: started
+2026/06/24-12:05:00.315 30a4 Level-0 table #15: 18314 bytes OK
+2026/06/24-12:05:00.317 30a4 Delete type=0 #12
+2026/06/24-12:05:00.317 30a4 Compacting 4@0 + 1@1 files
+2026/06/24-12:05:00.322 30a4 Generated table #16@0: 5 keys, 160844 bytes
+2026/06/24-12:05:00.322 30a4 Compacted 4@0 + 1@1 files => 160844 bytes
+2026/06/24-12:05:00.324 30a4 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/24-12:05:00.324 30a4 Delete type=2 #7
+2026/06/24-12:05:00.324 30a4 Delete type=2 #9
+2026/06/24-12:05:00.324 30a4 Delete type=2 #11
+2026/06/24-12:05:00.324 30a4 Delete type=2 #13
+2026/06/24-12:05:00.324 30a4 Delete type=2 #15
+2026/06/24-12:07:00.314 30a4 Level-0 table #18: started
+2026/06/24-12:07:00.319 30a4 Level-0 table #18: 18303 bytes OK
+2026/06/24-12:07:00.320 30a4 Delete type=0 #14
+2026/06/24-12:09:00.310 30a4 Level-0 table #20: started
+2026/06/24-12:09:00.314 30a4 Level-0 table #20: 18325 bytes OK
+2026/06/24-12:09:00.316 30a4 Delete type=0 #17
+2026/06/24-12:11:00.303 30a4 Level-0 table #22: started
+2026/06/24-12:11:00.307 30a4 Level-0 table #22: 18347 bytes OK
+2026/06/24-12:11:00.308 30a4 Delete type=0 #19
+2026/06/24-12:13:00.310 30a4 Level-0 table #24: started
+2026/06/24-12:13:00.314 30a4 Level-0 table #24: 18319 bytes OK
+2026/06/24-12:13:00.316 30a4 Delete type=0 #21
+2026/06/24-12:13:00.316 30a4 Compacting 4@0 + 1@1 files
+2026/06/24-12:13:00.322 30a4 Generated table #25@0: 5 keys, 160886 bytes
+2026/06/24-12:13:00.322 30a4 Compacted 4@0 + 1@1 files => 160886 bytes
+2026/06/24-12:13:00.323 30a4 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/24-12:13:00.324 30a4 Delete type=2 #16
+2026/06/24-12:13:00.324 30a4 Delete type=2 #18
+2026/06/24-12:13:00.324 30a4 Delete type=2 #20
+2026/06/24-12:13:00.324 30a4 Delete type=2 #22
+2026/06/24-12:13:00.324 30a4 Delete type=2 #24
+2026/06/24-12:15:00.314 30a4 Level-0 table #27: started
+2026/06/24-12:15:00.318 30a4 Level-0 table #27: 18308 bytes OK
+2026/06/24-12:15:00.320 30a4 Delete type=0 #23
+2026/06/24-12:17:00.309 30a4 Level-0 table #29: started
+2026/06/24-12:17:00.314 30a4 Level-0 table #29: 18242 bytes OK
+2026/06/24-12:17:00.316 30a4 Delete type=0 #26
+2026/06/24-12:19:00.305 30a4 Level-0 table #31: started
+2026/06/24-12:19:00.309 30a4 Level-0 table #31: 18126 bytes OK
+2026/06/24-12:19:00.311 30a4 Delete type=0 #28
+2026/06/24-12:21:00.306 30a4 Level-0 table #33: started
+2026/06/24-12:21:00.311 30a4 Level-0 table #33: 18087 bytes OK
+2026/06/24-12:21:00.313 30a4 Delete type=0 #30
+2026/06/24-12:21:00.313 30a4 Compacting 4@0 + 1@1 files
+2026/06/24-12:21:00.319 30a4 Generated table #34@0: 5 keys, 160773 bytes
+2026/06/24-12:21:00.319 30a4 Compacted 4@0 + 1@1 files => 160773 bytes
+2026/06/24-12:21:00.320 30a4 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/24-12:21:00.321 30a4 Delete type=2 #25
+2026/06/24-12:21:00.321 30a4 Delete type=2 #27
+2026/06/24-12:21:00.321 30a4 Delete type=2 #29
+2026/06/24-12:21:00.321 30a4 Delete type=2 #31
+2026/06/24-12:21:00.321 30a4 Delete type=2 #33
+2026/06/24-12:23:00.306 30a4 Level-0 table #36: started
+2026/06/24-12:23:00.311 30a4 Level-0 table #36: 18067 bytes OK
+2026/06/24-12:23:00.313 30a4 Delete type=0 #32
+2026/06/24-12:25:00.306 30a4 Level-0 table #38: started
+2026/06/24-12:25:00.311 30a4 Level-0 table #38: 18075 bytes OK
+2026/06/24-12:25:00.313 30a4 Delete type=0 #35
+2026/06/24-12:27:00.311 30a4 Level-0 table #40: started
+2026/06/24-12:27:00.317 30a4 Level-0 table #40: 18090 bytes OK
+2026/06/24-12:27:00.319 30a4 Delete type=0 #37
+2026/06/24-12:29:00.302 30a4 Level-0 table #42: started
+2026/06/24-12:29:00.306 30a4 Level-0 table #42: 19080 bytes OK
+2026/06/24-12:29:00.308 30a4 Delete type=0 #39
+2026/06/24-12:29:00.308 30a4 Compacting 4@0 + 1@1 files
+2026/06/24-12:29:00.314 30a4 Generated table #43@0: 5 keys, 161263 bytes
+2026/06/24-12:29:00.314 30a4 Compacted 4@0 + 1@1 files => 161263 bytes
+2026/06/24-12:29:00.315 30a4 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/24-12:29:00.315 30a4 Delete type=2 #34
+2026/06/24-12:29:00.315 30a4 Delete type=2 #36
+2026/06/24-12:29:00.315 30a4 Delete type=2 #38
+2026/06/24-12:29:00.315 30a4 Delete type=2 #40
+2026/06/24-12:29:00.315 30a4 Delete type=2 #42

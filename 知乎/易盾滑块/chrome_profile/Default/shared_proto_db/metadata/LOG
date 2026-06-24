@@ -1,0 +1,4 @@
+2026/06/24-12:29:56.022 2438 Creating DB e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\shared_proto_db\metadata since it was missing.
+2026/06/24-12:29:56.031 2438 Reusing MANIFEST e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/06/24-12:29:56.031 2438 Recovering log #3
+2026/06/24-12:29:56.031 2438 Reusing old log e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\shared_proto_db\metadata/000003.log 
