@@ -32,19 +32,37 @@ requests.get() → 知乎 API
 
 ```bash
 # 获取推荐流（自动检查/弹窗登录）
-python main.py feed
-
-# 获取 3 页
-python main.py feed --pages 3
-
-# 用户信息
-python main.py me
-
-# 无参数默认 = feed 1 页
 python main.py
+
+# 指定页数（知乎固定每页 6 条）
+python main.py --pages 5
+
+# 仅查看用户信息
+python main.py -u
 ```
 
 Cookie 自动管理：首次弹 Camoufox 浏览器手工登录 → 保存 `cookies.json` → 后续启动自动验证有效性 → 失效则重新弹窗。
+
+### 自动化工具使用范围
+
+| 阶段 | 工具 | 说明 |
+|------|------|------|
+| 登录 | Camoufox（自动化浏览器）| 仅在登录时弹窗一次，用户手工扫码/密码登录后提取 Cookie |
+| Cookie 验证 | `requests`（纯 HTTP）| `/api/v4/me` 检查 Cookie 是否有效 |
+| 签名计算 | Node.js `sign.js`（本地）| `subprocess` 调用，不依赖浏览器 |
+| API 请求 | `requests`（纯 HTTP）| 全部走 `requests.Session`，不碰浏览器 |
+
+登录之后的签名、请求、翻页全程不涉及自动化浏览器。
+
+### Cookie 角色划分
+
+| Cookie | 来源 | 作用 | 签名相关？ |
+|--------|------|------|-----------|
+| `d_c0` | 浏览器打开知乎首页自动下发 | 设备指纹 ID，签名算法输入参数之一 | ✅ 是 |
+| `z_c0` | 登录成功后下发 | 用户登录凭证，证明你是谁 | ❌ 无关 |
+| 其他 | 会话过程自动种 | 统计/追踪 | ❌ 无关 |
+
+签名源串为 `"101_3_3.0" + encUrl + d_c0`，`d_c0` 来自 Cookie 但不需登录。`z_c0` 仅用于 API 鉴权，不在签名计算中。
 
 ## 签名原理
 
@@ -106,4 +124,5 @@ node --version  # >= 20
 
 - `runtime.js`/`vendor.js`/`479.js` 从浏览器 Sources 提取，知乎发版后可能需更新
 - `cookies.json` 含个人凭证，已被 `.gitignore` 排除
-- Cookie 关键字段：`z_c0`（登录凭证）+ `d_c0`（签名参数）
+- 翻页依赖 `paging.next` 返回的完整 URL（含 `session_token`），直接传 `page_number` 无效
+- 知乎推荐流每页固定返回 6 条，不可通过参数调整
