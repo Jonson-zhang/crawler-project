@@ -71,8 +71,8 @@ function init() {
   global.document = dom.document;
   global.screen = dom.screen;
   global.top = global;
-  global.InstallTrigger = undefined;
-  global.chrome = undefined;
+  global.InstallTrigger = {};      // Firefox: object
+  global.chrome = undefined;         // Firefox: undefined
   // 原型链
   global.EventTarget = dom.EventTarget;
   global.Node = dom.Node;
@@ -105,8 +105,8 @@ function init() {
   const evalCode = getEvalCode();
   try {
     // eval 代码自包含：定义变量、调用 glb[_AUuXfEG27Xa3x](__$c, [env])
-    // 所有 var 声明会泄漏到 global
-    (0, eval)(evalCode);
+    // 用 vm.runInThisContext 确保 var 声明泄漏到 global
+    vm.runInThisContext(evalCode, { filename: 'vmp_eval.js' });
   } catch(e) {
     console.error = _oe;
     console.error('[sign] eval error:', e.message.slice(0, 300));
