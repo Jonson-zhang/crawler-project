@@ -3,91 +3,105 @@
 ## 架构
 
 ```
-Python (main.py)
-  → subprocess: node sign.js <url> <body_json>
-    → env.dom.js (原型链补环境: EventTarget→Node→Element→HTMLElement 等)
-    → vendor.js (webpack bundle, ~1.36MB)
-      ├── 模块 68274: signV2Init() → eval(VMP字节码) → 创建 mnsv2
-      └── 模块 40055: seccore_signv2(url, body) → MD5 + mnsv2 + 自定义Base64
-    → sign() → stdout JSON {x-s, x-t}
-  → HTTP 请求 → 解析展示
+方案 A: Node.js 补环境 (sign.js)
+  Python → subprocess node sign.js → {x-s, x-t}
+  vendor.js + env.dom.js → VMP 创建 mnsv2 → seccore_signv2
+
+方案 B: Python 纯算 (sign.py)  ← 当前推荐
+  sign.py 内直接实现 XXTEA + 自定义 Base64 + MD5
+  无需 vendor.js, 无需 Node.js
 ```
 
-## 目录结构 (6 文件, 1.4MB)
+## 目录 (7 文件)
 
 ```
 小红书/
 ├── VM_STATUS.md     # 本文档
-├── main.py          # Python 入口 (subprocess 调 sign.js)
-├── sign.js          # Node.js 签名 (加载 vendor.js + 签名逻辑)
+├── sign.py          # Python 纯算签名 ✅
+├── sign.js          # Node.js 补环境签名 (备用)
+├── main.py          # Python 入口
 ├── env.dom.js       # 浏览器原型链补环境
 └── data/
-    ├── vendor.js    # 完整 webpack bundle (含 seccore_signv2 + signV2Init)
-    └── cookies.json # 手动刷新的 cookie
+    ├── vendor.js    # webpack bundle
+    └── cookies.json
 ```
 
-## ✅ 已完成
+## seccore_signv2 公式 (已验证)
 
-| 项目 | 状态 | 详情 |
-|------|------|------|
-| vendor.js 加载 | ✅ | Node.js VM 中~40ms |
-| env.dom.js 原型链 | ✅ | EventTarget→Node→Element→HTMLElement, constructor.name 正确 |
-| webpack runtime | ✅ | 拦截 chunk push, 注册模块 |
-| signV2Init | ✅ | 成功创建 mnsv2 函数 |
-| MD5 哈希 | ✅ | Node crypto |
-| 自定义 Base64 | ✅ | 字母表验证通过 |
-| PluginArray/MimeTypeArray | ✅ | 浏览器兼容的存根 |
-| Node global 注入 | ✅ | document/navigator/screen/performance/top |
-| VMP 函数族创建 | ✅ | 16 个子函数 + mnsv2 |
+```python
+url = "/api/sns/web/v1/homefeed"
+body = '{"cursor_score":"","num":20}'
+combined = url + body
 
-## 关键发现
+hc = MD5(combined)   # hex
+hu = MD5(url)        # hex
 
-### 1. VMP eval 使用 Node global (非沙箱)
+x3 = mnsv2(combined, hc, hu)   # XXTEA/RC4 → custom Base64
 
-VMP eval 代码: `var glb = _0xe762c0(0x1a) == typeof window ? global : window`
-
-解码后 `0x1a` != `typeof window`，所以 `glb = window`。在浏览器中 `window` 是真实浏览器对象；在 Node.js 中，`window` = 沙箱（sandbox.window = sandbox）。
-
-但沙箱中缺少很多 Node 原生 API（Buffer, process, 真正的 navigator 等），所以必须把 browser-compatible 的 navigator/screen/performance 注入到 Node global，让 VMP 能访问它们。
-
-### 2. inject navigator 的陷阱
-
-Node.js 的 `global.navigator` 有 getter 无 setter，直接 `=` 赋值静默失败。必须用 `Object.defineProperty` 覆盖。
-
-### 3. env.dom.js 增强项
-
-需添加/修正的属性:
-
-| 属性 | 之前 | 之后 | 原因 |
-|------|------|------|------|
-| navigator.plugins | `[]` | `new PluginArray()` | VMP 检查类型 |
-| navigator.mimeTypes | `[]` | `new MimeTypeArray()` | VMP 检查类型 |
-| navigator.product | UNDEF | `"Gecko"` | 浏览器有 |
-| navigator.vendor | `"Google Inc."` | `""` | Firefox 空 |
-| navigator.doNotTrack | `null` | `"1"` | 浏览器有 |
-
-## ❌ 剩余问题
-
-### mnsv2 输出过短 (mns0201_0)
-
-VMP 成功创建了 mnsv2 和 16 个子函数，但 mnsv2 内部哈希输出为 `mns0201_0` (浏览器为 `mns0301_<200+ chars>`).
-
-根因: VMP 字节码的内部哈希表构建依赖环境属性的精确值。有 3 个状态槽为 undefined，表明某些环境属性提取失败。
-
-VMP 内部状态 `mnsv2.ΙIΙ`:
-```
-.0: Node global (含注入的 navigator/screen/document)
-.d: 2 (维度?)
-.$2: state object
-.$0: env array string
-.$1: state object  
-.length: 1
+payload = {"x0":"4.3.5","x1":"xhs-pc-web","x2":"Windows","x3":x3,"x4":"object"}
+xs = "XYS_" + custom_base64(payload.to_json_utf8)
+xt = str(int(time.time()*1000))
 ```
 
-## 下一步选项
+### 自定义 Base64
 
-A. **浏览器桥接** (简单可靠) — 用 Camoufox 在后台提供 mnsv2 调用，Python 通过 MCP 调用
+x-s payload: `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5`
+mns0201:      `MfgqrsbcyzPQRStuvC7mn501HIJBo2DEFTKdeNOwxWXYZap89+/A4UVLhijkl63G`
 
-B. **I/O 录制** (如果 mnsv2 是纯函数) — 在浏览器中录制 (combined, hashC, hashU) → result 映射对，Node 中查表
+## mnsv2 算法 (来自 CSDN 文章)
 
-C. **VMP 内部调试** (复杂) — 继续补全 VMP 需要的每个环境属性，直到 3 个 undefined 槽位被填满
+### 版本对比
+
+| 版本 | 算法 | payload | 前缀 | 状态 |
+|------|------|---------|------|------|
+| mns0201 | XXTEA (key=e6483ca2a1eed5e3, Δ=0x3C6EF373) | 89B | mns0201_ | ✅ Python 已实现 |
+| mns0301 | RC4 (预置 S-box, 256B) | 135B | mns0301_ | ❌ 需 S-box |
+
+### mns0201 XXTEA (已实现)
+
+```python
+XXTEA_KEY = b"e6483ca2a1eed5e3"  # 16B ASCII
+XXTEA_DELTA = 0x3C6EF373         # 修正版魔数
+
+payload_89B:
+  [0:4]   magic "xh\)" 
+  [4:8]   随机数 u32
+  [8:16]  时间戳 u64
+  [16:20] flags u32 (=15)
+  [20:36] MD5(url+body) XOR 0x5A
+  [36:52] MD5(url) XOR 0xA5
+  [52:56] URL 长度 u32
+  [56:89] 预留 (0x00)
+→ XXTEA(key, delta) → Base64(mns0201字母表) → "mns0201_" + result
+
+当前状态: ✅ 实现 + format 正确 (132 chars output)
+            ❌ server 返回 406 (需要 mns0301)
+```
+
+### mns0301 RC4 (待实现)
+
+```
+payload_135B:
+  [0:4]   magic "xh\)"
+  [4:8]   随机数 u32
+  [8:16]  当前时间戳 ms u64
+  [16:24] 页面加载时间戳 ms u64
+  [24:28] 固定值 (15-17) u32
+  [28:32] 点击计数器 u32
+  [32:36] mouseenter 计数器 u32
+  [36:44] 随机浮点数 f64
+  [44:97] a1 cookie (53B, 前缀 "4" + 52B hex)
+  [97]    \n
+  [98:108] xsecappid "xhs-pc-web"
+  [108]   \x01
+  [109:135] extra (1B random + 17B fixed + 8B random)
+→ RC4(S-box) → Base64(XHS字母表) → "mns0301_" + result
+
+当前状态: ❌ 缺 RC4 S-box (256B 置换表)
+```
+
+## 下一步
+
+1. **提取 RC4 S-box**: 从 VMP eval 代码 (vendor.js 模块 68274) 中搜索 256 元素数组
+2. **构造 135B payload**: 需要 a1 cookie 值和正确的计数器
+3. **测试 mns0301**: 预期 server 返回 200
