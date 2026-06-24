@@ -2,7 +2,7 @@
 // @name         通用反调试绕过Debugger v 4.0
 // @namespace    https://github.com/Cunninger/anti-debug-bypass
 // @version      4.0.0
-// @description  通用反调试绕过 — 新增 script.text / document.write / constructor链 / rAF / 微任务 / hook 锁定 / $_ts 专项对抗
+// @description  通用反调试绕过 v4.0 — 全防御层：script.text / doc.write / constructor链 / rAF / 微任务 / hook锁定 / 属性重定义防御
 // @author       Claude (Enhanced)
 // @match        *://*/*
 // @run-at       document-start
@@ -935,22 +935,31 @@
     }
 
     // ============================================================
-    //  ★ v4.0 关键：$_ts 专项对抗
-    //  直接阻止 $_ts 系统的初始化
+    //  ★ v4.0：原型链/全局属性重定义防御
+    //  阻止任何脚本通过 __defineGetter__ 覆盖受保护的全局 API
+    //  这同时适用于 $_ts、jskj、xhs 等各类反调试/反爬框架
     // ============================================================
-    // 如果页面已定义了 $_ts.cd 但还没调用 lcd，我们可以在这里阻止
-    // 注意：这个脚本在 document-start 运行，此时 $_ts 可能还不存在
-    var _tsBlockerInstalled = false;
-    function installTsBlocker() {
-        if (_tsBlockerInstalled) return;
-        _tsBlockerInstalled = true;
+    var _globalAttrBlockerInstalled = false;
+    function installGlobalAttrBlocker() {
+        if (_globalAttrBlockerInstalled) return;
+        _globalAttrBlockerInstalled = true;
+
+        // 扩展保护列表：涵盖常见反调试框架的入口变量名
+        var protectedGlobals = blockedProps.concat([
+            '$_ts',    // Accesine / 数美
+            'jskj',    // 极验系
+            '_$',      // 通用混淆器入口
+            '__jsl',   // 阿里系
+            '_0x',     // obfuscator.io 入口
+            'cd',      // 常见 VM 指令入口
+            'lcd'      // VM 执行入口
+        ]);
 
         try {
-            // Hook window.__defineGetter__（如果有的话）— 旧版浏览器兼容
             if (window.__defineGetter__) {
                 var _defineGetter = window.__defineGetter__;
                 window.__defineGetter__ = function(prop, fn) {
-                    if (prop === '$_ts' || blockedProps.indexOf(prop) !== -1) {
+                    if (protectedGlobals.indexOf(prop) !== -1) {
                         log('🚫 阻止 __defineGetter__:', prop);
                         return;
                     }
@@ -958,10 +967,24 @@
                 };
             }
         } catch(e) {}
+
+        // 也防御 __defineSetter__
+        try {
+            if (window.__defineSetter__) {
+                var _defineSetter = window.__defineSetter__;
+                window.__defineSetter__ = function(prop, fn) {
+                    if (protectedGlobals.indexOf(prop) !== -1) {
+                        log('🚫 阻止 __defineSetter__:', prop);
+                        return;
+                    }
+                    return _defineSetter.call(window, prop, fn);
+                };
+            }
+        } catch(e) {}
     }
 
-    // 尽早安装 $_ts 专项对抗
-    installTsBlocker();
+    // document-start 阶段尽早安装
+    installGlobalAttrBlocker();
 
     // ============================================================
     //  Verbose 专用 Hook（按需注入）
@@ -1069,7 +1092,7 @@
 
     setTimeout(function () {
         log('✅ v4.0 已激活 | 新增防御:',
-            'script.text|doc.write|rAF/rIC/qMicrotask|Promise.then|Obj.defineProperty|Reflect.defineProperty|锁hook|$_ts专项');
+            'script.text|doc.write|rAF/rIC/qMicrotask|Promise.then|Obj.defineProperty|Reflect.defineProperty|锁hook|全局属性防御');
         log('   拦截:', blockCount, '| Worker:', workerCount);
     }, 200);
 
