@@ -620,6 +620,28 @@ var screen = {
   orientation: { type: 'landscape-primary', angle: 0 },
 };
 
+// ═══ Plugin / MimeType stubs ═══
+function Plugin() { this.name = ''; this.description = ''; this.filename = ''; this.length = 0; }
+Plugin.prototype.item = function(i) { return undefined; };
+Plugin.prototype.namedItem = function(name) { return undefined; };
+Plugin.prototype.constructor = Plugin;
+
+function PluginArray() { this.length = 0; }
+PluginArray.prototype.item = function(i) { return undefined; };
+PluginArray.prototype.namedItem = function(name) { return undefined; };
+PluginArray.prototype.refresh = function() {};
+PluginArray.prototype.constructor = PluginArray;
+Object.defineProperty(PluginArray.prototype, Symbol.toStringTag, { value: 'PluginArray' });
+
+function MimeType() { this.type = ''; this.description = ''; this.suffixes = ''; this.enabledPlugin = null; }
+MimeType.prototype.constructor = MimeType;
+
+function MimeTypeArray() { this.length = 0; }
+MimeTypeArray.prototype.item = function(i) { return undefined; };
+MimeTypeArray.prototype.namedItem = function(name) { return undefined; };
+MimeTypeArray.prototype.constructor = MimeTypeArray;
+Object.defineProperty(MimeTypeArray.prototype, Symbol.toStringTag, { value: 'MimeTypeArray' });
+
 // ═══ Navigator ═══
 var navigator = {
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
@@ -631,15 +653,16 @@ var navigator = {
   maxTouchPoints: 0,
   webdriver: false,
   cookieEnabled: true,
-  doNotTrack: null,
-  vendor: 'Google Inc.',
+  doNotTrack: '1',
+  product: 'Gecko',
+  vendor: '',
   vendorSub: '',
   productSub: '20030107',
   appCodeName: 'Mozilla',
   appName: 'Netscape',
   appVersion: '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
-  plugins: [],
-  mimeTypes: [],
+  plugins: new PluginArray(),
+  mimeTypes: new MimeTypeArray(),
   onLine: true,
   pdfViewerEnabled: true,
 };
@@ -859,6 +882,7 @@ module.exports = {
   MessageChannel, Worker, WebSocket,
   Navigator, Screen, Location, History,
   Image,
+  Plugin, PluginArray, MimeType, MimeTypeArray,
   performance, screen, navigator, location, history,
   document, localStorage, sessionStorage, console,
   noop,

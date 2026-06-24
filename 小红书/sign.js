@@ -101,10 +101,13 @@ function init() {
   _ctx = vm.createContext(_sandbox);
   const t0 = Date.now();
 
-  // 1. ═══ 注入 document/top 到 Node global（必须在加载 vendor 前）═══
-  //    vendor.js 末尾自动调用 signV2Init，eval 代码用 typeof 检查这些变量
+  // 1. ═══ 注入浏览器环境到 Node global（VMP eval 用 typeof 检查）═══
+  //    注意: navigator/performance 有 getter 无 setter，必须用 defineProperty 覆盖
+  Object.defineProperty(global, 'navigator', { value: _sandbox.navigator, configurable: true, writable: true });
+  Object.defineProperty(global, 'performance', { value: _sandbox.performance, configurable: true, writable: true });
   global.document = _sandbox.document;
-  global.top = _sandbox; // top = window
+  global.screen = _sandbox.screen;
+  global.top = _sandbox;
 
   // 2. 抑制 VMP eval 代码的 console.error 噪音
   const _origConsoleError = console.error;
