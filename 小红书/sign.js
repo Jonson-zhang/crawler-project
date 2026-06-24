@@ -1,7 +1,6 @@
 /**
  * sign.js — 小红书 X-s 离线签名
- *
- * 直接执行 VMP eval 代码在 Node global 上，补上浏览器变量
+ * 用法: node sign.js <url> <body_json>
  */
 "use strict";
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
@@ -20,24 +19,18 @@ function customBase64Encode(bytes) {
   return r;
 }
 
-// ═══ 从 vendor.js 提取 eval 代码 ═══
-let _EVAL_CODE = null;
 function getEvalCode() {
-  if (_EVAL_CODE) return _EVAL_CODE;
+  if (getEvalCode._cached) return getEvalCode._cached;
   const vendor = fs.readFileSync(path.join(__dirname, 'data', 'vendor.js'), 'utf-8');
   const mt = vendor.indexOf('__makeTemplateObject([');
-  if (mt < 0) throw new Error('template not found');
-  // 找第一个 "[ 之后的第一个 "
-  const arrOpen = vendor.indexOf('[', mt);
-  const strStart = vendor.indexOf('"', arrOpen);
-  // 解析 JS 字符串
-  let i = strStart + 1, raw = '';
+  const arr = vendor.indexOf('[', mt);
+  const q = vendor.indexOf('"', arr);
+  let i = q + 1, raw = '';
   while (i < vendor.length) {
     if (vendor[i] === '\\') { raw += vendor[i]; raw += vendor[i+1]; i += 2; continue; }
     if (vendor[i] === '"') break;
     raw += vendor[i]; i++;
   }
-  // 解码转义序列
   let code = '', j = 0;
   while (j < raw.length) {
     if (raw[j] === '\\') {
@@ -52,27 +45,17 @@ function getEvalCode() {
     }
     code += raw[j]; j++;
   }
-  _EVAL_CODE = code;
+  getEvalCode._cached = code;
   return code;
 }
 
-// ═══ 状态 ═══
 let _mnsv2fn = null, _ready = false;
 
 function init() {
   if (_ready) return;
   const t0 = Date.now();
 
-  // ═══ 关键: 先把浏览器变量注入 Node global ═══
-  //     eval 代码最后一行 typeof 检查在 global scope 找这些变量
-  //     注意: navigator/performance 有 getter 无 setter，必须 defineProperty
-  Object.defineProperty(global, 'navigator', {value: dom.navigator, configurable: true, writable: true});
-  Object.defineProperty(global, 'performance', {value: dom.performance, configurable: true, writable: true});
-  global.document = dom.document;
-  global.screen = dom.screen;
-  global.top = global;
-  global.InstallTrigger = {};      // Firefox: object
-  global.chrome = undefined;         // Firefox: undefined
+  // ═══ 在 Node global 上注入浏览器完整环境 ═══
   // 原型链
   global.EventTarget = dom.EventTarget;
   global.Node = dom.Node;
@@ -81,32 +64,64 @@ function init() {
   global.HTMLCanvasElement = dom.HTMLCanvasElement;
   global.CanvasRenderingContext2D = dom.CanvasRenderingContext2D;
   global.WebGLRenderingContext = dom.WebGLRenderingContext;
+  global.OffscreenCanvas = dom.OffscreenCanvas;
   global.AudioContext = dom.AudioContext;
   global.XMLHttpRequest = dom.XMLHttpRequest;
+  global.Headers = dom.Headers;
+  global.Blob = dom.Blob;
+  global.File = dom.File;
+  global.FileReader = dom.FileReader;
+  global.FormData = dom.FormData;
   global.MutationObserver = dom.MutationObserver;
+  global.IntersectionObserver = dom.IntersectionObserver;
+  global.ResizeObserver = dom.ResizeObserver;
+  global.PerformanceObserver = dom.PerformanceObserver;
   global.Event = dom.Event;
   global.CustomEvent = dom.CustomEvent;
+  global.MessageChannel = dom.MessageChannel;
+  global.Worker = dom.Worker;
+  global.WebSocket = dom.WebSocket;
+  global.Image = dom.Image;
   global.Performance = dom.Performance;
+  global.PerformanceTiming = dom.PerformanceTiming;
+  global.PerformanceNavigation = dom.PerformanceNavigation;
+  global.Document = dom.Document;
+  global.HTMLDocument = dom.HTMLDocument;
+  global.Navigator = dom.Navigator;
+  global.Screen = dom.Screen;
+  global.Location = dom.Location;
+  global.History = dom.History;
+  // Plugin/Mime stubs
+  global.Plugin = dom.Plugin;
+  global.PluginArray = dom.PluginArray;
+  global.MimeType = dom.MimeType;
+  global.MimeTypeArray = dom.MimeTypeArray;
+
+  // 浏览器单例
+  global.document = dom.document;
   global.location = dom.location;
+  global.screen = dom.screen;
+  global.history = dom.history;
+  global.performance = dom.performance;
   global.localStorage = dom.localStorage;
   global.sessionStorage = dom.sessionStorage;
+  global.console = {log:()=>{}, error:()=>{}, warn:()=>{}, info:()=>{}, debug:()=>{}};
 
-  // 保存已有的 native globals（防止 eval 覆盖）
-  const saved = {};
-  for (const k of ['navigator','performance','document','screen','top','location',
-    'EventTarget','Node','Element','HTMLElement','Event','CustomEvent',
-    'localStorage','sessionStorage','Performance']) {
-    try { saved[k] = global[k]; } catch(e) {}
-  }
+  // navigator 必须 defineProperty 覆盖
+  Object.defineProperty(global, 'navigator', {value: dom.navigator, configurable: true, writable: true});
+
+  // VMP env slot: top, InstallTrigger, chrome
+  global.top = global;
+  global.InstallTrigger = undefined;  // Chrome
+  global.chrome = {};                  // Chrome
 
   const _oe = console.error; console.error = () => {};
 
-  // ═══ 直接 eval eval 代码（在 Node global scope） ═══
+  // ═══ 直接执行 VMP eval 代码 ═══
   const evalCode = getEvalCode();
   try {
-    // eval 代码自包含：定义变量、调用 glb[_AUuXfEG27Xa3x](__$c, [env])
-    // 用 vm.runInThisContext 确保 var 声明泄漏到 global
-    vm.runInThisContext(evalCode, { filename: 'vmp_eval.js' });
+    // 使用 (0, eval) 在全局作用域执行
+    (0, eval)(evalCode);
   } catch(e) {
     console.error = _oe;
     console.error('[sign] eval error:', e.message.slice(0, 300));
@@ -114,17 +129,13 @@ function init() {
 
   console.error = _oe;
 
-  // 恢复被覆盖的 globals
-  for (const k of Object.keys(saved)) {
-    try { if (saved[k] !== undefined) global[k] = saved[k]; } catch(e) {}
-  }
-
-  // 获取 mnsv2（var 声明泄漏到 global）
+  // 获取 mnsv2
   _mnsv2fn = global.mnsv2 || null;
 
   // 清理
   delete global.document; delete global.top; delete global.screen;
   delete global.InstallTrigger; delete global.chrome;
+  Object.defineProperty(global, 'navigator', {value: undefined, configurable: true, writable: true});
 
   console.error('[sign] ready in', Date.now()-t0, 'ms, mnsv2:', typeof _mnsv2fn);
   _ready = true;
@@ -136,8 +147,9 @@ function sign(url, data) {
   const md5 = s => crypto.createHash('md5').update(s,'utf8').digest('hex');
   const hc = md5(url + bodyStr), hu = md5(url);
   let x3;
-  if (_mnsv2fn) { try { x3 = String(_mnsv2fn(url + bodyStr, hc, hu)); } catch(e) { x3 = 'ERR'; } }
-  else { x3 = 'NOMNSV2'; }
+  if (_mnsv2fn) {
+    try { x3 = String(_mnsv2fn(url + bodyStr, hc, hu)); } catch(e) { x3 = 'ERR'; }
+  } else { x3 = 'NOMNSV2'; }
   const payload = JSON.stringify({
     x0:'4.3.5', x1:'xhs-pc-web', x2:'Windows', x3, x4: typeof data === 'string' ? 'string' : 'object'
   });
@@ -146,6 +158,13 @@ function sign(url, data) {
     'x-t': String(Date.now()),
     'x-s-common': '',
   };
+}
+
+if (require.main === module) {
+  const url = process.argv[2] || '/api/sns/web/v1/homefeed';
+  const bodyStr = process.argv[3] || '{"cursor_score":"","num":20}';
+  let body; try { body = JSON.parse(bodyStr); } catch(e) { body = bodyStr; }
+  init(); console.log(JSON.stringify(sign(url, body)));
 }
 
 module.exports = { init, sign };
