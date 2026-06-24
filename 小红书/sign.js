@@ -24,9 +24,11 @@ function init() {
   if (_ready) return;
   const t0 = Date.now();
 
-  // 构建沙箱: Node 真实 API + 我们补的浏览器 API
+  // 构建沙箱: Node 真实 API (排除会被 env_vmp 覆盖的浏览器 API)
   const sandbox = {};
+  const SKIP = ['navigator','performance','document','screen','location','history','window','self','global','globalThis','top','console','localStorage','sessionStorage','EventTarget','Event','Node','Element','HTMLElement','HTMLCanvasElement','HTMLImageElement','CanvasRenderingContext2D','WebGLRenderingContext','AudioContext','Navigator','Performance','Screen','Location','History','Document','HTMLElement','MutationObserver','IntersectionObserver','ResizeObserver','PerformanceObserver','PluginArray','Plugin','MimeTypeArray','MimeType','XMLHttpRequest','WebSocket','Worker','MessageChannel','Image','Blob','File','FileReader','FormData','Headers'];
   for (const k of Object.getOwnPropertyNames(global)) {
+    if (SKIP.includes(k)) continue;
     try { sandbox[k] = global[k]; } catch(e) {}
   }
   // 把 Function.toString 和 eval 保留原版 (VM context 会用自己的)
