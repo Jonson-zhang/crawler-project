@@ -48,11 +48,9 @@ function init() {
   } catch(e) {
     process.stderr.write('[sign] v.js error: ' + e.message.slice(0, 300) + '\n');
   }
-  // v.js 设置 window 但可能没设置 self。确保 self/window/global/globalThis 存在
-  if (s.window && !s.self) vm.runInContext('self = window', ctx);
-  if (!s.window) vm.runInContext('window = this', ctx);
-  if (!s.global) vm.runInContext('global = window', ctx);
-  if (!s.globalThis) vm.runInContext('globalThis = window', ctx);
+  // v.js 需要 window 已存在 (浏览器中 window 是全局对象)
+  // 先设置 self/window/global/globalThis = sandbox 本身
+  vm.runInContext('self = this; window = this; global = this; globalThis = this;', ctx);
 
   // 3. 加载 webpack runtime + vendor.js (在沙箱中, mnsv2 会泄漏到 s)
   const _oe = console.error; console.error = function(){};
@@ -68,15 +66,15 @@ function init() {
   // 4. 获取 mnsv2
   _mnsv2fn = s.mnsv2 || null;
 
-  // Debug: 查找所有 mnsv 相关
-  const _ms = Object.getOwnPropertyNames(s).filter(function(k){ return k.indexOf('mns')>=0 || k.indexOf('nsv')>=0 || (k.length<10 && typeof s[k]==='function' && s[k].length===0 && String(s[k]).indexOf('_0x30ce91')>0); });
+  // Debug
+  const _ms = Object.getOwnPropertyNames(s).filter(function(k){ return k.indexOf('mns')>=0 || k.indexOf('nsv')>=0; });
   process.stderr.write('[sign] mns-related keys: ' + _ms.join(', ') + '\n');
-
-  // Check if mnsv2 is on window or any nested object
-  if (!_mnsv2fn && s.window && typeof s.window === 'object') {
-    _mnsv2fn = s.window.mnsv2 || null;
-    if (_mnsv2fn) process.stderr.write('[sign] found mnsv2 on window\n');
+  if (typeof s.mnsv2 !== 'undefined') {
+    try { process.stderr.write('[sign] mnsv2 type: ' + typeof s.mnsv2 + ' proto: ' + Object.prototype.toString.call(s.mnsv2) + '\n'); } catch(e) {}
   }
+  // Also check for VMP leaked vars
+  const _lp = Object.getOwnPropertyNames(s).filter(function(k){ return k.startsWith('_') && k.length < 30; });
+  process.stderr.write('[sign] leaked VMP vars: ' + _lp.slice(0,10).join(', ') + '\n');
 
   if (typeof _mnsv2fn === 'function') {
     try {
