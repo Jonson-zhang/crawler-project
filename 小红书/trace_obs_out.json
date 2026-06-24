@@ -1,0 +1,649 @@
+{
+  "missing": [
+    "document.addEventListener.IΙΙ",
+    "document.documentElement.getAttribute.IΙΙ",
+    "document.documentMode",
+    "document.evaluate",
+    "navigator.permissions",
+    "navigator.userAgentData",
+    "performance.now.IΙΙ"
+  ],
+  "descriptors": [
+    null
+  ],
+  "has": [
+    "document.__driver_evaluate",
+    "document.__driver_unwrapped",
+    "document.__fxdriver_evaluate",
+    "document.__fxdriver_unwrapped",
+    "document.__selenium_evaluate",
+    "document.__selenium_unwrapped",
+    "document.__webdriver_evaluate",
+    "document.__webdriver_script_fn",
+    "document.__webdriver_script_func",
+    "document.__webdriver_unwrapped",
+    "navigator.__proto__.webdriver",
+    "navigator.webdriver"
+  ],
+  "summary": {
+    "total": 93,
+    "missingPaths": [
+      "performance.now.IΙΙ",
+      "document.documentElement.getAttribute.IΙΙ",
+      "document.documentElement.getAttribute.IΙΙ",
+      "document.documentElement.getAttribute.IΙΙ",
+      "document.addEventListener.IΙΙ",
+      "document.addEventListener.IΙΙ",
+      "document.addEventListener.IΙΙ",
+      "document.addEventListener.IΙΙ",
+      "document.addEventListener.IΙΙ",
+      "document.evaluate",
+      "document.addEventListener.IΙΙ",
+      "navigator.permissions",
+      "navigator.userAgentData",
+      "document.documentMode",
+      "document.documentMode"
+    ],
+    "descriptorAccess": [
+      "document.cookie",
+      "navigator.webdriver",
+      "navigator.webdriver"
+    ],
+    "invocationErrors": [],
+    "prototypeAccess": [
+      "navigator"
+    ],
+    "logs": [
+      {
+        "type": "get",
+        "path": "performance.now",
+        "detail": "function"
+      },
+      {
+        "type": "missing",
+        "path": "performance.now.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "performance.now.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          {
+            "timeOrigin": 1782308437256
+          },
+          []
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "performance.now",
+        "detail": []
+      },
+      {
+        "type": "get",
+        "path": "performance.timeOrigin",
+        "detail": "number"
+      },
+      {
+        "type": "get",
+        "path": "document.addEventListener",
+        "detail": "function"
+      },
+      {
+        "type": "get",
+        "path": "document.cookie",
+        "detail": "string"
+      },
+      {
+        "type": "set",
+        "path": "document.cookie",
+        "detail": "string"
+      },
+      {
+        "type": "descriptor",
+        "path": "document.cookie",
+        "detail": [
+          "value",
+          "writable",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "define",
+        "path": "document.cookie",
+        "detail": [
+          "value"
+        ]
+      },
+      {
+        "type": "prototype",
+        "path": "navigator",
+        "detail": "getPrototypeOf"
+      },
+      {
+        "type": "get",
+        "path": "navigator.webdriver",
+        "detail": "boolean"
+      },
+      {
+        "type": "get",
+        "path": "navigator.webdriver",
+        "detail": "boolean"
+      },
+      {
+        "type": "has",
+        "path": "navigator.webdriver",
+        "detail": true
+      },
+      {
+        "type": "has",
+        "path": "navigator.__proto__.webdriver",
+        "detail": false
+      },
+      {
+        "type": "descriptor",
+        "path": "navigator.webdriver",
+        "detail": [
+          "value",
+          "writable",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "descriptor",
+        "path": "navigator.webdriver",
+        "detail": [
+          "value",
+          "writable",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.documentElement",
+        "detail": "object"
+      },
+      {
+        "type": "has",
+        "path": "document.__webdriver_script_fn",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__driver_evaluate",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__webdriver_evaluate",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__selenium_evaluate",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__fxdriver_evaluate",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__driver_unwrapped",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__webdriver_unwrapped",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__selenium_unwrapped",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__fxdriver_unwrapped",
+        "detail": false
+      },
+      {
+        "type": "has",
+        "path": "document.__webdriver_script_func",
+        "detail": false
+      },
+      {
+        "type": "get",
+        "path": "document.documentElement.getAttribute",
+        "detail": "function"
+      },
+      {
+        "type": "missing",
+        "path": "document.documentElement.getAttribute.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.documentElement.getAttribute.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          {
+            "style": {}
+          },
+          [
+            "selenium"
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.documentElement.getAttribute",
+        "detail": [
+          "selenium"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.documentElement.getAttribute",
+        "detail": "function"
+      },
+      {
+        "type": "missing",
+        "path": "document.documentElement.getAttribute.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.documentElement.getAttribute.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          {
+            "style": {}
+          },
+          [
+            "webdriver"
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.documentElement.getAttribute",
+        "detail": [
+          "webdriver"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.documentElement.getAttribute",
+        "detail": "function"
+      },
+      {
+        "type": "missing",
+        "path": "document.documentElement.getAttribute.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.documentElement.getAttribute.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          {
+            "style": {}
+          },
+          [
+            "driver"
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.documentElement.getAttribute",
+        "detail": [
+          "driver"
+        ]
+      },
+      {
+        "type": "missing",
+        "path": "document.addEventListener.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.addEventListener.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          null,
+          [
+            "mousemove",
+            null
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.addEventListener",
+        "detail": [
+          "mousemove",
+          null
+        ]
+      },
+      {
+        "type": "missing",
+        "path": "document.addEventListener.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.addEventListener.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          null,
+          [
+            "touchmove",
+            null
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.addEventListener",
+        "detail": [
+          "touchmove",
+          null
+        ]
+      },
+      {
+        "type": "missing",
+        "path": "document.addEventListener.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.addEventListener.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          null,
+          [
+            "keydown",
+            null
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.addEventListener",
+        "detail": [
+          "keydown",
+          null
+        ]
+      },
+      {
+        "type": "missing",
+        "path": "document.addEventListener.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.addEventListener.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          null,
+          [
+            "keyup",
+            null
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.addEventListener",
+        "detail": [
+          "keyup",
+          null
+        ]
+      },
+      {
+        "type": "missing",
+        "path": "document.addEventListener.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.addEventListener.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          null,
+          [
+            "click",
+            null
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.addEventListener",
+        "detail": [
+          "click",
+          null
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.getElementById",
+        "detail": "function"
+      },
+      {
+        "type": "define",
+        "path": "document.getElementById",
+        "detail": [
+          "get",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.getElementsByTagName",
+        "detail": "function"
+      },
+      {
+        "type": "define",
+        "path": "document.getElementsByTagName",
+        "detail": [
+          "get",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.querySelector",
+        "detail": "function"
+      },
+      {
+        "type": "define",
+        "path": "document.querySelector",
+        "detail": [
+          "get",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.querySelectorAll",
+        "detail": "function"
+      },
+      {
+        "type": "define",
+        "path": "document.querySelectorAll",
+        "detail": [
+          "get",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "missing",
+        "path": "document.evaluate",
+        "detail": "undefined"
+      },
+      {
+        "type": "define",
+        "path": "document.evaluate",
+        "detail": [
+          "get",
+          "enumerable",
+          "configurable"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.getElementsByTagName",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "document.getElementsByTagName",
+        "detail": [
+          "*"
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.getElementsByTagName",
+        "detail": [
+          "*"
+        ]
+      },
+      {
+        "type": "get",
+        "path": "document.all",
+        "detail": "object"
+      },
+      {
+        "type": "get",
+        "path": "document.all.length",
+        "detail": "number"
+      },
+      {
+        "type": "get",
+        "path": "document.body",
+        "detail": "object"
+      },
+      {
+        "type": "get",
+        "path": "document.body.removeChild",
+        "detail": "function"
+      },
+      {
+        "type": "missing",
+        "path": "document.addEventListener.IΙΙ",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "document.addEventListener.apply",
+        "detail": "function"
+      },
+      {
+        "type": "apply",
+        "path": "performance.now.apply",
+        "detail": [
+          {},
+          [
+            null
+          ]
+        ]
+      },
+      {
+        "type": "apply",
+        "path": "document.addEventListener",
+        "detail": [
+          null
+        ]
+      },
+      {
+        "type": "missing",
+        "path": "navigator.permissions",
+        "detail": "undefined"
+      },
+      {
+        "type": "missing",
+        "path": "navigator.userAgentData",
+        "detail": "undefined"
+      },
+      {
+        "type": "missing",
+        "path": "document.documentMode",
+        "detail": "undefined"
+      },
+      {
+        "type": "missing",
+        "path": "document.documentMode",
+        "detail": "undefined"
+      },
+      {
+        "type": "get",
+        "path": "navigator.userAgent",
+        "detail": "string"
+      },
+      {
+        "type": "get",
+        "path": "document.cookie",
+        "detail": "string"
+      },
+      {
+        "type": "get",
+        "path": "document.cookie",
+        "detail": "string"
+      },
+      {
+        "type": "get",
+        "path": "document.cookie",
+        "detail": "string"
+      }
+    ]
+  }
+}
