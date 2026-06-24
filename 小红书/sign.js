@@ -74,7 +74,12 @@ function init() {
     Error,TypeError,RangeError,SyntaxError,ReferenceError,
     process:{env:{},platform:'win32'},
   };
-  s.self=s;s.window=s;s.global=s;s.globalThis=s;s.document.location=s.location;
+  s.self=s;s.window=s;s.global=s;s.globalThis=s;
+  // 28个 VMP env slot: 补全 slot 12(document已在), 19(InstallTrigger), 24(chrome), 26(top)
+  s.top = s;
+  s.InstallTrigger = {};  // Firefox: typeof = object
+  s.chrome = {};           // Chrome: typeof = object
+  s.document.location=s.location;
   const ctx = vm.createContext(s);
 
   // ═══ 注入浏览器变量到 Node global（eval 代码用 typeof 检查）═══
@@ -84,6 +89,8 @@ function init() {
   global.document = s.document;
   global.screen = s.screen;
   global.top = s;
+  global.InstallTrigger = {};  // VMP env slot 19
+  global.chrome = {};           // VMP env slot 24
 
   // 抑制 eval 代码的 console.error dump
   const _oe = console.error;
@@ -110,6 +117,11 @@ function init() {
 
   console.error('[sign] ready in', Date.now()-t0, 'ms, mnsv2:', typeof _mnsv2fn);
   _ready = true;
+}
+
+function dumpBytecode() {
+  init();
+  return global.__$c || null;
 }
 
 function sign(url, data) {
@@ -145,4 +157,4 @@ if (require.main === module) {
   console.log(JSON.stringify(sign(url, body)));
 }
 
-module.exports = { init, sign };
+module.exports = { init, sign, dumpBytecode };
