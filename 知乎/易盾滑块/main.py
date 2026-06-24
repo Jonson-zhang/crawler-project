@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""
+知乎 — 完整方案 (登录 + x-zse 签名 + 爬取)
+
+用法:
+  python main.py login               浏览器辅助登录, 保存 Cookie
+  python main.py login --paste       手动粘贴 Cookie 字符串
+  python main.py login --check       检查 Cookie 是否有效
+
+  python main.py feed                获取推荐流 (默认 1 页)
+  python main.py feed --pages 3      获取 3 页
+  python main.py me                  获取用户信息
+
+项目文件:
+  main.py        本文件
+  sign.js        x-zse-96 / x-zst-81 签名引擎 (Node.js)
+  runtime.js     知乎 webpack runtime (17KB)
+  vendor.js      知乎 vendor chunk (215KB)
+  479.js         签名模块所在 chunk (3.3MB)
+  cookies.json   login 后自动生成
+"""
+
+import json, subprocess, sys, time
+from pathlib import Path
+from urllib.parse import urlencode
+
+import requests
+import urllib3; urllib3.disable_warnings()
+
+BASE_DIR = Path(__file__).parent
+COOKIE_FILE = BASE_DIR / "cookies.json"
+SIGN_SCRIPT = BASE_DIR / "sign.js"
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
+
+def safe_print(*args):
+    try: print(*args)
+    except UnicodeEncodeError: print(*(str(a).encode("ascii", "replace").decode() for a in args))
+    sys.stdout.flush()
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Cookie
+# ═══════════════════════════════════════════════════════════════
+
+def cookies_load():
+    return json.loads(COOKIE_FILE.read_text("utf-8")) if COOKIE_FILE.exists() else {}
+
+def cookies_save(d):
+    COOKIE_FILE.write_text(json.dumps(d, ensure_ascii=False, indent=2), "utf-8")
+
+def cookies_check():
+    c = cookies_load()
+    if not c: safe_print("[FAIL] 未找到 cookies.json"); return False
+    s = requests.Session(); s.cookies.update(c)
+    s.headers.update({"User-Agent": UA})
+    r = s.get("https://www.zhihu.com/api/v4/me", timeout=10)
+    if r.status_code == 200 and (r.json() or {}).get("id"):
+        safe_print(f"[OK] Cookie 有效: {(r.json() or {}).get('name', '?')}")
+        return True
+    safe_print("[FAIL] Cookie 已过期"); return False
+
+
+def login_browser():
+    """浏览器弹窗登录 → 导出 Cookie"""
+    try:
+        from cloakbrowser import launch
+        b = launch(headless=False); p = b.new_page()
+        p.goto("https://www.zhihu.com/signin?next=%2F", wait_until="domcontentloaded", timeout=30000)
+        time.sleep(3)
+        safe_print("\n  [*] 请在浏览器中完成登录, 然后回到这里按 Enter")
+        input(">>> 按 Enter 继续...")
+        cookies = {c["name"]: c["value"] for c in p.context.cookies()}
+        b.close()
+        if cookies.get("z_c0"):
+            cookies_save(cookies)
+            safe_print(f"[OK] {len(cookies)} 个 Cookie 已保存"); return cookies
+        safe_print("[FAIL] 未检测到 z_c0, 可能未登录成功"); return None
+    except Exception as e:
+        safe_print(f"[FAIL] {e}"); return None
+
+
+def login_paste():
+    """粘贴 Cookie 字符串"""
+    safe_print("请粘贴浏览器中的完整 Cookie 字符串 (一行):")
+    try: raw = input("Cookie: ").strip()
+    except (EOFError, KeyboardInterrupt): return
+    d = {}
+    for item in raw.split("; "):
+        if "=" in item: k, v = item.split("=", 1); d[k] = v
+    if not d: safe_print("[FAIL] 空输入"); return
+    cookies_save(d)
+    safe_print(f"[OK] {len(d)} 个 Cookie 已保存")
+    cookies_check()
+
+
+# ═══════════════════════════════════════════════════════════════
+#  API 客户端 (签名 + 协议请求)
+# ═══════════════════════════════════════════════════════════════
+
+class ZhihuAPI:
+    def __init__(self):
+        ck = cookies_load()
+        self._d_c0 = ck.get("d_c0", "")
+        self.session = requests.Session(); self.session.verify = False
+        self.session.cookies.update(ck)
+        self.session.headers.update({
+            "User-Agent": UA, "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9", "Origin": "https://www.zhihu.com",
+            "Referer": "https://www.zhihu.com/",
+            "x-api-version": "3.0.53", "x-requested-with": "fetch",
+        })
+
+    def _sign(self, url_full: str) -> dict:
+        payload = json.dumps({"url": url_full, "d_c0": self._d_c0})
+        r = subprocess.run(
+            ["node", str(SIGN_SCRIPT)],
+            input=payload, capture_output=True, text=True,
+            cwd=str(BASE_DIR), timeout=120,
+        )
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip()[-300:] if r.stderr else "sign.js failed")
+        return json.loads(r.stdout.strip() or "{}")
+
+    def _get(self, path: str, params: dict = None) -> dict:
+        full = path + ("?" + urlencode(params) if params else "")
+        h = self._sign(full)
+        self.session.headers["x-zse-96"] = h.get("x-zse-96", "")
+        self.session.headers["x-zst-81"] = h.get("x-zst-81", "")
+        r = self.session.get(f"https://www.zhihu.com{full}", timeout=30)
+        return r.json() if "json" in r.headers.get("content-type", "") else r.text
+
+    def me(self):
+        return self._get("/api/v4/me")
+
+    def feed(self, page: int = 1, size: int = 17):
+        return self._get("/api/v3/feed/topstory/recommend", {
+            "action": "down",
+            "ad_interval": -10,
+            "after_id": size * (page - 1),
+            "desktop": "true",
+            "end_offset": size * page,
+            "page_number": page,
+        })
+
+
+# ═══════════════════════════════════════════════════════════════
+#  命令处理
+# ═══════════════════════════════════════════════════════════════
+
+def cmd_login(args):
+    if args.check: cookies_check()
+    elif args.paste: login_paste()
+    else: login_browser()
+
+def cmd_feed(args):
+    api = ZhihuAPI()
+    me = api.me()
+    if me and me.get("id"): safe_print(f"[OK] 已登录: {me.get('name', '?')}")
+    else: return safe_print("[FAIL] 未登录 — 请先: python main.py login")
+
+    all_items = []
+    for pg in range(1, args.pages + 1):
+        safe_print(f"[*] 第 {pg} 页...", end=" "); sys.stdout.flush()
+        try: data = api.feed(page=pg)
+        except Exception as e: safe_print(f"[FAIL] {e}"); break
+        items = data.get("data", []) if isinstance(data, dict) else []
+        if not items: safe_print("无数据"); break
+        all_items.extend(items)
+        safe_print(f"{len(items)} 条")
+        for it in items[:3]:
+            t = it.get("target", {})
+            q = t.get("question", {})
+            safe_print(f"    · {(q.get('title') or t.get('title', ''))[:60]}")
+        time.sleep(1)
+
+    out = args.output or str(BASE_DIR / "feed.json")
+    Path(out).write_text(json.dumps(all_items, ensure_ascii=False, indent=2), "utf-8")
+    safe_print(f"\n[+] 共 {len(all_items)} 条, 已保存 {out}")
+
+def cmd_me(args):
+    api = ZhihuAPI()
+    d = api.me()
+    if d and d.get("id"):
+        safe_print(f"[OK] {d.get('name')}  id={d.get('id')}  headline={d.get('headline', '')}")
+    else:
+        safe_print(f"[FAIL] {json.dumps(d, ensure_ascii=False)[:200]}")
+
+
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser(description="知乎 — 登录 + x-zse 签名 + 爬取")
+    sp = p.add_subparsers(dest="cmd")
+
+    p_login = sp.add_parser("login")
+    p_login.add_argument("--check", action="store_true")
+    p_login.add_argument("--paste", action="store_true")
+
+    p_feed = sp.add_parser("feed")
+    p_feed.add_argument("--pages", type=int, default=1)
+    p_feed.add_argument("--output", type=str, default="")
+
+    sp.add_parser("me")
+
+    args = p.parse_args()
+    if args.cmd == "login":   cmd_login(args)
+    elif args.cmd == "feed":  cmd_feed(args)
+    elif args.cmd == "me":    cmd_me(args)
+    else:
+        # 默认：获取推荐流
+        cmd_feed(args)

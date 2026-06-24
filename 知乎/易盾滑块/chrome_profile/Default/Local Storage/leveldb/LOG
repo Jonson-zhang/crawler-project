@@ -1,6 +1,0 @@
-2026/06/24-12:29:55.964 3fe8 Creating DB e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\Local Storage\leveldb since it was missing.
-2026/06/24-12:29:55.975 3fe8 Reusing MANIFEST e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\Local Storage\leveldb/MANIFEST-000001
-2026/06/24-12:29:55.975 3fe8 Recovering log #41
-2026/06/24-12:29:55.976 3fe8 Reusing old log e:\crawler-project\知乎\易盾滑块\chrome_profile\Default\Local Storage\leveldb/000041.log 
-2026/06/24-12:29:55.976 3fe8 Delete type=2 #5
-2026/06/24-12:29:55.976 3fe8 Delete type=2 #43
