@@ -1,18 +1,17 @@
 /************************************************************
  * RS6 加载器 — 兰州交通大学 (zbzx.lzjtu.edu.cn)
  *
- * 职责：
- *   1. 加载补环境框架 (env_framework.js)
- *   2. 注入站点专属变量 (meta_content, JS 代码)
- *   3. 加载 RS VM 执行生成 Cookie
- *   4. 导出 get_cookie() 供 Python 调用
- *
  * Python 侧通过字符串替换注入：
  *   __METACONTENT__  → 从 412 页面提取的 meta content
- *   __INLINE_CODE__  → 412 页面中的内联 JS（$_ts 初始化）
+ *   __INLINE_CODE__  → 412 页面中的内联 JS
  *   __EXTERNAL_CODE__ → 外链 RS VM JS 文件内容
  *   __ENTRY_CALL__   → 入口函数调用（如 _$g6()）
  ************************************************************/
+
+// ═══ Step 0：抑制 RS VM 的 eval 噪音 ═══
+// RS VM 内部用 eval 动态生成代码时会输出到 stderr，重定向它
+var _origStderrWrite = process.stderr.write;
+process.stderr.write = function () { return true; };
 
 // ═══ Step 1：加载补环境框架 ═══
 require("./env_framework");
