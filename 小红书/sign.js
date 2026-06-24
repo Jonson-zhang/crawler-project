@@ -101,32 +101,35 @@ function init() {
   _ctx = vm.createContext(_sandbox);
   const t0 = Date.now();
 
-  // 1. runtime + vendor
+  // 1. ═══ 注入 document/top 到 Node global（必须在加载 vendor 前）═══
+  //    vendor.js 末尾自动调用 signV2Init，eval 代码用 typeof 检查这些变量
+  global.document = _sandbox.document;
+  global.top = _sandbox; // top = window
+
+  // 2. runtime + vendor（vendor 末尾自动触发 signV2Init）
   vm.runInContext(WEBPACK_RUNTIME, _ctx, { filename: 'runtime' });
   vm.runInContext(fs.readFileSync(path.join(__dirname,'data','vendor.js'),'utf-8'),
     _ctx, { filename: 'vendor', timeout: 120000 });
 
-  // 2. 清理之前可能泄露的变量
-  delete global.glb; delete global._0x5ae8; delete global._0xc8b2; delete global._0xe762c0;
-  delete global.__$c; delete global._AUuXfEG27Xa3x; delete global.__bc; delete global.mnsv2;
-
-  // 3. ═══ 关键: 注入 document/top 到 Node global ═══
-  //    VMP eval 代码用 typeof 检查这些变量，缺失会导致初始化失败
-  global.document = _sandbox.document;
-  global.top = _sandbox; // top = window
-
-  // 4. 调用 signV2Init
-  try {
-    vm.runInContext('__webpack_require__(68274).a()', _ctx);
-  } catch(e) {}
+  // 3. 如果 vendor 的 auto-init 没触发，手动调用
+  if (!global.glb || !global.glb.mnsv2) {
+    try {
+      vm.runInContext('__webpack_require__(68274).a()', _ctx);
+    } catch(e) {}
+  }
 
   // 5. 从 glb 获取 mnsv2
   if (global.glb && typeof global.glb.mnsv2 === 'function') {
     _mnsv2fn = global.glb.mnsv2;
   }
 
-  // 6. 清理注入的 global
-  delete global.document; delete global.top;
+  // 6. 清理 Node global（避免污染后续 require 的模块）
+  //    注意: var 创建的变量不能 delete，用 = undefined
+  try { delete global.document; } catch(e) { global.document = undefined; }
+  try { delete global.top; } catch(e) { global.top = undefined; }
+  global.glb = undefined; global._0x5ae8 = undefined; global._0xc8b2 = undefined;
+  global._0xe762c0 = undefined; global.__$c = undefined;
+  global._AUuXfEG27Xa3x = undefined; global.__bc = undefined;
 
   console.error('[sign] ready in', Date.now()-t0, 'ms, mnsv2:', typeof _mnsv2fn);
   _ready = true;
