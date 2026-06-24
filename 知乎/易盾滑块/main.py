@@ -164,7 +164,8 @@ def cmd_feed(args):
     safe_print(f"[OK] 已登录: {me.get('name', '?')}")
 
     all_items = []
-    for pg in range(1, args.pages + 1):
+    pages = getattr(args, "pages", 1)
+    for pg in range(1, pages + 1):
         safe_print(f"[*] 第 {pg} 页...", end=" "); sys.stdout.flush()
         try: data = api.feed(page=pg)
         except Exception as e: safe_print(f"[FAIL] {e}"); break
@@ -178,7 +179,7 @@ def cmd_feed(args):
             safe_print(f"    · {(q.get('title') or t.get('title', ''))[:60]}")
         time.sleep(1)
 
-    out = args.output or str(BASE_DIR / "feed.json")
+    out = getattr(args, "output", "") or str(BASE_DIR / "feed.json")
     Path(out).write_text(json.dumps(all_items, ensure_ascii=False, indent=2), "utf-8")
     safe_print(f"\n[+] 共 {len(all_items)} 条, 已保存 {out}")
 
