@@ -1,47 +1,50 @@
 # 兰州交通大学招标信息获取
 
-## 目标
-
-从 https://zbzx.lzjtu.edu.cn/zbxx/hwl.htm 获取招标信息。
-
-## 反爬类型
-
-瑞数 6 代（RS6）— 签名型 JSVMP
-
 ## 架构
 
 ```
-main.py (Python 主控)
-  ├── 调用 generate_cookies.js (Node.js sdenv 子进程)
-  │     └── sdenv jsdom → RS JSVMP 执行 → 生成 Cookie
-  ├── requests → 协议请求（携带 Cookie）
-  ├── BeautifulSoup → 解析招标列表
-  └── JSON 输出
-
-仅 Cookie 生成依赖 Node.js（sdenv C++ V8 Addon 不可替代），
-数据爬取全在 Python 侧完成。
+兰州交通大学/
+├── cookie_gen/
+│   └── generate.js    ← 第 1 层：sdenv 生成 RS6 Cookie（Node.js）
+│
+├── main.py            ← 第 2 层：Python 主控
+│                         ① 调用 generate.js → 获取 Cookie
+│                         ② requests 协议请求
+│                         ③ BeautifulSoup 解析
+│                         ④ 输出 JSON
+│
+├── package.json       ← Node.js 依赖声明（sdenv）
+│
+└── 原型链补环境/       ← 备用方案：手动原型链补环境
+    ├── env_framework.js   通用浏览器环境框架
+    ├── loader.js          站点加载器
+    ├── run_rs.js          Node.js 入口
+    └── main.py            Python 主控
 ```
 
 ## 运行
 
 ```bash
-npm install        # 安装 sdenv（仅一次）
-uv sync            # Python 依赖（requests, beautifulsoup4）
-
-python main.py hwl     # 货物类（默认）
-python main.py gcl     # 工程类
-python main.py fwl     # 服务类
-python main.py all     # 全部三类
+npm install           # 仅第一次
+pip install requests beautifulsoup4
+python main.py
 ```
 
-## 输出
+## 原理
 
-- `货物类.json` — `{ category, items: [{ title, url, date }], total }`
+```
+GET /zbxx/hwl.htm
+  → HTTP 412 + Set-Cookie(keyS) + $_ts 配置 + RS VM JS
+  → sdenv (C++ V8 Addon) 伪造 Chrome 环境
+  → RS VM 在 sdenv 中执行 → 写入 Cookie P
+  → Python 提取 Cookie → 协议请求 → 解析招标列表
+```
 
-## 文件
+## 换站点只需改
 
-| 文件 | 语言 | 作用 |
-|------|------|------|
-| `main.py` | Python | 主控：调用 Cookie 生成、HTTP 爬取、解析、存储 |
-| `generate_cookies.js` | Node.js | 仅 RS Cookie 生成（sdenv 原生模块） |
-| `main.js` | Node.js | 参考实现（纯 JS 版本，含 cheerio 解析） |
+`main.py` 顶部 4 行配置：
+```python
+HOST       = "目标域名"
+ENTRY_PATH = "/目标路径"
+UA         = "真实浏览器 UA"
+```
