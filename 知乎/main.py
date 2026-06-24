@@ -28,8 +28,7 @@ SIGN_SCRIPT = BASE_DIR / "sign.js"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
 # ═══ 可配置参数 ═══
-FEED_PAGES = 3  # 默认抓取页数（每页 ~17 条）
-FEED_SIZE = 15  # 每页条数
+FEED_PAGES = 10  # 默认抓取页数（知乎固定每页 6 条）
 REQUEST_INTERVAL = 1  # 请求间隔（秒）
 
 
@@ -166,26 +165,37 @@ class ZhihuAPI:
 
     def _get(self, path: str, params: dict = None) -> dict:
         full = path + ("?" + urlencode(params) if params else "")
-        h = self._sign(full)
+        return self._get_raw(full)
+
+    def _get_raw(self, raw_path: str) -> dict:
+        """带完整 query string 直接请求（不重新 urlencode），用于翻页"""
+        h = self._sign(raw_path)
         self.session.headers["x-zse-96"] = h.get("x-zse-96", "")
         self.session.headers["x-zst-81"] = h.get("x-zst-81", "")
-        r = self.session.get(f"https://www.zhihu.com{full}", timeout=30)
+        r = self.session.get(f"https://www.zhihu.com{raw_path}", timeout=30)
         return r.json() if "json" in r.headers.get("content-type", "") else r.text
 
     def me(self):
         return self._get("/api/v4/me")
 
-    def feed(self, page: int = 1):
+    def feed_first(self):
+        """首页请求"""
         return self._get(
             "/api/v3/feed/topstory/recommend",
             {
                 "action": "down",
                 "ad_interval": -10,
                 "desktop": "true",
-                "page_number": page,
-                "limit": FEED_SIZE,
+                "page_number": 1,
             },
         )
+
+    def feed_next(self, next_url: str):
+        """翻页请求 — 直接用 paging.next 返回的 URL"""
+        path = next_url.split("zhihu.com", 1)[-1] if "zhihu.com" in next_url else next_url
+        if not path.startswith("/"):
+            path = "/" + path
+        return self._get_raw(path)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -219,15 +229,21 @@ def cmd_feed(args):
     pages = args.pages if hasattr(args, "pages") else FEED_PAGES
 
     total = 0
+    next_url = None
     for pg in range(1, pages + 1):
         safe_print(f"\n{'─' * 50}")
         safe_print(f"[*] 第 {pg}/{pages} 页")
         try:
-            data = api.feed(page=pg)
+            if next_url:
+                data = api.feed_next(next_url)
+            else:
+                data = api.feed_first()
         except Exception as e:
             safe_print(f"[FAIL] {e}")
             break
-        items = data.get("data", []) if isinstance(data, dict) else []
+        if not isinstance(data, dict):
+            break
+        items = data.get("data", [])
         if not items:
             safe_print("(无数据)")
             break
@@ -236,6 +252,15 @@ def cmd_feed(args):
             t = it.get("target", {})
             q = t.get("question", {})
             safe_print(f"  {i:2d}. {(q.get('title') or t.get('title', ''))}")
+
+        # 取下一页 URL
+        paging = data.get("paging", {})
+        if paging.get("is_end"):
+            safe_print("(已到最后一页)")
+            break
+        next_url = paging.get("next", "")
+        if not next_url:
+            break
         time.sleep(REQUEST_INTERVAL)
 
     safe_print(f"\n{'─' * 50}")
