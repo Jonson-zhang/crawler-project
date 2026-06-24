@@ -1,4 +1,5 @@
-from cloakbrowser import CloakBrowser
+from cloakbrowser import launch
 
-browser = CloakBrowser()
-browser.open("https://www.douyin.com")
+browser = launch(headless=False, humanize=True)
+page = browser.new_page()
+page.goto("https://www.douyin.com")
