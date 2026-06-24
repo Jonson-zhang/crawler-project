@@ -160,12 +160,73 @@ console.log('[3] Loading signer_04b29_formatted.js...');
 const code = fs.readFileSync(path.join(DATA_DIR, 'signer_04b29_formatted.js'), 'utf-8');
 try {
   vm.runInContext(code, ctx, { filename: 'signer_formatted', timeout: 120000 });
-  console.log('[OK] signer loaded!');
+  console.log('[OK] signer loaded!\n');
+
+  // Deep check
+  console.log('=== Sandbox State ===');
   console.log('_webmsxyw:', typeof sandbox._webmsxyw);
-  const saboKeys = Object.keys(sandbox).filter(k => k.includes('sabo') || k.includes('_sabo'));
-  console.log('_sabo keys:', saboKeys);
-  const signKeys = Object.keys(sandbox).filter(k => k.toLowerCase().includes('sign'));
-  console.log('sign keys:', signKeys);
+  console.log('_BHjFmfUMEtxhI:', typeof sandbox._BHjFmfUMEtxhI);
+  console.log('xsecappid:', sandbox.xsecappid);
+  console.log('anti_hp_sign_config:', typeof sandbox.anti_hp_sign_config);
+
+  // Check XHR prototype - was it hooked?
+  const XHR = sandbox.XMLHttpRequest;
+  console.log('\nXHR.prototype.open:', XHR.prototype.open.toString().slice(0, 100));
+  console.log('XHR.prototype.setRequestHeader:', XHR.prototype.setRequestHeader.toString().slice(0, 100));
+
+  // Check all custom keys on sandbox
+  const builtins = new Set(['window','self','global','document','location','navigator','screen','history',
+    'console','performance','setTimeout','setInterval','clearTimeout','clearInterval',
+    'TextEncoder','TextDecoder','URL','URLSearchParams','atob','btoa',
+    'encodeURIComponent','decodeURIComponent','Blob','fetch','Headers',
+    'XMLHttpRequest','crypto','Function','Math','Date','Object','Array','String',
+    'Number','Boolean','RegExp','Map','Set','WeakMap','WeakSet',
+    'Uint8Array','Uint16Array','Uint32Array','Int8Array','Int16Array','Int32Array',
+    'Float32Array','Float64Array','ArrayBuffer','DataView',
+    'Promise','Proxy','Reflect','Symbol','parseInt','parseFloat','isNaN','isFinite',
+    'JSON','Error','TypeError','RangeError','SyntaxError','ReferenceError',
+    'EvalError','eval','AudioContext','HTMLCanvasElement','CanvasRenderingContext2D',
+    'OffscreenCanvas','Event','MessageChannel','MutationObserver','IntersectionObserver',
+    'PerformanceObserver','Worker','WebSocket','Image','localStorage','sessionStorage',
+    'require']);
+
+  const customKeys = Object.keys(sandbox).filter(k => !builtins.has(k));
+  console.log('\nCustom sandbox keys (' + customKeys.length + '):');
+  customKeys.forEach(k => {
+    const v = sandbox[k];
+    const t = typeof v;
+    if (t === 'function') console.log('  ' + k + ': function(' + v.length + ') ' + v.toString().slice(0, 80));
+    else if (t === 'object' && v && !Array.isArray(v)) console.log('  ' + k + ': object keys=' + Object.keys(v).slice(0, 8).join(','));
+    else console.log('  ' + k + ': ' + t + ' = ' + String(v).slice(0, 80));
+  });
+
+  // Try making an XHR request and see if headers get added
+  console.log('\n=== Test XHR Signature ===');
+  const testResult = vm.runInContext(`
+    (() => {
+      const captured = {};
+      const xhr = new XMLHttpRequest();
+
+      // Hook setRequestHeader to capture
+      const origSetRH = xhr.setRequestHeader;
+      xhr.setRequestHeader = function(key, value) {
+        captured[key] = value;
+        return origSetRH.call(this, key, value);
+      };
+
+      xhr.open('POST', 'https://edith.xiaohongshu.com/api/sns/web/v1/homefeed', true);
+      xhr.setRequestHeader('content-type', 'application/json;charset=UTF-8');
+      xhr.send(JSON.stringify({cursor_score: '', num: 20, refresh_type: 1, note_index: 0}));
+
+      return {
+        headers: captured,
+        responseText: xhr.responseText?.slice(0, 200),
+        status: xhr.status
+      };
+    })()
+  `, ctx);
+  console.log('XHR test result:', JSON.stringify(testResult, null, 2));
+
 } catch (e) {
   console.log('[ERR]', e.message);
   const stack = (e.stack || '').split('\n');
