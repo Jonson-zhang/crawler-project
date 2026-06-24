@@ -1,107 +1,101 @@
 # 小红书离线签名 — 状态报告
 
-## 架构
+## seccore_signv2 完整公式
+
+```javascript
+function seccore_signv2(url, body) {
+  var combined = url + JSON.stringify(body);         // url + body 拼接
+  var hc = MD5(combined);                             // 模块 40055 K.Pu → hex string
+  var hu = MD5(url);                                  // 模块 40055 K.Pu → hex string
+  var x3 = window.mnsv2(combined, hc, hu);           // VMP 字节码 → "mns0301_<base64>"
+  var payload = JSON.stringify({
+    x0: "4.3.5",       // 版本
+    x1: "xhs-pc-web",   // 平台
+    x2: "Windows",       // OS
+    x3: x3,              // mnsv2 签名
+    x4: "object"         // 数据类型
+  });
+  return {
+    "x-s": "XYS_" + customBase64(utf8encode(payload)),
+    "x-t": String(Date.now()),
+    "x-s-common": customBase64(JSON.stringify(fingerprint_data))
+  };
+}
+```
+
+### 自定义 Base64 字母表
 
 ```
-方案 A: Node.js 补环境 (sign.js)
-  Python → subprocess node sign.js → {x-s, x-t}
-  vendor.js + env.dom.js → VMP 创建 mnsv2 → seccore_signv2
-
-方案 B: Python 纯算 (sign.py)  ← 当前推荐
-  sign.py 内直接实现 XXTEA + 自定义 Base64 + MD5
-  无需 vendor.js, 无需 Node.js
+x-s payload:  ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5 (64 chars)
 ```
 
-## 目录 (7 文件)
+## mnsv2 版本
+
+| 版本 | 算法 | payload | 状态 |
+|------|------|---------|------|
+| mns0301 | RC4 (魔改, 预置S-box) | 144 bytes | ✅ 浏览器正常 |
+| mns0201 | XXTEA (key=e6483ca2, Δ=0x3C6EF373) | 89 bytes | ❌ Node.js 产生空 hash |
+
+## 各方案状态
+
+### 方案 A: Node.js 补环境 (sign.js)
+- vendor.js 加载 ✅ (~43ms)
+- eval 代码执行 ✅ (288KB VMP 代码)
+- mnsv2 函数创建 ✅  
+- mnsv2 输出: `mns0201_0` ❌ (空 hash, 服务端 406)
+- 根因: VMP 字节码内 XXTEA/RC4 实现需要完整浏览器指纹
+  (Canvas/WebGL/Audio pixel values) 生成 256-byte S-box
+
+### 方案 B: Python 纯算 (sign.py)
+- XXTEA 实现 ✅
+- mns0201 payload 构造 ✅
+- 服务端 406 ❌ (mns0201 已废弃, 需 mns0301)
+
+### 方案 C: 浏览器桥接 ✅
+- Camoufox + 有效 cookies → SDK 自动签名
+- 成功捕获 x-s/x-t headers (200 status)
+- Python 通过 MCP 控制浏览器发请求
+
+## 已知数据
+
+### x-s-common 结构
+```json
+{
+  "s0": 5, "s1": "",
+  "x0": "1", "x1": "4.3.5", "x2": "Windows", "x3": "xhs-pc-web",
+  "x4": "6.24.0", "x5": "<a1_cookie>", "x6": "", "x7": "", "x8": "",
+  "x9": -1867254643, "x10": 0, "x11": "normal",
+  "x12": "<timestamp>;<page_load_ts>"
+}
+```
+
+### mns0301 真实输出
+```
+mns0301_gRaKquYBtF9a4f94ED0id5NkrTarR85VJgjxYULE2jn47z4du0nBKyytpaVQ
+yp4+JGShbV6D1qIGPp2+OD4JRR0w7yWjOfE1wziPTG4FHme2TAk/4KgA0JHKXSJxL8i1
+1CMCnpsRzRJ
+→ 200 chars total (= 192 chars Base64 → 144 bytes encrypted)
+```
+
+## 文件清单 (6 files)
 
 ```
 小红书/
-├── VM_STATUS.md     # 本文档
-├── sign.py          # Python 纯算签名 ✅
-├── sign.js          # Node.js 补环境签名 (备用)
-├── main.py          # Python 入口
-├── env.dom.js       # 浏览器原型链补环境
+├── VM_STATUS.md
+├── sign.py          (Python XXTEA)
+├── sign.js          (Node.js 补环境)
+├── main.py          (Python 入口)
+├── env.dom.js       (浏览器原型链)
 └── data/
-    ├── vendor.js    # webpack bundle
-    └── cookies.json
-```
-
-## seccore_signv2 公式 (已验证)
-
-```python
-url = "/api/sns/web/v1/homefeed"
-body = '{"cursor_score":"","num":20}'
-combined = url + body
-
-hc = MD5(combined)   # hex
-hu = MD5(url)        # hex
-
-x3 = mnsv2(combined, hc, hu)   # XXTEA/RC4 → custom Base64
-
-payload = {"x0":"4.3.5","x1":"xhs-pc-web","x2":"Windows","x3":x3,"x4":"object"}
-xs = "XYS_" + custom_base64(payload.to_json_utf8)
-xt = str(int(time.time()*1000))
-```
-
-### 自定义 Base64
-
-x-s payload: `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5`
-mns0201:      `MfgqrsbcyzPQRStuvC7mn501HIJBo2DEFTKdeNOwxWXYZap89+/A4UVLhijkl63G`
-
-## mnsv2 算法 (来自 CSDN 文章)
-
-### 版本对比
-
-| 版本 | 算法 | payload | 前缀 | 状态 |
-|------|------|---------|------|------|
-| mns0201 | XXTEA (key=e6483ca2a1eed5e3, Δ=0x3C6EF373) | 89B | mns0201_ | ✅ Python 已实现 |
-| mns0301 | RC4 (预置 S-box, 256B) | 135B | mns0301_ | ❌ 需 S-box |
-
-### mns0201 XXTEA (已实现)
-
-```python
-XXTEA_KEY = b"e6483ca2a1eed5e3"  # 16B ASCII
-XXTEA_DELTA = 0x3C6EF373         # 修正版魔数
-
-payload_89B:
-  [0:4]   magic "xh\)" 
-  [4:8]   随机数 u32
-  [8:16]  时间戳 u64
-  [16:20] flags u32 (=15)
-  [20:36] MD5(url+body) XOR 0x5A
-  [36:52] MD5(url) XOR 0xA5
-  [52:56] URL 长度 u32
-  [56:89] 预留 (0x00)
-→ XXTEA(key, delta) → Base64(mns0201字母表) → "mns0201_" + result
-
-当前状态: ✅ 实现 + format 正确 (132 chars output)
-            ❌ server 返回 406 (需要 mns0301)
-```
-
-### mns0301 RC4 (待实现)
-
-```
-payload_135B:
-  [0:4]   magic "xh\)"
-  [4:8]   随机数 u32
-  [8:16]  当前时间戳 ms u64
-  [16:24] 页面加载时间戳 ms u64
-  [24:28] 固定值 (15-17) u32
-  [28:32] 点击计数器 u32
-  [32:36] mouseenter 计数器 u32
-  [36:44] 随机浮点数 f64
-  [44:97] a1 cookie (53B, 前缀 "4" + 52B hex)
-  [97]    \n
-  [98:108] xsecappid "xhs-pc-web"
-  [108]   \x01
-  [109:135] extra (1B random + 17B fixed + 8B random)
-→ RC4(S-box) → Base64(XHS字母表) → "mns0301_" + result
-
-当前状态: ❌ 缺 RC4 S-box (256B 置换表)
+    ├── vendor.js    (webpack bundle, 1.36MB)
+    └── cookies.json (fresh cookies)
 ```
 
 ## 下一步
 
-1. **提取 RC4 S-box**: 从 VMP eval 代码 (vendor.js 模块 68274) 中搜索 256 元素数组
-2. **构造 135B payload**: 需要 a1 cookie 值和正确的计数器
-3. **测试 mns0301**: 预期 server 返回 200
+要打通纯 Python 签名需要:
+1. 从 vendor.js eval 代码 (288KB) 逆向 VMP 字节码 → 提取 RC4 S-box
+2. 或从浏览器 Canvas/WebGL 指纹 → 重新生成 S-box
+3. 实现 144-byte payload → RC4(S-box) → 自定义Base64
+
+两个都需要深入的 VMP 字节码逆向工作。
