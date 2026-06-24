@@ -1,51 +1,60 @@
 /**
  * sign.js — 小红书 X-s 离线签名
  *
- * 用法: node sign.js <url> <body_json>
+ * 直接执行 VMP eval 代码在 Node global 上，补上浏览器变量
  */
 "use strict";
-const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto');
+const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const dom = require('./env.dom');
 
-// ═══ 自定义 Base64 ═══
 const XHS_B64 = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5";
-
 function customBase64Encode(bytes) {
   const buf = typeof bytes === 'string' ? Buffer.from(bytes, 'utf-8') : bytes;
   let r = '';
-  const len = buf.length;
-  for (let i = 0; i < len; i += 3) {
-    const a = buf[i], b = i+1<len ? buf[i+1] : 0, c = i+2<len ? buf[i+2] : 0;
+  for (let i = 0; i < buf.length; i += 3) {
+    const a = buf[i], b = i+1<buf.length ? buf[i+1] : 0, c = i+2<buf.length ? buf[i+2] : 0;
     r += XHS_B64[a>>2] + XHS_B64[((a&3)<<4)|(b>>4)];
-    r += i+1<len ? XHS_B64[((b&15)<<2)|(c>>6)] : XHS_B64[0];
-    r += i+2<len ? XHS_B64[c&63] : XHS_B64[0];
+    r += i+1<buf.length ? XHS_B64[((b&15)<<2)|(c>>6)] : XHS_B64[0];
+    r += i+2<buf.length ? XHS_B64[c&63] : XHS_B64[0];
   }
   return r;
 }
 
-// ═══ Webpack Runtime ═══
-const WEBPACK_RUNTIME = `
-(function(){
-var m={},c={};
-function r(id) {
-  if (c[id]) return c[id].exports;
-  if (!m[id]) m[id] = function(M,e) { M.exports = {}; };
-  var M = c[id] = { id: id, exports: {} };
-  m[id].call(M.exports, M, M.exports, r);
-  return M.exports;
+// ═══ 从 vendor.js 提取 eval 代码 ═══
+let _EVAL_CODE = null;
+function getEvalCode() {
+  if (_EVAL_CODE) return _EVAL_CODE;
+  const vendor = fs.readFileSync(path.join(__dirname, 'data', 'vendor.js'), 'utf-8');
+  const mt = vendor.indexOf('__makeTemplateObject([');
+  if (mt < 0) throw new Error('template not found');
+  // 找第一个 "[ 之后的第一个 "
+  const arrOpen = vendor.indexOf('[', mt);
+  const strStart = vendor.indexOf('"', arrOpen);
+  // 解析 JS 字符串
+  let i = strStart + 1, raw = '';
+  while (i < vendor.length) {
+    if (vendor[i] === '\\') { raw += vendor[i]; raw += vendor[i+1]; i += 2; continue; }
+    if (vendor[i] === '"') break;
+    raw += vendor[i]; i++;
+  }
+  // 解码转义序列
+  let code = '', j = 0;
+  while (j < raw.length) {
+    if (raw[j] === '\\') {
+      const n = raw[j+1];
+      if (n === '"') { code += '"'; j += 2; continue; }
+      if (n === '\\') { code += '\\'; j += 2; continue; }
+      if (n === 'n') { code += '\n'; j += 2; continue; }
+      if (n === 'r') { code += '\r'; j += 2; continue; }
+      if (n === 't') { code += '\t'; j += 2; continue; }
+      if (n === 'x') { code += String.fromCharCode(parseInt(raw.slice(j+2, j+4), 16)); j += 4; continue; }
+      code += raw[j]; j += 2; continue;
+    }
+    code += raw[j]; j++;
+  }
+  _EVAL_CODE = code;
+  return code;
 }
-r.d=function(e,d){for(var k in d){if(r.o(d,k)&&!r.o(e,k))Object.defineProperty(e,k,{enumerable:true,get:d[k]})}};
-r.n=function(m){var g=m&&m.__esModule?function(){return m['default']}:function(){return m};r.d(g,{a:g});return g};
-r.o=function(o,p){return Object.prototype.hasOwnProperty.call(o,p)};
-(self.webpackChunkxhs_pc_web=self.webpackChunkxhs_pc_web||[]).push=function(chunk){
-  var cm=chunk[1];
-  for(var id in cm){if(r.o(cm,id))m[id]=cm[id]}
-};
-m[21777]=function(M,e){M.exports=String;};
-m[31547]=function(M,e,r){r.d(e,{_:function(){return function _t(v){var t=typeof v;return t==='object'?(v===null?'null':Array.isArray(v)?'array':'object'):t}}})};
-self.__webpack_require__=r;
-self.s=r;
-})();`;
 
 // ═══ 状态 ═══
 let _mnsv2fn = null, _ready = false;
@@ -54,74 +63,71 @@ function init() {
   if (_ready) return;
   const t0 = Date.now();
 
-  // 构建最小沙箱（只需 webpack 模块系统工作）
-  const s = {
-    window:{}, self:{}, global:{}, globalThis:{},
-    document:dom.document, location:dom.location, navigator:dom.navigator,
-    screen:dom.screen, performance:dom.performance,
-    localStorage:dom.localStorage, sessionStorage:dom.sessionStorage,
-    console:{log:()=>{},error:()=>{},warn:()=>{},info:()=>{}},
-    setTimeout:(fn)=>{try{fn()}catch(e){}return 0;},
-    TextEncoder,TextDecoder,URL,URLSearchParams,
-    atob:x=>Buffer.from(x,'base64').toString('binary'),btoa:x=>Buffer.from(x,'binary').toString('base64'),
-    encodeURIComponent,decodeURIComponent,
-    crypto:require('crypto').webcrypto,
-    fetch:()=>Promise.resolve({json:()=>Promise.resolve({}),text:()=>Promise.resolve('')}),
-    Function,Math,Date,Object,Array,String,Number,Boolean,RegExp,Map,Set,
-    Uint8Array,Uint16Array,Int8Array,Int16Array,Int32Array,
-    Float32Array,Float64Array,ArrayBuffer,DataView,Promise,Proxy,Reflect,Symbol,
-    parseInt,parseFloat,isNaN,isFinite,JSON,eval,
-    Error,TypeError,RangeError,SyntaxError,ReferenceError,
-    process:{env:{},platform:'win32'},
-  };
-  s.self=s;s.window=s;s.global=s;s.globalThis=s;
-  // 28个 VMP env slot: 补全 slot 12(document已在), 19(InstallTrigger), 24(chrome), 26(top)
-  s.top = s;
-  s.InstallTrigger = {};  // Firefox: typeof = object
-  s.chrome = {};           // Chrome: typeof = object
-  s.document.location=s.location;
-  const ctx = vm.createContext(s);
+  // ═══ 关键: 先把浏览器变量注入 Node global ═══
+  //     eval 代码最后一行 typeof 检查在 global scope 找这些变量
+  //     注意: navigator/performance 有 getter 无 setter，必须 defineProperty
+  Object.defineProperty(global, 'navigator', {value: dom.navigator, configurable: true, writable: true});
+  Object.defineProperty(global, 'performance', {value: dom.performance, configurable: true, writable: true});
+  global.document = dom.document;
+  global.screen = dom.screen;
+  global.top = global;
+  global.InstallTrigger = undefined;
+  global.chrome = undefined;
+  // 原型链
+  global.EventTarget = dom.EventTarget;
+  global.Node = dom.Node;
+  global.Element = dom.Element;
+  global.HTMLElement = dom.HTMLElement;
+  global.HTMLCanvasElement = dom.HTMLCanvasElement;
+  global.CanvasRenderingContext2D = dom.CanvasRenderingContext2D;
+  global.WebGLRenderingContext = dom.WebGLRenderingContext;
+  global.AudioContext = dom.AudioContext;
+  global.XMLHttpRequest = dom.XMLHttpRequest;
+  global.MutationObserver = dom.MutationObserver;
+  global.Event = dom.Event;
+  global.CustomEvent = dom.CustomEvent;
+  global.Performance = dom.Performance;
+  global.location = dom.location;
+  global.localStorage = dom.localStorage;
+  global.sessionStorage = dom.sessionStorage;
 
-  // ═══ 注入浏览器变量到 Node global（eval 代码用 typeof 检查）═══
-  // navigator/performance: Node 有 getter 无 setter，必须 defineProperty 覆盖
-  Object.defineProperty(global, 'navigator', {value: s.navigator, configurable: true, writable: true});
-  Object.defineProperty(global, 'performance', {value: s.performance, configurable: true, writable: true});
-  global.document = s.document;
-  global.screen = s.screen;
-  global.top = s;
-  global.InstallTrigger = {};  // VMP env slot 19
-  global.chrome = {};           // VMP env slot 24
+  // 保存已有的 native globals（防止 eval 覆盖）
+  const saved = {};
+  for (const k of ['navigator','performance','document','screen','top','location',
+    'EventTarget','Node','Element','HTMLElement','Event','CustomEvent',
+    'localStorage','sessionStorage','Performance']) {
+    try { saved[k] = global[k]; } catch(e) {}
+  }
 
-  // 抑制 eval 代码的 console.error dump
-  const _oe = console.error;
-  console.error = () => {};
+  const _oe = console.error; console.error = () => {};
 
-  // 加载 vendor
-  vm.runInContext(WEBPACK_RUNTIME, ctx, { filename:'runtime' });
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'data','vendor.js'),'utf-8'), ctx, { filename:'vendor', timeout:120000 });
-
-  // 如果 vendor 的 auto-init (P.ZP.isBrowser && signV2Init) 没触发，手动调用
-  if (!global.glb?.mnsv2 && !global.mnsv2) {
-    try { vm.runInContext('__webpack_require__(68274).a()', ctx); } catch(e) {}
+  // ═══ 直接 eval eval 代码（在 Node global scope） ═══
+  const evalCode = getEvalCode();
+  try {
+    // eval 代码自包含：定义变量、调用 glb[_AUuXfEG27Xa3x](__$c, [env])
+    // 所有 var 声明会泄漏到 global
+    (0, eval)(evalCode);
+  } catch(e) {
+    console.error = _oe;
+    console.error('[sign] eval error:', e.message.slice(0, 300));
   }
 
   console.error = _oe;
 
-  // 获取 mnsv2（eval 中的 var 声明泄漏到 Node global）
-  _mnsv2fn = global.mnsv2 || global.glb?.mnsv2 || null;
+  // 恢复被覆盖的 globals
+  for (const k of Object.keys(saved)) {
+    try { if (saved[k] !== undefined) global[k] = saved[k]; } catch(e) {}
+  }
 
-  // 清理 Node global（只清理注入的浏览器变量，保留 VMP 泄漏变量）
+  // 获取 mnsv2（var 声明泄漏到 global）
+  _mnsv2fn = global.mnsv2 || null;
+
+  // 清理
   delete global.document; delete global.top; delete global.screen;
-  Object.defineProperty(global, 'navigator', {value: undefined, configurable: true, writable: true});
-  Object.defineProperty(global, 'performance', {value: undefined, configurable: true, writable: true});
+  delete global.InstallTrigger; delete global.chrome;
 
   console.error('[sign] ready in', Date.now()-t0, 'ms, mnsv2:', typeof _mnsv2fn);
   _ready = true;
-}
-
-function dumpBytecode() {
-  init();
-  return global.__$c || null;
 }
 
 function sign(url, data) {
@@ -129,17 +135,12 @@ function sign(url, data) {
   const bodyStr = typeof data === 'string' ? data : JSON.stringify(data);
   const md5 = s => crypto.createHash('md5').update(s,'utf8').digest('hex');
   const hc = md5(url + bodyStr), hu = md5(url);
-
   let x3;
-  if (_mnsv2fn) {
-    try { x3 = String(_mnsv2fn(url + bodyStr, hc, hu)); }
-    catch(e) { x3 = 'ERR'; }
-  } else { x3 = 'NOMNSV2'; }
-
+  if (_mnsv2fn) { try { x3 = String(_mnsv2fn(url + bodyStr, hc, hu)); } catch(e) { x3 = 'ERR'; } }
+  else { x3 = 'NOMNSV2'; }
   const payload = JSON.stringify({
     x0:'4.3.5', x1:'xhs-pc-web', x2:'Windows', x3, x4: typeof data === 'string' ? 'string' : 'object'
   });
-
   return {
     'x-s': 'XYS_' + customBase64Encode(Buffer.from(payload,'utf-8')),
     'x-t': String(Date.now()),
@@ -147,14 +148,4 @@ function sign(url, data) {
   };
 }
 
-// ═══ CLI ═══
-if (require.main === module) {
-  const url = process.argv[2] || '/api/sns/web/v1/homefeed';
-  const bodyStr = process.argv[3] || '{"cursor_score":"","num":20}';
-  let body;
-  try { body = JSON.parse(bodyStr); } catch(e) { body = bodyStr; }
-  init();
-  console.log(JSON.stringify(sign(url, body)));
-}
-
-module.exports = { init, sign, dumpBytecode };
+module.exports = { init, sign };
