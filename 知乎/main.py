@@ -31,7 +31,6 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 FEED_PAGES = 3  # 默认抓取页数（每页 ~17 条）
 FEED_SIZE = 17  # 每页条数
 REQUEST_INTERVAL = 1  # 请求间隔（秒）
-OUTPUT_FILE = str(BASE_DIR / "feed.json")
 
 
 def safe_print(*args, **kwargs):
@@ -220,10 +219,10 @@ def cmd_feed(args):
 
     pages = args.pages if hasattr(args, "pages") else FEED_PAGES
 
-    all_items = []
+    total = 0
     for pg in range(1, pages + 1):
-        safe_print(f"[*] 第 {pg}/{pages} 页...", end=" ")
-        sys.stdout.flush()
+        safe_print(f"\n{'─' * 50}")
+        safe_print(f"[*] 第 {pg}/{pages} 页")
         try:
             data = api.feed(page=pg)
         except Exception as e:
@@ -231,19 +230,17 @@ def cmd_feed(args):
             break
         items = data.get("data", []) if isinstance(data, dict) else []
         if not items:
-            safe_print("无数据")
+            safe_print("(无数据)")
             break
-        all_items.extend(items)
-        safe_print(f"{len(items)} 条")
+        total += len(items)
         for i, it in enumerate(items, 1):
             t = it.get("target", {})
             q = t.get("question", {})
-            safe_print(f"    {i:2d}. {(q.get('title') or t.get('title', ''))[:60]}")
+            safe_print(f"  {i:2d}. {(q.get('title') or t.get('title', ''))}")
         time.sleep(REQUEST_INTERVAL)
 
-    out = args.output if hasattr(args, "output") and args.output else OUTPUT_FILE
-    Path(out).write_text(json.dumps(all_items, ensure_ascii=False, indent=2), "utf-8")
-    safe_print(f"\n[+] 共 {len(all_items)} 条, 已保存 {out}")
+    safe_print(f"\n{'─' * 50}")
+    safe_print(f"[+] 共 {total} 条")
 
 
 if __name__ == "__main__":
@@ -253,7 +250,6 @@ if __name__ == "__main__":
     p.add_argument(
         "--pages", type=int, default=FEED_PAGES, help=f"抓取页数（默认 {FEED_PAGES}）"
     )
-    p.add_argument("--output", type=str, default=OUTPUT_FILE, help="输出文件")
     p.add_argument("-u", "--user", action="store_true", help="仅查看用户信息")
 
     args = p.parse_args()
