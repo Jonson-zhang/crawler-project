@@ -735,17 +735,25 @@ var console = {
 // navigator already defined above as plain object; wrap it
 // Navigator is not directly constructable, but VMP might check navigator's constructor
 
-// ═══ HTMLDocument ═══
+// ═══ Document (base class) ═══
+function Document() {}
+Document.prototype = Object.create(Node.prototype);
+Document.prototype.nodeType = 9;
+Document.prototype.characterSet = 'UTF-8';
+Document.prototype.readyState = 'complete';
+Document.prototype.visibilityState = 'visible';
+Document.prototype.hidden = false;
+Document.prototype.title = '';
+Document.prototype.cookie = '';
+Document.prototype.referrer = '';
+Document.prototype.URL = 'https://www.xiaohongshu.com/explore';
+Document.prototype.domain = 'www.xiaohongshu.com';
+
+// ═══ HTMLDocument (extends Document) ═══
 function HTMLDocument() {}
-HTMLDocument.prototype = Object.create(document.constructor.prototype || HTMLElement.prototype);
-// Make document instanceof HTMLDocument work via Symbol.hasInstance or __proto__
-// For VMP instanceof checks: we can't easily make document pass instanceof HTMLDocument
-// Instead, use Symbol.hasInstance on HTMLDocument
-Object.defineProperty(HTMLDocument, Symbol.hasInstance, {
-  value: function(instance) {
-    return instance === document || (instance && instance.nodeType === 9);
-  }
-});
+HTMLDocument.prototype = Object.create(Document.prototype);
+// Patch document to use HTMLDocument prototype
+Object.setPrototypeOf(document, HTMLDocument.prototype);
 
 // ═══ Navigator (proper class for instanceof checks) ═══
 function Navigator() {}
@@ -798,9 +806,8 @@ History.prototype.go = noop;
 
 // ═══ Exports ═══
 module.exports = {
-  // Constructor functions with proper prototypes
   EventTarget, Node, Element, HTMLElement,
-  HTMLHeadElement, HTMLBodyElement, HTMLDocument,
+  HTMLHeadElement, HTMLBodyElement, Document, HTMLDocument,
   HTMLCanvasElement,
   CanvasRenderingContext2D, CanvasGradient,
   WebGLRenderingContext,
@@ -817,18 +824,7 @@ module.exports = {
   MessageChannel, Worker, WebSocket,
   Navigator, Screen, Location, History,
   Image,
-
-  // Singleton instances/objects
-  performance,
-  screen,
-  navigator,
-  location,
-  history,
-  document,
-  localStorage,
-  sessionStorage,
-  console,
-
-  // Helpers
+  performance, screen, navigator, location, history,
+  document, localStorage, sessionStorage, console,
   noop,
 };
