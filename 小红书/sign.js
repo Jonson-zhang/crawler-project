@@ -1,16 +1,12 @@
 /**
- * sign.js — 小红书 XYS_ 签名入口
+ * sign.js — 小红书 XYS_ 离线签名
  *
- * 用法:
- *   node sign.js '<json_body>'
- *   例: node sign.js '{"cursor_score":"","num":20,"refresh_type":1,"note_index":0}'
+ * 用法: node sign.js '<json_body>'
+ * 例:   node sign.js '{"cursor_score":"","num":20,"refresh_type":1,"note_index":0}'
  *
- * 签名链:
- *   url + body → MD5×2 → window.mnsv2() → payload → JSON → UTF-8 → custom base64 → XYS_
+ * 输出: {"X-s":"XYS_...","X-t":"1782348627791"}
  *
- * 代码来源:
- *   - base64/utf8 编码: vendor.js webpack module 40055 (浏览器 DevTools 提取)
- *   - mnsv2: DS v2 端点 VMP 字节码 (env.js + ds_script.js 初始化后注册到 window)
+ * 依赖: env.js (浏览器环境) + ds_script.js (VMP 字节码, 创建 window.mnsv2)
  */
 
 "use strict";
@@ -18,141 +14,100 @@
 require("./env");
 require("./ds_script");
 
-const crypto = require("crypto");
+const CryptoJS = require("crypto-js");
 
-// ==============================
-// 自定义 Base64 (K.xE from module 40055)
-// 码表: ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5
-// ==============================
-const BASE64 = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5";
+// ===== 自定义 Base64 编码 =====
+const BASE64_TABLE = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5";
 
-function b64Encode(bytes) {
-  const len = bytes.length;
-  const mod = len % 3;
-  const result = [];
-  const CHUNK = 16383;
+let u = [];
+for (let w = 0, C = BASE64_TABLE.length; w < C; ++w) u[w] = BASE64_TABLE[w];
 
-  for (let i = 0, end = len - mod; i < end; i += CHUNK) {
-    const limit = Math.min(i + CHUNK, end);
-    for (let j = i; j < limit; j += 3) {
-      const t = (bytes[j] << 16) + (bytes[j + 1] << 8) + bytes[j + 2];
-      result.push(
-        BASE64[(t >> 18) & 63] +
-          BASE64[(t >> 12) & 63] +
-          BASE64[(t >> 6) & 63] +
-          BASE64[t & 63]
-      );
-    }
-  }
-
-  if (mod === 1) {
-    const b = bytes[len - 1];
-    result.push(BASE64[b >> 2] + BASE64[(b << 4) & 63] + "==");
-  } else if (mod === 2) {
-    const pair = (bytes[len - 2] << 8) + bytes[len - 1];
-    result.push(
-      BASE64[pair >> 10] +
-        BASE64[(pair >> 4) & 63] +
-        BASE64[(pair << 2) & 63] +
-        "="
-    );
-  }
-
-  return result.join("");
+function tripletToBase64(e) {
+  return (
+    u[(e >> 18) & 63] + u[(e >> 12) & 63] + u[(e >> 6) & 63] + u[63 & e]
+  );
 }
 
-// ==============================
-// UTF-8 字节编码 (K.lz from module 40055)
-// ==============================
-function encodeUtf8(str) {
-  const encoded = encodeURIComponent(str);
-  const bytes = [];
-  for (let i = 0; i < encoded.length; i++) {
-    if (encoded[i] === "%") {
-      bytes.push(parseInt(encoded[i + 1] + encoded[i + 2], 16));
-      i += 2;
+function encodeChunk(e, a, s) {
+  let m = [];
+  for (let w = a; w < s; w += 3) {
+    let t =
+      ((e[w] << 16) & 0xff0000) + ((e[w + 1] << 8) & 65280) + (255 & e[w + 2]);
+    m.push(tripletToBase64(t));
+  }
+  return m.join("");
+}
+
+function b64Encode(e) {
+  let s = e.length, m = s % 3, w = [];
+  const C = 16383;
+  for (let R = 0, P = s - m; R < P; R += C)
+    w.push(encodeChunk(e, R, R + C > P ? P : R + C));
+
+  if (m === 1) {
+    let a = e[s - 1];
+    w.push(u[a >> 2] + u[(a << 4) & 63] + "==");
+  } else if (m === 2) {
+    let a = (e[s - 2] << 8) + e[s - 1];
+    w.push(u[a >> 10] + u[(a >> 4) & 63] + u[(a << 2) & 63] + "=");
+  }
+  return w.join("");
+}
+
+// ===== UTF-8 字节编码 =====
+function encodeUtf8(e) {
+  let a = encodeURIComponent(e), s = [];
+  for (let u = 0; u < a.length; u++) {
+    let m = a.charAt(u);
+    if (m === "%") {
+      let w = parseInt(a.charAt(u + 1) + a.charAt(u + 2), 16);
+      s.push(w);
+      u += 2;
     } else {
-      bytes.push(encoded.charCodeAt(i));
+      s.push(m.charCodeAt(0));
     }
   }
-  return bytes;
+  return s;
 }
 
-// ==============================
-// MD5 (K.Pu)
-// ==============================
-function md5(s) {
-  return crypto.createHash("md5").update(s, "utf8").digest("hex");
-}
-
-// ==============================
-// seccore_signv2
-//
-// 对应 vendor.js 中的:
-//   function seccore_signv2(e, a) {
-//     var u = e;
-//     ... → JSON.stringify(a) → u += a
-//     var m = K.Pu([u].join(""))  // MD5(u)
-//     var w = K.Pu(e)             // MD5(url)
-//     var C = window.mnsv2(u,m,w)
-//     var P = {x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3:C, x4:...}
-//     return "XYS_" + K.xE(K.lz(JSON.stringify(P)))
-//   }
-// ==============================
+// ===== seccore_signv2 =====
 function seccore_signv2(url, body) {
-  let combined = url;
-  let dataType = "";
+  let combined = url + JSON.stringify(body);
+  let md5Combined = CryptoJS.MD5(combined).toString();
+  let md5Url = CryptoJS.MD5(url).toString();
+  let mnsv2Hash = window.mnsv2(combined, md5Combined, md5Url);
 
-  if (body !== undefined && body !== null && body !== "") {
-    if (typeof body === "string") {
-      combined += body;
-      dataType = "string";
-    } else {
-      combined += JSON.stringify(body);
-      dataType = "object";
-    }
-  }
-
-  const md5Combined = md5(combined);
-  const md5Url = md5(url);
-  const mnsv2Hash = window.mnsv2(combined, md5Combined, md5Url);
-
-  const payload = {
+  let payload = {
     x0: "4.3.5",
     x1: "xhs-pc-web",
     x2: "Windows",
     x3: mnsv2Hash,
-    x4: dataType,
+    x4: "object",
   };
 
-  const jsonStr = JSON.stringify(payload);
-  const utf8Bytes = encodeUtf8(jsonStr);
-  return "XYS_" + b64Encode(utf8Bytes);
+  return "XYS_" + b64Encode(encodeUtf8(JSON.stringify(payload)));
 }
 
-// ==============================
-// 命令行入口
-// ==============================
+// ===== CLI =====
 const API_URL = "/api/sns/web/v1/homefeed";
-const body = process.argv[2];
+const bodyArg = process.argv[2];
 
-if (!body) {
+if (!bodyArg) {
   console.error("用法: node sign.js '<json_body>'");
   process.exit(1);
 }
 
-// 验证 mnsv2 已就绪
 if (typeof window.mnsv2 !== "function") {
   console.error("错误: window.mnsv2 不存在");
-  console.error("ds_script.js 中的 VMP 初始化可能失败了，请检查 env.js 环境");
   process.exit(1);
 }
 
 let bodyObj;
 try {
-  bodyObj = JSON.parse(body);
+  bodyObj = JSON.parse(bodyArg);
 } catch (e) {
-  bodyObj = body;
+  console.error("错误: body 不是有效 JSON");
+  process.exit(1);
 }
 
 const x_s = seccore_signv2(API_URL, bodyObj);

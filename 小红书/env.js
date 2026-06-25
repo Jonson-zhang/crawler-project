@@ -1,499 +1,414 @@
-/**
- * env.js — 小红书 mnsv2 VMP 浏览器环境模拟
- *
- * 按 Web IDL 规范构建 DOM 原型链，供 Node.js VM 沙箱使用。
- * VMP 初始化需 env 数组: [,, Function, document, performance, MutationObserver, Object]
- * 但字节码执行中还会访问 navigator, screen, crypto, localStorage 等。
- */
-
-"use strict";
-
-const noop = () => {};
-
-// ==============================
-// Proxy 辅助 — 缺属性自动补空对象
-// ==============================
-function watch(obj, name) {
-  return new Proxy(obj, {
-    get(target, prop) {
-      if (prop in target) return target[prop];
-      if (typeof prop === "symbol") return undefined;
-      // 返回空函数/空对象，防止 VMP 访问未定义属性崩溃
-      const fallback = function () { return ""; };
-      fallback.prototype = null;
-      return fallback;
+!function () {
+    // 拿原始toString()函数暂存起来
+    const $toString = Function.prototype.toString;
+    // 函数$callTostring的意思是 - 当调用它的时候就相当于调用原始toString()函数
+    const $callTostring = Function.prototype.call.bind($toString);
+    // 一个存东西的地方 - memoryMap，是整个所有代码的全局变量
+    const memoryMap = new Map();
+    // 新的toString()函数 - myToString，目的是调用它的时候返回合适的toString()方法，防止toString()值检测
+    const myToString = function toString() {
+        return typeof this === 'function' && memoryMap.get(this) || $callTostring(this);
+    };
+    // 改造原始的Function.prototype.toString()方法
+    Object.defineProperty(Function.prototype, "toString", {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value: myToString
+    });
+ 
+    function set_native(obj, value) {
+        memoryMap.set(obj, value);
+    }
+ 
+    // 保护Function.prototype.toString方法，或者叫native化
+    set_native(Function.prototype.toString, "function toString() { [native code] }");
+ 
+    // 保护func的toString方法，或者叫native化
+    setNative = function setNative(func, funcname) {
+        Object.defineProperty(func, "name", {
+            value: funcname || func.name || '',
+            writable: false,
+            enumerable: false,
+            configurable: true
+        });
+        set_native(func, `function ${funcname || func.name || ''}() { [native code] }`);
+    };
+}();
+// === 修复版 watch 函数 ===
+function watch(func, name) {
+  // &#128295; 确保 name 是有效的字符串（避免 undefined 或 null）
+  const objName = name || 'unknown';
+ 
+  // &#128295; 修复：定义 console_log 函数（或使用 console.log）
+  const console_log = (...args) => console.log(...args);
+ 
+  return new Proxy(func, {
+    get(target, p, receiver) {
+      try {
+        // &#128295; 修复：正确处理 Symbol 类型的属性名
+        const propKey = typeof p === 'symbol' ? p.toString() : p;
+ 
+        // &#128295; 修复：检查 p 是否为 Math 或 isNaN（字符串比较）
+        if (propKey === 'Math' || propKey === 'isNaN') {
+          return Reflect.get(target, p, receiver);
+        } else {
+          if (propKey === 'hasOwnProperty') {
+            // debugger; // &#128295; 可选：保留调试断点（注释掉以避免中断）
+          }
+           
+          // &#128295; 特殊处理 crypto，直接返回原生对象，不经过 Proxy
+          if (propKey === 'crypto') {
+            return globalThis.crypto;
+          }
+ 
+          const val = Reflect.get(target, p, receiver);
+ 
+          // &#128295; 修复：记录取值操作，格式化输出
+          console_log('取值:', `${objName}.${propKey}`, '=>', val);
+ 
+          return val;
+        }
+      } catch (e) {
+        // &#128295; 修复：异常处理（原代码空 catch）
+        console.error(`[watch/get] 错误访问 ${objName}.${String(p)}:`, e);
+        // &#128295; 修复：异常时仍需返回值，而不是 undefined
+        return Reflect.get(target, p, receiver); // 尝试返回原始值
+      }
     },
+ 
+    set(target, p, value, receiver) {
+      try {
+        // &#128295; 修复：原代码在 set 中又调用了 Reflect.get，逻辑错误
+        // 正确做法：先记录设置操作，再执行 Reflect.set
+ 
+        const propKey = typeof p === 'symbol' ? p.toString() : p;
+        const currentValue = Reflect.get(target, p, receiver); // 获取当前值
+ 
+        console_log('设置值:', `${objName}.${propKey}`, currentValue, '=>', value);
+ 
+        // &#128295; 修复：正确执行设置操作
+        return Reflect.set(target, p, value, receiver);
+      } catch (e) {
+        // &#128295; 修复：异常处理
+        console.error(`[watch/set] 错误设置 ${objName}.${String(p)} = ${value}:`, e);
+        // &#128295; 修复：设置失败时返回 false
+        return false;
+      }
+    },
+ 
+    // &#128295; 可选：添加 apply 拦截器（如果 func 是函数）
+    apply(target, thisArg, argumentsList) {
+      console_log('函数调用:', `${objName}(...)`, 'with args:', argumentsList);
+      return Reflect.apply(target, thisArg, argumentsList);
+    },
+ 
+    // &#128295; 可选：添加 construct 拦截器（如果 func 是构造函数）
+    construct(target, argumentsList, newTarget) {
+      console_log('构造函数调用:', `new ${objName}(...)`, 'with args:', argumentsList);
+      return Reflect.construct(target, argumentsList, newTarget);
+    }
   });
 }
-
-function setNative(fn, name) {
-  fn.toString = function () { return "function " + name + "() { [native code] }"; };
-}
-
-// ==============================
-// 原型链层级
-// ==============================
-
-// Level 0: EventTarget
-function EventTarget() {}
-EventTarget.prototype.addEventListener = noop;
-EventTarget.prototype.removeEventListener = noop;
-EventTarget.prototype.dispatchEvent = function () { return true; };
-
-// Level 1: Node
-function Node() {}
-Node.prototype = Object.create(EventTarget.prototype);
-Node.prototype.constructor = Node;
-Node.prototype.ELEMENT_NODE = 1;
-Node.prototype.TEXT_NODE = 3;
-Node.prototype.nodeType = 1;
-Node.prototype.nodeName = "";
-Node.prototype.appendChild = noop;
-Node.prototype.removeChild = noop;
-Node.prototype.insertBefore = noop;
-Node.prototype.replaceChild = noop;
-Node.prototype.cloneNode = function () { return this; };
-Node.prototype.contains = () => false;
-Node.prototype.hasChildNodes = () => false;
-
-// Level 2: Element
-function Element() {}
-Element.prototype = Object.create(Node.prototype);
-Element.prototype.constructor = Element;
-Element.prototype.tagName = "DIV";
-Element.prototype.getAttribute = () => null;
-Element.prototype.setAttribute = noop;
-Element.prototype.removeAttribute = noop;
-Element.prototype.querySelector = () => null;
-Element.prototype.querySelectorAll = () => [];
-Element.prototype.getElementsByTagName = () => [];
-Element.prototype.classList = { add: noop, remove: noop, contains: () => false, toggle: noop };
-Element.prototype.style = {};
-Element.prototype.innerHTML = "";
-Element.prototype.outerHTML = "";
-Element.prototype.clientWidth = 1920;
-Element.prototype.clientHeight = 1080;
-Element.prototype.getBoundingClientRect = () => ({
-  x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0,
+ 
+// === 使用示例 ===
+/*
+// 示例 1: 监控一个对象
+const obj = { x: 1, y: 2 };
+const watchedObj = watch(obj, 'myObject');
+console.log(watchedObj.x); // 输出: 取值: myObject.x => 1
+watchedObj.z = 3;          // 输出: 设置值: myObject.z undefined => 3
+ 
+// 示例 2: 监控一个函数
+const myFunc = function(a, b) { return a + b; };
+const watchedFunc = watch(myFunc, 'addFunction');
+watchedFunc(1, 2);         // 输出: 函数调用: addFunction(...) with args: [1, 2]
+ 
+// 示例 3: 监控 Math 对象的特定方法
+const watchedMath = watch(Math, 'Math');
+console.log(watchedMath.PI); // 输出: 取值: Math.PI => 3.141592653589793
+*/
+window=globalThis
+ 
+function EventTarget(){}
+function Document(){}
+function HTMLHtmlElement(){}
+function Navigator(){}
+function Location(){}
+function Screen(){}
+function History(){}
+function Storage(){}
+function Performance(){}
+function XMLHttpRequest(){}
+function CanvasRenderingContext2D(){}
+function HTMLCanvasElement(){}
+function HTMLElement(){}
+ 
+setNative(EventTarget,'EventTarget')
+setNative(Document,'Document')
+setNative(HTMLHtmlElement,'HTMLHtmlElement')
+setNative(Navigator,'Navigator')
+setNative(Location,'Location')
+setNative(Screen,'Screen')
+setNative(History,'History')
+setNative(Storage,'Storage')
+setNative(Performance,'Performance')
+setNative(XMLHttpRequest,'XMLHttpRequest')
+setNative(CanvasRenderingContext2D,'CanvasRenderingContext2D')
+setNative(HTMLCanvasElement,'HTMLCanvasElement')
+setNative(HTMLElement,'HTMLElement')
+ 
+document=watch(new Document(),'document')
+Document.prototype.addEventListener=function(){}
+ 
+Object.defineProperty(Document.prototype, 'cookie', {
+    get: function() {
+        return 'abRequestId=bc87e19f-1473-5802-857f-aa14072c42f5; a1=197c660cf2d0j0l1bdwbkv2cyce6csd6n3v6nths750000683082; webId=c09b78e6b3cb4b550c9d51b97c057cd0; gid=yjWSKK8f0jIdyjWSKK8Siq9xJf8V81yDfEDThMWhJSvSdK28KSMfKI888KYq8YJ88SyyYWqJ; xsecappid=xhs-pc-web; ets=1775377444539; webBuild=6.7.0; loadts=1776689467785; unread={%22ub%22:%2269d63940000000001b0206cf%22%2C%22ue%22:%2269db583e000000001f00105f%22%2C%22uc%22:24}; websectiga=7750c37de43b7be9de8ed9ff8ea0e576519e8cd2157322eb972ecb429a7735d4; sec_poison_id=4e4a9eab-d586-4ce8-ab46-4095b5cf9e04';
+    },
+    set: function(value) {
+        console.log('设置cookie:', value);
+    },
+    enumerable: true,
+    configurable: true
 });
-
-// Level 3: HTMLElement
-function HTMLElement() {}
-HTMLElement.prototype = Object.create(Element.prototype);
-HTMLElement.prototype.constructor = HTMLElement;
-HTMLElement.prototype.click = noop;
-HTMLElement.prototype.focus = noop;
-HTMLElement.prototype.blur = noop;
-HTMLElement.prototype.title = "";
-HTMLElement.prototype.hidden = false;
-
-// Level 4: 具体 HTML 元素
-function HTMLHeadElement() {}
-HTMLHeadElement.prototype = Object.create(HTMLElement.prototype);
-HTMLHeadElement.prototype.constructor = HTMLHeadElement;
-
-function HTMLBodyElement() {}
-HTMLBodyElement.prototype = Object.create(HTMLElement.prototype);
-HTMLBodyElement.prototype.constructor = HTMLBodyElement;
-
-function HTMLHtmlElement() {}
-HTMLHtmlElement.prototype = Object.create(HTMLElement.prototype);
-HTMLHtmlElement.prototype.constructor = HTMLHtmlElement;
-
-// Canvas
-function HTMLCanvasElement(w, h) { this.width = w || 300; this.height = h || 150; }
-HTMLCanvasElement.prototype = Object.create(HTMLElement.prototype);
-HTMLCanvasElement.prototype.constructor = HTMLCanvasElement;
-HTMLCanvasElement.prototype.getContext = function (type) {
-  if (type === "2d") return new CanvasRenderingContext2D(this);
-  if (type === "webgl" || type === "experimental-webgl") return new WebGLRenderingContext(this);
-  return null;
-};
-HTMLCanvasElement.prototype.toDataURL = () => "data:image/png;base64,";
-HTMLCanvasElement.prototype.toBlob = function (cb) { cb && cb(new Blob([])); };
-
-// CanvasRenderingContext2D
-function CanvasRenderingContext2D(canvas) { this.canvas = canvas; }
-CanvasRenderingContext2D.prototype.fillStyle = "#000000";
-CanvasRenderingContext2D.prototype.strokeStyle = "#000000";
-CanvasRenderingContext2D.prototype.lineWidth = 1;
-CanvasRenderingContext2D.prototype.globalAlpha = 1;
-CanvasRenderingContext2D.prototype.font = "10px sans-serif";
-CanvasRenderingContext2D.prototype.textAlign = "start";
-CanvasRenderingContext2D.prototype.save = noop;
-CanvasRenderingContext2D.prototype.restore = noop;
-CanvasRenderingContext2D.prototype.scale = noop;
-CanvasRenderingContext2D.prototype.rotate = noop;
-CanvasRenderingContext2D.prototype.translate = noop;
-CanvasRenderingContext2D.prototype.transform = noop;
-CanvasRenderingContext2D.prototype.beginPath = noop;
-CanvasRenderingContext2D.prototype.closePath = noop;
-CanvasRenderingContext2D.prototype.moveTo = noop;
-CanvasRenderingContext2D.prototype.lineTo = noop;
-CanvasRenderingContext2D.prototype.arc = noop;
-CanvasRenderingContext2D.prototype.rect = noop;
-CanvasRenderingContext2D.prototype.fill = noop;
-CanvasRenderingContext2D.prototype.stroke = noop;
-CanvasRenderingContext2D.prototype.clip = noop;
-CanvasRenderingContext2D.prototype.clearRect = noop;
-CanvasRenderingContext2D.prototype.fillRect = noop;
-CanvasRenderingContext2D.prototype.strokeRect = noop;
-CanvasRenderingContext2D.prototype.fillText = noop;
-CanvasRenderingContext2D.prototype.strokeText = noop;
-CanvasRenderingContext2D.prototype.drawImage = noop;
-CanvasRenderingContext2D.prototype.putImageData = noop;
-CanvasRenderingContext2D.prototype.getImageData = function (x, y, w, h) {
-  const size = w * h * 4;
-  const data = new Uint8Array(size);
-  // 填充随机像素数据（VMP 可能检查画布指纹）
-  for (let i = 0; i < size; i += 4) {
-    data[i] = Math.floor(Math.random() * 256);
-    data[i + 1] = Math.floor(Math.random() * 256);
-    data[i + 2] = Math.floor(Math.random() * 256);
-    data[i + 3] = 255;
-  }
-  return { data: data, width: w, height: h };
-};
-CanvasRenderingContext2D.prototype.createImageData = function (w, h) {
-  return { data: new Uint8Array(w * h * 4), width: w, height: h };
-};
-CanvasRenderingContext2D.prototype.measureText = function (text) {
-  return { width: (text || "").length * 8 };
-};
-CanvasRenderingContext2D.prototype.createLinearGradient = function () { return new CanvasGradient(); };
-CanvasRenderingContext2D.prototype.createRadialGradient = function () { return new CanvasGradient(); };
-CanvasRenderingContext2D.prototype.createPattern = () => null;
-
-function CanvasGradient() {}
-CanvasGradient.prototype.addColorStop = noop;
-
-// WebGL
-function WebGLRenderingContext(canvas) { this.canvas = canvas; this.drawingBufferWidth = 300; this.drawingBufferHeight = 150; }
-WebGLRenderingContext.prototype.getParameter = function (p) {
-  // 返回常见 GPU 参数伪造值
-  const params = { 37445: "WebKit WebGL", 37446: "WebKit", 7937: "WebGL 1.0", 7938: "Mozilla/5.0" };
-  return params[p] || "";
-};
-WebGLRenderingContext.prototype.getExtension = () => null;
-
-// Document
-function Document() {}
-Document.prototype = Object.create(Node.prototype);
-Document.prototype.constructor = Document;
-Document.prototype.createElement = function (tag) {
-  tag = (tag || "").toLowerCase();
-  if (tag === "canvas") return new HTMLCanvasElement();
-  if (tag === "div" || tag === "span") return new HTMLElement();
-  return new HTMLElement();
-};
-Document.prototype.createElementNS = function () { return new HTMLElement(); };
-Document.prototype.createTextNode = function () { return new Node(); };
-Document.prototype.getElementsByTagName = () => [];
-Document.prototype.getElementById = () => null;
-Document.prototype.querySelector = () => null;
-Document.prototype.querySelectorAll = () => [];
-Document.prototype.cookie = "";
-Document.prototype.referrer = "";
-Document.prototype.title = "";
-Document.prototype.readyState = "complete";
-Document.prototype.characterSet = "UTF-8";
-Document.prototype.documentElement = watch(new HTMLHtmlElement(), "document.documentElement");
-Document.prototype.body = watch(new HTMLBodyElement(), "document.body");
-Document.prototype.head = watch(new HTMLHeadElement(), "document.head");
-
-// Storage
-function Storage() { this._data = {}; }
-Storage.prototype.getItem = function (k) { return this._data[k] || null; };
-Storage.prototype.setItem = function (k, v) { this._data[k] = String(v); };
-Storage.prototype.removeItem = function (k) { delete this._data[k]; };
-Storage.prototype.clear = function () { this._data = {}; };
-Storage.prototype.key = function (i) { return Object.keys(this._data)[i] || null; };
-Object.defineProperty(Storage.prototype, "length", {
-  get: function () { return Object.keys(this._data).length; },
-});
-
-// XMLHttpRequest
-function XMLHttpRequest() {
-  this.readyState = 0;
-  this.status = 0;
-  this.responseText = "";
-  this.responseXML = null;
-  this.response = "";
-  this.responseType = "";
-  this.timeout = 0;
-  this.withCredentials = false;
-  this.onreadystatechange = null;
+ 
+function HTMLElement(){}
+setNative(HTMLElement,'HTMLElement')
+ 
+HTMLElement.prototype.offsetWidth=1920
+HTMLElement.prototype.offsetHeight=1080
+HTMLElement.prototype.clientWidth=1920
+HTMLElement.prototype.clientHeight=1080
+HTMLElement.prototype.style={}
+HTMLElement.prototype.className=''
+HTMLElement.prototype.id=''
+HTMLElement.prototype.innerHTML=''
+HTMLElement.prototype.textContent=''
+HTMLElement.prototype.appendChild=function(){}
+HTMLElement.prototype.removeChild=function(){}
+HTMLElement.prototype.setAttribute=function(){}
+HTMLElement.prototype.getAttribute=function(attr){return null}
+HTMLElement.prototype.getBoundingClientRect=function(){
+    return {
+        top: 0,
+        left: 0,
+        width: 1920,
+        height: 1080,
+        right: 1920,
+        bottom: 1080
+    }
 }
-XMLHttpRequest.prototype.open = function () {};
-XMLHttpRequest.prototype.send = function () {};
-XMLHttpRequest.prototype.setRequestHeader = function () {};
-XMLHttpRequest.prototype.getResponseHeader = function () { return null; };
-XMLHttpRequest.prototype.getAllResponseHeaders = function () { return ""; };
-XMLHttpRequest.prototype.abort = function () {};
-XMLHttpRequest.UNSENT = 0;
-XMLHttpRequest.OPENED = 1;
-XMLHttpRequest.HEADERS_RECEIVED = 2;
-XMLHttpRequest.LOADING = 3;
-XMLHttpRequest.DONE = 4;
-
-// Navigator
-function Navigator() {}
-Navigator.prototype.userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-Navigator.prototype.appVersion = "5.0";
-Navigator.prototype.platform = "Win32";
-Navigator.prototype.language = "zh-CN";
-Navigator.prototype.languages = ["zh-CN", "zh"];
-Navigator.prototype.cookieEnabled = true;
-Navigator.prototype.doNotTrack = null;
-Navigator.prototype.hardwareConcurrency = 8;
-Navigator.prototype.maxTouchPoints = 0;
-Navigator.prototype.vendor = "Google Inc.";
-Navigator.prototype.vendorSub = "";
-Navigator.prototype.productSub = "20030107";
-Navigator.prototype.webdriver = false;
-Navigator.prototype.plugins = [];
-Navigator.prototype.mimeTypes = [];
-
-// Screen
-function Screen() {}
-Screen.prototype.width = 1920;
-Screen.prototype.height = 1080;
-Screen.prototype.availWidth = 1920;
-Screen.prototype.availHeight = 1040;
-Screen.prototype.colorDepth = 24;
-Screen.prototype.pixelDepth = 24;
-
-// Location
-function Location() { this.href = "https://www.xiaohongshu.com/"; }
-Location.prototype.protocol = "https:";
-Location.prototype.host = "www.xiaohongshu.com";
-Location.prototype.hostname = "www.xiaohongshu.com";
-Location.prototype.port = "";
-Location.prototype.pathname = "/";
-Location.prototype.search = "";
-Location.prototype.hash = "";
-Location.prototype.origin = "https://www.xiaohongshu.com";
-Location.prototype.assign = noop;
-Location.prototype.replace = noop;
-Location.prototype.reload = noop;
-Location.prototype.toString = function () { return this.href; };
-
-// History
-function History() {}
-History.prototype.length = 1;
-History.prototype.state = null;
-History.prototype.pushState = noop;
-History.prototype.replaceState = noop;
-History.prototype.back = noop;
-History.prototype.forward = noop;
-History.prototype.go = noop;
-
-// Performance
-function Performance() {}
-Performance.prototype.now = function () { return Date.now() - performance._startTime; };
-Performance.prototype._startTime = Date.now();
-Performance.prototype.timing = {
-  navigationStart: Date.now() - 1000,
-  loadEventEnd: Date.now() - 500,
-  domContentLoadedEventEnd: Date.now() - 800,
-};
-Performance.prototype.navigation = { type: 0, redirectCount: 0 };
-Performance.prototype.getEntries = () => [];
-Performance.prototype.getEntriesByType = () => [];
-Performance.prototype.getEntriesByName = () => [];
-
-// MutationObserver
-function MutationObserver(callback) { this._callback = callback; }
-MutationObserver.prototype.observe = noop;
-MutationObserver.prototype.disconnect = noop;
-MutationObserver.prototype.takeRecords = () => [];
-
-// Blob / File / FormData / Headers
-function Blob(parts) { this.size = (parts || []).reduce((s, p) => s + (p || "").length, 0); this.type = ""; }
-Blob.prototype.slice = function () { return new Blob(); };
-
-function File() { Blob.call(this, []); this.name = ""; this.lastModified = Date.now(); }
-File.prototype = Object.create(Blob.prototype);
-
-function FileReader() {}
-FileReader.prototype.readAsDataURL = noop;
-FileReader.prototype.readAsText = noop;
-FileReader.prototype.readAsArrayBuffer = noop;
-
-function FormData() {}
-FormData.prototype.append = noop;
-FormData.prototype.delete = noop;
-FormData.prototype.get = () => null;
-FormData.prototype.set = noop;
-
-function Headers() {}
-Headers.prototype.append = noop;
-Headers.prototype.get = () => null;
-Headers.prototype.set = noop;
-
-// Event / CustomEvent
-function Event(type) { this.type = type; }
-function CustomEvent(type, opts) { Event.call(this, type); this.detail = (opts || {}).detail; }
-
-// Crypto
-const _crypto = require("crypto");
-const webcrypto = {
-  getRandomValues: function (buf) {
-    const bytes = _crypto.randomBytes(buf.length);
-    for (let i = 0; i < buf.length; i++) buf[i] = bytes[i];
-    return buf;
-  },
-  randomUUID: function () {
-    return _crypto.randomUUID();
-  },
-};
-const crypto = {
-  subtle: undefined,
-  webcrypto: webcrypto,
-};
-
-// Image
-function Image() { this.src = ""; this.width = 0; this.height = 0; this.onload = null; this.onerror = null; }
-
-// console — 保留原生输出能力，VMP 内部用 noop
-// 不 shadow 全局 console，这样 sign.js 的错误消息正常显示
-
-// TextEncoder / TextDecoder
-const TextEncoder = global.TextEncoder;
-const TextDecoder = global.TextDecoder;
-const atob = (s) => Buffer.from(s, "base64").toString("binary");
-const btoa = (s) => Buffer.from(s, "binary").toString("base64");
-
-// ==============================
-// 构建 window 全局对象
-// ==============================
-
-const _window = Object.create(null);
-
-// 实例化核心对象
-_window.document = watch(new Document(), "document");
-_window.navigator = watch(new Navigator(), "navigator");
-_window.screen = watch(new Screen(), "screen");
-_window.location = watch(new Location(), "location");
-_window.history = watch(new History(), "history");
-_window.performance = watch(new Performance(), "performance");
-_window.localStorage = watch(new Storage(), "localStorage");
-_window.sessionStorage = watch(new Storage(), "sessionStorage");
-_window.crypto = crypto;
-_window.console = { log: noop, warn: noop, error: noop, info: noop, debug: noop };
-_window.TextEncoder = TextEncoder;
-_window.TextDecoder = TextDecoder;
-_window.atob = atob;
-_window.btoa = btoa;
-
-// 暴露构造函数
-_window.Function = Function;
-_window.Object = Object;
-_window.Array = Array;
-_window.String = String;
-_window.Number = Number;
-_window.Boolean = Boolean;
-_window.Date = Date;
-_window.RegExp = RegExp;
-_window.Error = Error;
-_window.Math = Math;
-_window.JSON = JSON;
-_window.Promise = Promise;
-_window.Uint8Array = Uint8Array;
-_window.Int8Array = Int8Array;
-_window.Uint16Array = Uint16Array;
-_window.Uint32Array = Uint32Array;
-_window.Int32Array = Int32Array;
-_window.Float32Array = Float32Array;
-_window.Float64Array = Float64Array;
-_window.ArrayBuffer = ArrayBuffer;
-_window.DataView = DataView;
-_window.Map = Map;
-_window.Set = Set;
-_window.WeakMap = WeakMap;
-_window.WeakSet = WeakSet;
-_window.Symbol = Symbol;
-_window.Proxy = Proxy;
-_window.Reflect = Reflect;
-
-_window.EventTarget = EventTarget;
-_window.Node = Node;
-_window.Element = Element;
-_window.HTMLElement = HTMLElement;
-_window.HTMLHtmlElement = HTMLHtmlElement;
-_window.HTMLHeadElement = HTMLHeadElement;
-_window.HTMLBodyElement = HTMLBodyElement;
-_window.HTMLCanvasElement = HTMLCanvasElement;
-_window.HTMLImageElement = Image;
-_window.Document = Document;
-_window.HTMLDocument = Document;
-_window.CanvasRenderingContext2D = CanvasRenderingContext2D;
-_window.WebGLRenderingContext = WebGLRenderingContext;
-_window.AudioContext = undefined;
-_window.XMLHttpRequest = XMLHttpRequest;
-_window.Blob = Blob;
-_window.File = File;
-_window.FileReader = FileReader;
-_window.FormData = FormData;
-_window.Headers = Headers;
-_window.MutationObserver = MutationObserver;
-_window.IntersectionObserver = undefined;
-_window.ResizeObserver = undefined;
-_window.PerformanceObserver = undefined;
-_window.Event = Event;
-_window.CustomEvent = CustomEvent;
-_window.Image = Image;
-_window.Navigator = Navigator;
-_window.Screen = Screen;
-_window.Location = Location;
-_window.History = History;
-_window.Performance = Performance;
-_window.Storage = Storage;
-_window.Worker = undefined;
-_window.WebSocket = undefined;
-_window.MessageChannel = undefined;
-_window.fetch = undefined;
-_window.XMLSerializer = undefined;
-_window.DOMParser = undefined;
-_window.eval = global.eval;
-_window.parseInt = parseInt;
-_window.parseFloat = parseFloat;
-_window.isNaN = isNaN;
-_window.isFinite = isFinite;
-_window.decodeURI = decodeURI;
-_window.decodeURIComponent = decodeURIComponent;
-_window.encodeURI = encodeURI;
-_window.encodeURIComponent = encodeURIComponent;
-_window.escape = (s) => encodeURIComponent(String(s));
-_window.unescape = (s) => decodeURIComponent(String(s));
-_window.setTimeout = setTimeout;
-_window.setInterval = setInterval;
-_window.clearTimeout = clearTimeout;
-_window.clearInterval = clearInterval;
-_window.requestAnimationFrame = (cb) => setTimeout(cb, 16);
-_window.cancelAnimationFrame = clearTimeout;
-
-// 顶层全局 (Node.js 中 global)
-// Node 24 的 navigator/crypto/fetch 是 getter-only，需用 defineProperty 覆盖
-for (const key of Object.keys(_window)) {
-  const desc = Object.getOwnPropertyDescriptor(global, key);
-  if (desc && !desc.configurable) continue; // 不可配置的跳过
-  if (desc && desc.set === undefined && desc.get) {
-    // getter-only → 用 defineProperty 覆盖
-    Object.defineProperty(global, key, {
-      value: _window[key],
-      writable: true,
-      configurable: true,
-      enumerable: true,
-    });
-  } else {
-    try { global[key] = _window[key]; } catch (e) { /* skip */ }
-  }
+setNative(HTMLElement.prototype.appendChild,'appendChild')
+setNative(HTMLElement.prototype.removeChild,'removeChild')
+setNative(HTMLElement.prototype.setAttribute,'setAttribute')
+setNative(HTMLElement.prototype.getAttribute,'getAttribute')
+setNative(HTMLElement.prototype.getBoundingClientRect,'getBoundingClientRect')
+ 
+HTMLHtmlElement.prototype=new HTMLElement()
+setNative(HTMLHtmlElement,'HTMLHtmlElement')
+ 
+document.documentElement=watch(new HTMLHtmlElement(),'document.documentElement')
+ 
+navigator=watch(new Navigator(),'navigator')
+Navigator.prototype.userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+Navigator.prototype.appVersion='5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+Navigator.prototype.platform='Win32'
+Navigator.prototype.language='zh-CN'
+Navigator.prototype.languages=['zh-CN','zh','en']
+Navigator.prototype.cookieEnabled=true
+Navigator.prototype.webdriver=false
+ 
+location=watch(new Location(),'location')
+Location.prototype.href='https://www.xiaohongshu.com/'
+Location.prototype.protocol='https:'
+Location.prototype.host='www.xiaohongshu.com'
+Location.prototype.hostname='www.xiaohongshu.com'
+Location.prototype.port=''
+Location.prototype.pathname='/'
+Location.prototype.search=''
+Location.prototype.hash=''
+Location.prototype.origin='https://www.xiaohongshu.com'
+ 
+screen=watch(new Screen(),'screen')
+Screen.prototype.width=1920
+Screen.prototype.height=1080
+Screen.prototype.availWidth=1920
+Screen.prototype.availHeight=1040
+Screen.prototype.colorDepth=24
+Screen.prototype.pixelDepth=24
+ 
+history=watch(new History(),'history')
+History.prototype.length=1
+History.prototype.pushState=function(){}
+History.prototype.replaceState=function(){}
+History.prototype.back=function(){}
+History.prototype.forward=function(){}
+History.prototype.go=function(){}
+setNative(History.prototype.pushState,'pushState')
+setNative(History.prototype.replaceState,'replaceState')
+ 
+localStorage=watch(new Storage(),'localStorage')
+sessionStorage=watch(new Storage(),'sessionStorage')
+Storage.prototype.getItem=function(key){return null}
+Storage.prototype.setItem=function(key,value){}
+Storage.prototype.removeItem=function(key){}
+Storage.prototype.clear=function(){}
+Storage.prototype.length=0
+Storage.prototype.key=function(index){return null}
+setNative(Storage.prototype.getItem,'getItem')
+setNative(Storage.prototype.setItem,'setItem')
+setNative(Storage.prototype.removeItem,'removeItem')
+setNative(Storage.prototype.clear,'clear')
+setNative(Storage.prototype.key,'key')
+ 
+performance=watch(new Performance(),'performance')
+Performance.prototype.now=function(){return Date.now()}
+Performance.prototype.timing={
+    navigationStart: Date.now(),
+    fetchStart: Date.now(),
+    domainLookupStart: Date.now(),
+    domainLookupEnd: Date.now(),
+    connectStart: Date.now(),
+    connectEnd: Date.now(),
+    requestStart: Date.now(),
+    responseStart: Date.now(),
+    responseEnd: Date.now(),
+    domLoading: Date.now(),
+    domInteractive: Date.now(),
+    domContentLoadedEventStart: Date.now(),
+    domContentLoadedEventEnd: Date.now(),
+    domComplete: Date.now(),
+    loadEventStart: Date.now(),
+    loadEventEnd: Date.now()
 }
-global.window = global;
-global.self = global;
-global.top = global;
-global.parent = global;
-try { global.globalThis = global; } catch (e) {}
-
-module.exports = { noop, watch, setNative };
+setNative(Performance.prototype.now,'now')
+ 
+XMLHttpRequest.prototype.open=function(){}
+XMLHttpRequest.prototype.send=function(){}
+XMLHttpRequest.prototype.setRequestHeader=function(){}
+XMLHttpRequest.prototype.getResponseHeader=function(){return null}
+XMLHttpRequest.prototype.getAllResponseHeaders=function(){return ''}
+XMLHttpRequest.prototype.abort=function(){}
+XMLHttpRequest.prototype.readyState=0
+XMLHttpRequest.prototype.status=0
+XMLHttpRequest.prototype.responseText=''
+XMLHttpRequest.prototype.responseXML=null
+XMLHttpRequest.DONE=4
+setNative(XMLHttpRequest.prototype.open,'open')
+setNative(XMLHttpRequest.prototype.send,'send')
+setNative(XMLHttpRequest.prototype.setRequestHeader,'setRequestHeader')
+ 
+HTMLCanvasElement.prototype.getContext=function(type){
+    if(type==='2d'){
+        return new CanvasRenderingContext2D()
+    }
+    return null
+}
+setNative(HTMLCanvasElement.prototype.getContext,'getContext')
+ 
+CanvasRenderingContext2D.prototype.fillText=function(){}
+CanvasRenderingContext2D.prototype.measureText=function(text){
+    return {width: text.length * 10}
+}
+CanvasRenderingContext2D.prototype.createLinearGradient=function(){
+    return {
+        addColorStop: function(){}
+    }
+}
+CanvasRenderingContext2D.prototype.fillRect=function(){}
+CanvasRenderingContext2D.prototype.clearRect=function(){}
+CanvasRenderingContext2D.prototype.getImageData=function(x,y,w,h){
+    return {
+        data: new Uint8ClampedArray(w * h * 4)
+    }
+}
+CanvasRenderingContext2D.prototype.toDataURL=function(){return 'data:image/png;base64,test'}
+setNative(CanvasRenderingContext2D.prototype.fillText,'fillText')
+setNative(CanvasRenderingContext2D.prototype.measureText,'measureText')
+setNative(CanvasRenderingContext2D.prototype.createLinearGradient,'createLinearGradient')
+setNative(CanvasRenderingContext2D.prototype.fillRect,'fillRect')
+setNative(CanvasRenderingContext2D.prototype.clearRect,'clearRect')
+setNative(CanvasRenderingContext2D.prototype.getImageData,'getImageData')
+ 
+document.body=watch(new HTMLElement(),'document.body')
+document.head=watch(new HTMLElement(),'document.head')
+ 
+document.createElement=function(tagName){
+    return new HTMLElement()
+}
+document.getElementById=function(id){
+    return new HTMLElement()
+}
+document.getElementsByClassName=function(className){
+    return []
+}
+document.getElementsByTagName=function(tagName){
+    return []
+}
+document.querySelector=function(selector){
+    return new HTMLElement()
+}
+document.querySelectorAll=function(selector){
+    return []
+}
+setNative(document.createElement,'createElement')
+setNative(document.getElementById,'getElementById')
+setNative(document.getElementsByClassName,'getElementsByClassName')
+setNative(document.getElementsByTagName,'getElementsByTagName')
+setNative(document.querySelector,'querySelector')
+setNative(document.querySelectorAll,'querySelectorAll')
+ 
+window.document=document
+window.navigator=navigator
+window.location=location
+window.screen=screen
+window.history=history
+window.localStorage=localStorage
+window.sessionStorage=sessionStorage
+ 
+// 使用 Node.js 原生 crypto，不覆盖
+if (typeof globalThis.crypto === 'undefined') {
+    const crypto_module = require('crypto');
+    window.crypto = {
+        getRandomValues: function(arr) {
+            const bytes = crypto_module.randomBytes(arr.length);
+            for (let i = 0; i < arr.length; i++) {
+                arr[i] = bytes[i];
+            }
+            return arr;
+        },
+        subtle: globalThis.crypto?.subtle || null
+    };
+} else {
+    window.crypto = globalThis.crypto;
+}
+ 
+window.performance=performance
+window.XMLHttpRequest=XMLHttpRequest
+window.EventTarget=EventTarget
+window.Document=Document
+window.HTMLElement=HTMLElement
+window.HTMLCanvasElement=HTMLCanvasElement
+window.CanvasRenderingContext2D=CanvasRenderingContext2D
+ 
+window.setTimeout=setTimeout
+window.setInterval=setInterval
+window.clearTimeout=clearTimeout
+window.clearInterval=clearInterval
+window.Date=Date
+window.Math=Math
+window.JSON=JSON
+window.parseInt=parseInt
+window.parseFloat=parseFloat
+window.isNaN=isNaN
+window.encodeURIComponent=encodeURIComponent
+window.decodeURIComponent=decodeURIComponent
+window.btoa=function(str){return Buffer.from(str).toString('base64')}
+window.atob=function(str){return Buffer.from(str,'base64').toString()}
+window.addEventListener = function() {}
+window.MouseEvent = function() {}
+ 
+// 最后再 watch window，避免代理内置对象时报错
+window = watch(window, 'window')
+ 
+console.log("&#9989; 基础环境补充完成")
