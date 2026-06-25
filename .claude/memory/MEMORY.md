@@ -27,5 +27,6 @@
 - [默认使用 cloakbrowser](default-cloakbrowser.md) — 自动化浏览器默认 `from cloakbrowser import launch`
 - [Camoufox 版本兼容问题](camoufox-version-issue.md) — `cloakbrowser`→`camoufox` 改名导致 ModuleNotFoundError
 - [Emscripten wasm2js 模式](emscripten-wasm2js-pattern.md) — 与 wasm-bindgen 完全不同，不需要 stub 生成
+- [小红书离线 VM 签名方案](xhs-offline-vm.md) — **当前项目**：VMP 逆向进度、env.dom.js 原型链、阻塞点（2026-06-24）
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
 - [安装新工具时间步更新脚本](install-script-sync.md) — 装 MCP/Skill 必须同步更新 install-mcp.sh + .gitignore
