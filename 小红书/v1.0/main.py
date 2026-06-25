@@ -37,8 +37,8 @@ from curl_cffi import requests
 
 # ===== 配置 =====
 PAGES = 3
-SHOW_DETAIL = False
-INTERVAL = 0
+SHOW_DETAIL = False  # 是否显现笔记的详细信息
+INTERVAL = 1  # 翻页间隔时间
 
 BASE_DIR = Path(__file__).parent
 SIGN_JS = BASE_DIR / "sign.js"
