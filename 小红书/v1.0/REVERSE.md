@@ -579,3 +579,39 @@ python main.py     # 自动引导 + 3 页翻页
 1. **先看 x-s-common**：用浏览器抓一个真实 x-s-common，对比解码后的 JSON 结构。新字段或改值按最小改动修改 `_make_fp()` 和 `make_xsc()`。
 2. **再看 Cookie 引导**：检查 `/api/sec/v1/shield/webprofile` 和 `/login/activate` 是否新增必需头。
 3. **最后看 x-s**：如果 `sign.js` 报错，说明 VM 代码更新了，需要重新从线上抠 `ds_v2.js`，`env.js` 可能需要补新的环境变量。
+
+---
+
+## 十一、教训总结
+
+本次逆向踩过的坑，按先后顺序：
+
+### 坑 1：Cookie 不完整
+
+**现象**：homefeed 返回 `code=0, success=True, items=0`。
+
+**根因**：Cookie 引导阶段（shield/webprofile、activate）的请求没有带完整签名头，服务端下发了"受限"的 cookie。后续 homefeed 虽然 code=0，但拿不到数据。
+
+**教训**：不要因为某个请求"看起来不需要签名"就不传。引导阶段的请求同样需要和正常 API 一样的完整签名头（x-s + x-s-common + x-b3 + x-xray）。Cookie 少一个字段、签名少一个参数，都可能静默失败。
+
+### 坑 2：引导阶段的请求不容易发现需要签名
+
+**现象**：shield/webprofile 和 activate 返回 HTTP 200，响应 JSON 也正常，看不出异常。
+
+**根因**：这些请求即使不带签名也可以成功返回，但返回的 cookie 是降级的。`code=0` 不等于 cookie 完整。
+
+**教训**：对比法是最可靠的排查手段。用真实浏览器的 cookie 发请求，再用自己的 cookie 发请求，对比结果差异——这比逐个分析响应 JSON 快得多。
+
+### 坑 3：x-s-common 硬编码版能过不代表不需要补
+
+**现象**：5 字段硬编码版 x-s-common 在 homefeed 请求中能过。
+
+**根因**：但 Cookie 引导阶段的 shield/webprofile 需要 14 字段完整版。引导阶段和正常 API 阶段对签名的要求不完全相同。
+
+**教训**：每个请求独立验证。不要因为 A 端点的某个简化版能过，就假定 B 端点也能过。
+
+### 核心原则
+
+1. **Cookie 一个不能少** — 真实浏览器发请求时的 11 项 cookie，缺一个都可能导致静默失败。
+2. **参数一个不能少** — 引导请求和业务请求一样，需要完整的 x-s/x-t/x-s-common/x-b3/x-xray。
+3. **和真实浏览器做对比** — 遇到 `code=0` 但没数据，第一时间用浏览器抓真实请求做对比，而不是在代码里"猜"差了什么。
