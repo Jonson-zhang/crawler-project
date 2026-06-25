@@ -76,11 +76,11 @@ def load_cookies() -> dict:
     return {}
 
 
-def node_sign(url: str, body: dict = None) -> dict:
-    """调用 sign.js，传入 JSON body"""
+def node_sign(api_path: str, body: dict = None) -> dict:
+    """调用 sign.js，传入 api_path 和 JSON body"""
     body_json = json.dumps(body or {}, separators=(",", ":"))
     result = subprocess.run(
-        ["node", str(SIGN_JS), body_json],
+        ["node", str(SIGN_JS), api_path, body_json],
         capture_output=True, text=True, timeout=30, cwd=str(BASE_DIR),
     )
     if result.returncode != 0:

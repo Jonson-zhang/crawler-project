@@ -57,8 +57,9 @@ function seccore_signv2(url, body) {
   return "XYS_" + b64Encode(encodeUtf8(JSON.stringify({ x0: "4.3.5", x1: "xhs-pc-web", x2: "Windows", x3: h, x4: body ? "object" : "" })));
 }
 
-var API = "/api/sns/web/v1/homefeed", arg = process.argv[2];
-if (!arg) { console.error("用法: node sign.js '<json_body>'"); process.exit(1); }
+var API = process.argv[2] || "/api/sns/web/v1/homefeed";
+var arg = process.argv[3];
+if (!arg) { console.error("用法: node sign.js [api_path] '<json_body>'"); process.exit(1); }
 var bodyObj;
 try { bodyObj = JSON.parse(arg); } catch (e) { console.error("body 不是有效 JSON"); process.exit(1); }
 var xs = seccore_signv2(API, bodyObj), xt = String(Date.now());
