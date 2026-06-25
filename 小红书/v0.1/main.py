@@ -237,14 +237,16 @@ def boot_guest_cookies() -> dict:
     """完整的游客 Cookie 引导流程（对标 RedCrack XHS_Session.__init_cookies）
 
     步骤：
-      1. 生成 a1 + webId，写入 cookie jar
+      1. 生成 a1 + webId + abRequestId + 基础 cookie
       2. 获取 websectiga + sec_poison_id
       3. 获取 gid + acw_tc
       4. 调 /login/activate 获取 web_session
 
     Returns:
-        完整的 cookies dict，自动保存到 data/cookies.json
+        完整的 cookies dict（11 项），自动保存到 data/cookies.json
     """
+    import uuid
+
     s = requests.Session()
     s.headers.update({
         "user-agent": UA,
@@ -252,22 +254,28 @@ def boot_guest_cookies() -> dict:
         "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         "origin": "https://www.xiaohongshu.com",
         "referer": "https://www.xiaohongshu.com/",
+        "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
     })
 
-    # Step 1: 生成 a1 + webId
+    # Step 1: 生成基础 cookies（对标 RedCrack __init_cookies）
     a1, web_id = _generate_a1()
-    s.cookies.set("a1", a1, domain=".xiaohongshu.com")
-    s.cookies.set("webId", web_id, domain=".xiaohongshu.com")
-    s.cookies.set("webBuild", "6.12.3", domain=".xiaohongshu.com")
-    s.cookies.set("xsecappid", "xhs-pc-web", domain=".xiaohongshu.com")
-    s.cookies.set("loadts", str(int(time.time() * 1000)), domain=".xiaohongshu.com")
-    print(f"[1/4] a1={a1[:20]}... webId={web_id[:16]}...")
+    s.cookies.set("a1", a1)
+    s.cookies.set("webId", web_id)
+    s.cookies.set("webBuild", "6.12.3")
+    s.cookies.set("xsecappid", "xhs-pc-web")
+    s.cookies.set("loadts", str(int(time.time() * 1000)))
+    s.cookies.set("abRequestId", str(uuid.uuid4()))  # ← 缺失的关键 cookie
+    print(f"[1/4] a1={a1[:20]}... webId={web_id[:16]}... abRequestId={s.cookies.get('abRequestId')[:8]}...")
 
-    # Step 2: websectiga
+    # Step 2: websectiga + sec_poison_id（来自同一接口）
     try:
         websectiga = _gen_websectiga(s)
-        s.cookies.set("websectiga", websectiga, domain=".xiaohongshu.com")
-        print(f"[2/4] websectiga={websectiga[:20]}...")
+        s.cookies.set("websectiga", websectiga)
+        # sec_poison_id 由 /api/sec/v1/scripting 响应自动 Set-Cookie
+        sec_pid = s.cookies.get("sec_poison_id") or "?"
+        print(f"[2/4] websectiga={websectiga[:20]}... sec_poison_id={sec_pid[:12]}...")
     except Exception as e:
         print(f"[2/4] websectiga 失败（继续）: {e}")
 
@@ -275,7 +283,8 @@ def boot_guest_cookies() -> dict:
     try:
         _get_gid_and_acw_tc(s)
         gid = s.cookies.get("gid") or "?"
-        print(f"[3/4] gid={gid[:20] if gid != '?' else '?'}")
+        acw = s.cookies.get("acw_tc") or "?"
+        print(f"[3/4] gid={gid[:20] if gid != '?' else '?'} acw_tc={'✓' if acw != '?' else '✗'}")
     except Exception as e:
         print(f"[3/4] gid 失败（继续）: {e}")
 
@@ -287,11 +296,12 @@ def boot_guest_cookies() -> dict:
 
     print(f"[4/4] web_session={web_session[:20]}...")
 
-    # 收集结果
+    # 收集所有 cookie
     cookies = s.cookies.get_dict() if hasattr(s.cookies, "get_dict") else {c.name: c.value for c in s.cookies}
+    print(f"[✓] cookies: {len(cookies)} 项 ({', '.join(sorted(cookies.keys()))})")
     if cookies.get("web_session"):
         save_cookies(cookies)
-        print(f"[✓] cookies 已保存到 {COOKIES_FILE}")
+        print(f"[✓] 已保存到 {COOKIES_FILE}")
     return cookies
 
 
