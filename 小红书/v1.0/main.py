@@ -36,9 +36,9 @@ from Crypto.Cipher import ARC4, DES
 from curl_cffi import requests
 
 # ===== 配置 =====
-PAGES = 3
-SHOW_DETAIL = False  # 是否显现笔记的详细信息
-INTERVAL = 1  # 翻页间隔时间
+PAGES = 3                 # 默认抓取页数
+SHOW_DETAIL = False       # 是否显示每条笔记的正文详情（走 SSR 页面提取，较慢）
+INTERVAL = 1.5            # 翻页间隔（秒），降低请求频率，减少触发风控的风险
 
 BASE_DIR = Path(__file__).parent
 SIGN_JS = BASE_DIR / "sign.js"
@@ -56,10 +56,19 @@ if hasattr(sys.stdout, "reconfigure"):
 # 编码管线
 # ============================================================
 B64_CHARS = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5"
+"""小红书自定义 Base64 编码表，替代标准 ABCDEF...789+/。
+
+所有需要 Base64 编码的签名数据（x-s-common、x-s 内部字段）都必须
+使用这张表而非标准 Base64。用自定义表增加了编码后数据的解码难度。
+Python 端（_b64e）和 Node 端（sign.js 中的 b64Encode）使用同一张表。"""
 
 
 def _b64e(data: bytes) -> str:
-    """自定义 Base64 编码"""
+    """自定义 Base64 编码。
+
+    与标准 Base64 算法一致（3 字节 → 4 字符），但查表用自定义 B64_CHARS。
+    Node 端 sign.js 中 b64Encode() 为同款实现，两边必须一致。
+    分块循环（步长 16383）防止长字符串 String.fromCharCode 溢出。"""
     n, m, r = len(data), len(data) % 3, []
     for i in range(0, n - m, 16383):
         limit = min(i + 16383, n - m)
@@ -86,7 +95,10 @@ def _b64e(data: bytes) -> str:
 
 
 def _json_to_bytes(obj: dict) -> bytes:
-    """JSON → URL 编码 → 字节数组"""
+    """JSON → URL 编码 → 字节数组。
+
+    处理管线：dict → json.dumps → urllib.parse.quote → 逐字节还原为 byte array。
+    quote 的 safe 字符（~()*!./:?=&-_）保留不转义，与 JS 端 encodeURIComponent 行为对齐。"""
     s = json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
     e = urllib.parse.quote(s, safe="~()*!./:?=&-_")
     result, i = bytearray(), 0
@@ -244,7 +256,11 @@ def _make_b1(fp: dict) -> str:
 
 
 def _js_crc32(s: str) -> int:
-    """JavaScript 风格 CRC32（有符号 32 位整数）"""
+    """JavaScript 风格 CRC32（有符号 32 位整数）。
+
+    标准 CRC32 在 JS 中是位运算结果，输出为有符号 32 位（如 -123456789）。
+    Python 的 zlib.crc32 同样有符号（返回值与 & 0xFFFFFFFF 有关），
+    但 x-s-common 需要与 JS 端完全一致的符号整数，故手动实现查表法对齐。"""
     tbl = [0] * 256
     for i in range(256):
         c = i
@@ -322,6 +338,8 @@ def sign_headers(url: str, cookies: dict, body: dict | None = None) -> dict:
 # ============================================================
 
 A1_CHARS = "abcdefghijklmnopqrstuvwxyz1234567890"
+"""a1 生成器使用的字符集（36 位：小写字母 + 数字）。
+30 位随机字符取自这个字符集，注意：不含 0（避免与英文字母 o 混淆）。"""
 
 
 def _gen_a1() -> tuple[str, str]:
@@ -334,7 +352,15 @@ def _gen_a1() -> tuple[str, str]:
 
 
 def _gen_websectiga(js_text: str) -> str:
-    """从 /api/sec/v1/scripting 响应解密 websectiga（JSVMP 逆向）"""
+    """从 /api/sec/v1/scripting 响应解密 websectiga。
+
+    响应中包含 JSVMP 加密的 JS 代码（data.data 字段），需要逆向其解密逻辑：
+      1. 提取 "b" 字段 → Base64 解码 → 每字符减 1 → 5 位一组还原原始逻辑数组
+      2. 提取 "d" 字段 → JSON 解析出索引数组（92/93 切片段，675 位扩展）
+      3. 从两组数据中交叉取 8 位 × 7 轮，还原 56 字符的 websectiga 值
+
+    这是小红书 JSVMP 虚拟机保护的逆向产物，无需外部依赖。
+    """
     b_m = re.search(r'"b":"(.*?)",', js_text)
     d_m = re.search(r'"d":(.*?)\}\)', js_text)
     b, d = b_m.group(1), json.loads(d_m.group(1))
