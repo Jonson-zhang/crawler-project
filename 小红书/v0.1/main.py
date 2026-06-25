@@ -22,7 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 # ===== 配置 =====
 PAGES = 3            # 翻页数
-SHOW_DETAIL = True   # True=显示笔记正文, False=只显示摘要
+SHOW_DETAIL = False  # True=显示笔记正文(需找到详情API端点后可用)
 INTERVAL = 1.5       # 页间间隔秒数
 
 # ===== 路径 =====
