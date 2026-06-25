@@ -21,7 +21,7 @@
 }
 
 # 3. 开始—全程无头，无需登录
-python bot.py 202601017869
+python bot.py 202601017869  # 课程ID
 python bot.py --url "https://www.cmechina.net/cme/study2.jsp?course_id=202601017869&courseware_id=01" --headless
 ```
 
