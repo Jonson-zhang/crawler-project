@@ -90,15 +90,55 @@ def _json_to_bytes(obj: dict) -> bytes:
 # 签名头: x-s, x-t, x-b3, x-xray, x-s-common
 # ============================================================
 
+class SignDaemon:
+    """sign.js 常驻进程封装
+
+    启动一次 Node.js 进程，后续所有签名通过 stdin/stdout 通信，
+    消除 subprocess 冷启动开销。
+    """
+
+    def __init__(self):
+        import atexit
+        self._proc = subprocess.Popen(
+            ["node", str(SIGN_JS), "--daemon"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, cwd=str(BASE_DIR),
+        )
+        atexit.register(self.close)
+
+    def sign(self, path: str, body: dict | None = None) -> dict:
+        """发送签名请求，阻塞等待结果"""
+        req = {"path": path, "body": body or {}}
+        self._proc.stdin.write(json.dumps(req, separators=(",", ":")) + "\n")
+        self._proc.stdin.flush()
+        line = self._proc.stdout.readline()
+        if not line:
+            raise RuntimeError("sign.js daemon 意外退出")
+        result = json.loads(line)
+        if "error" in result:
+            raise RuntimeError(f"sign.js 错误: {result['error']}")
+        return result
+
+    def close(self):
+        if self._proc and self._proc.poll() is None:
+            self._proc.stdin.close()
+            self._proc.wait(timeout=5)
+
+
+# 全局单例
+_sign_daemon: SignDaemon | None = None
+
+
+def _get_daemon() -> SignDaemon:
+    global _sign_daemon
+    if _sign_daemon is None:
+        _sign_daemon = SignDaemon()
+    return _sign_daemon
+
+
 def _xs(path: str, body: dict | None = None) -> dict:
     """x-s + x-t: 调 sign.js（扣代码产物）"""
-    body_json = json.dumps(body or {}, separators=(",", ":"))
-    r = subprocess.run(
-        ["node", str(SIGN_JS), path, body_json],
-        capture_output=True, text=True, timeout=30, cwd=str(BASE_DIR))
-    if r.returncode != 0:
-        raise RuntimeError(f"sign.js 失败: {r.stderr.strip()}")
-    return json.loads(r.stdout.strip())
+    return _get_daemon().sign(path, body)
 
 
 def _xt() -> int:
