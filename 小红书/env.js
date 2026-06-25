@@ -355,14 +355,8 @@ const crypto = {
 // Image
 function Image() { this.src = ""; this.width = 0; this.height = 0; this.onload = null; this.onerror = null; }
 
-// console
-const console = {
-  log: noop,
-  warn: noop,
-  error: noop,
-  info: noop,
-  debug: noop,
-};
+// console — 保留原生输出能力，VMP 内部用 noop
+// 不 shadow 全局 console，这样 sign.js 的错误消息正常显示
 
 // TextEncoder / TextDecoder
 const TextEncoder = global.TextEncoder;
@@ -386,7 +380,7 @@ _window.performance = watch(new Performance(), "performance");
 _window.localStorage = watch(new Storage(), "localStorage");
 _window.sessionStorage = watch(new Storage(), "sessionStorage");
 _window.crypto = crypto;
-_window.console = console;
+_window.console = { log: noop, warn: noop, error: noop, info: noop, debug: noop };
 _window.TextEncoder = TextEncoder;
 _window.TextDecoder = TextDecoder;
 _window.atob = atob;
