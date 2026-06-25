@@ -1,80 +1,67 @@
 ---
 name: xhs-offline-vm
-description: 小红书离线 VM 签名方案 — 4 文件架构、mns0201 可用、mns0301 待攻克
+description: 小红书离线 VM 签名方案 - mns0201 已可用，mns0301 待攻克，下一步浏览器打断点溯源
 metadata:
   node_type: memory
   type: project
   originSessionId: 56372508-3582-40ae-a666-c28c940a1b11
 ---
 
-# 小红书离线 VM 签名 — 2026-06-25
+# 小红书离线 VM 签名 - 2026-06-25
 
-> **核心目标：纯离线 Node.js/Python 产出 XYS_ 签名，不需要浏览器自动化。**
+> 核心目标：纯离线 Node.js/Python 产出 XYS_ 签名。**禁止使用浏览器自动化工具。**
 
-## 一、当前可用方案（mns0201）
+## 一、已达成
 
-### 1.1 4 个文件架构
+### 1.1 4 文件离线架构
 
 | 文件 | 大小 | 用途 |
 |------|------|------|
-| `env.js` | 16KB | DOM 环境模拟（来自 1.md 验证能跑的版本） |
-| `ds_script.js` | 421KB | VMP 字节码（`_AUuXfEG27Xa3x` + `__$c` 233K bytecode） |
-| `sign.js` | 3KB | 签名入口（require env+ds → `seccore_signv2()` → JSON） |
-| `request.py` | 6KB | Python 请求桥接（subprocess 调用 sign.js → curl_cffi POST） |
+| env.js | 16KB | 浏览器环境（1.md 验证能跑的版本） |
+| ds_script.js | 421KB | VMP 字节码（1.md 版，233K bytecode） |
+| sign.js | 3KB | 签名入口 `node sign.js '<json>'` |
+| request.py | 9KB | 双模式：SSR 提取（无需 cookie）+ API 翻页（需 web_session） |
 
-### 1.2 签名链
+### 1.2 mns0201 可用
 
-```
-node sign.js '<json_body>'
-  → require('./env')     → DOM 全局对象
-  → require('./ds_script') → _AUuXfEG27Xa3x 解释器 → window.mnsv2 创建
-  → CryptoJS.MD5×2 + window.mnsv2() + b64Encode + encodeUtf8
-  → stdout: {"X-s":"XYS_...","X-t":"..."}  (364 字符)
-```
+`node sign.js` 产出 364 字符 `XYS_` 签名，服务器返回 HTTP 200（非 406），但 mnsv2 hash 前缀是 `mns0201_`。
 
-### 1.3 验证结果
+### 1.3 编码链已确认
 
-- `node sign.js` → 产出 364 字符 XYS_ 签名 ✅
-- HTTP POST → 返回 200（非 406）✅
-- mnsv2 hash 前缀: `mns0201_`（不是 mns0301_）
+MD5 + UTF-8 (encodeURIComponent) + 自定义 Base64 (`ZmserbBoHQtNP+...`) + payload `{x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3:hash, x4:dataType}`
 
-### 1.4 依赖
+### 1.4 SSR 数据提取可用
 
-```bash
-npm install crypto-js   # sign.js 需要
-pip install curl_cffi   # request.py 需要
-```
+`python request.py` 直接 GET HTML 解析，无需 cookie 和签名，每次 20+ 条笔记。
 
----
+## 二、阻塞点
 
-## 二、mns0201 vs mns0301
+### 2.1 mns0201 vs mns0301
 
-| | mns0201 | mns0301 |
-|---|---|---|
-| __$c 字节码 | 1.md 旧版 (233K 字符) | 线上新版 (55K 字符) |
-| VMP 解释器 | 1 个 DS 脚本 (`_AUuXfEG27Xa3x`) | 需要 DS v1 + DS v2 + FP 共 3 个 |
-| 离线状态 | ✅ 能跑 | ❌ FP 脚本在 Node.js 中崩溃 |
-| 服务器接受 | ✅ HTTP 200 | 未验证（离线未产出） |
+- 1.md ds_script: `__$c` 233K bytecode → mns0201 (旧版)
+- 线上 ds_v2: `__$c` 7.5K bytecode → 应该产出 mns0301（新版）
+- 需要在 1.md env 上加载在线版 bytecode，但 VMP 解释器状态不匹配
 
-**1.md 的 mns0201 能正常签名。mns0301 需要 FP 脚本适配，但文章作者自己也是先拿到 0201 后发现需要 4 个 VM 文件才拿到 0301。**
+### 2.2 在线 ds_v2 离线加载失败
 
----
+用 1.md env + 在线 ds_v2 时：
+- Proxy 自动填充 300 个 env 槽位 → 解决 `undefined is not a constructor`
+- 仍崩溃于 `Cannot read properties of undefined (reading III)`（VMP 内部状态，希腊字母 Iota）
+- 根因：在线 bytecode 依赖 FP 脚本(395KB)初始化的 VMP 运行时状态，这部分在 Node.js 中未正确建立
 
-## 三、env.js 选型
+### 2.3 不再在 Node.js 里硬跑
 
-**用 1.md 的 env.js（16KB, 414 行），不用自己写的 env.js。**
+试错效率太低。正确做法是**浏览器打断点溯源**——看清 mnsv2 到底被谁、以什么方式创建。
 
-核心区别：1.md 用 Map + 全局 `Function.prototype.toString` 替换，VMP 内部创建的函数走 fallback 不报错。我们的逐个函数设 toString 的方式覆盖不全。
+## 三、下一步
 
----
+1. js-reverse 浏览器打开 xiaohongshu.com
+2. `delete window.mnsv2` → `Object.defineProperty(window, 'mnsv2', { set(v) { debugger; ... } })`
+3. 重新 eval 4 个 DS 脚本
+4. 陷阱触发 → `get_paused_info` 获调用栈 → 确定创建路径
+5. 根据调用栈定位需要补的具体 env
 
-## 四、关键数据
+## 四、相关 memory
 
-- 自定义 Base64: `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5`
-- Payload: `{x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3:mnsv2Hash, x4:"object"/"string"}`
-- mnsv2 输入: `(url+body, MD5(url+body), MD5(url))`
-- XYS_ 长度: 364 字符
-
-## 五、相关 memory
-
+- [[online-resources-keep-raw]] — 线上资源必须保持原始完整，禁止截断
 - [[crawler-conventions]] — 项目约定
