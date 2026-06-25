@@ -37,7 +37,7 @@ from curl_cffi import requests
 
 # ===== 配置 =====
 PAGES = 3
-SHOW_DETAIL = True
+SHOW_DETAIL = False
 INTERVAL = 0
 
 BASE_DIR = Path(__file__).parent
