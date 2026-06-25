@@ -1,94 +1,88 @@
 # x-s 逆向：VM 抠代码 + 补环境
 
-## 定位
+## 当前线上架构（2026）
 
-```
-F12 Sources → 搜索 "X-s"
-→ 定位赋值语句 → break on v(x, s)
-→ 进入 v 函数 → 看到 window.mnsv2(c, d) 调用
-```
-
-## 抠 VM 代码
-
-```
-1. 在 window.mnsv2 处设断点 → step into → 进入 VM
-2. 在 VM 文件开头设断点 → 刷新页面 → 断住
-3. 回溯 Call Stack → 找到调用 VM 的上一个堆栈帧
-4. 在堆栈帧的 eval 位置设断点
-5. 刷新页面 → 断住 → 拷出 eval 参数（VM 源码）
-6. grep 搜索 "eval" → 确认是否还有遗漏
-7. 重复直到断点总数 = 4
-```
-
-## 4 个 eval 的分布
-
-| eval | 产物 | 文件 | 作用 |
-|------|------|------|------|
-| 1 | ds_script.js | 430KB | 混淆 loader + mns0201 版本 mnsv2 |
-| 2 | ds_api.js | 60KB | 时间戳同步等辅助函数 |
-| 3-4 | ds_v2.js | 62KB | mns0201 → mns0301 升级模块 |
-
-## 为什么是 4 个
-
-```
-仅 eval1 (ds_script):
-  window.mnsv2(input) → "mns0201_..."
-
-eval1 + eval3+4 (ds_v2.js):
-  window.mnsv2(input) → "mns0301_..."
-```
-
-**mns0201 版本不能用于数据接口（homefeed/search 等）。**
-
-1.md 原文：
-> "生成的结果有个前缀 mns0301，但并不是所有接口都是0301，也有0201,0101，而上面的代码生成的结果貌似都是0201，而主要的数据接口基本都是0301的，这就是问题所在。"
-
-## 覆盖升级机制
-
-ds_script.js 先注册 mns0201 版本的 `window.mnsv2`。ds_v2.js 加载时内部会调用原始的 `window.mnsv2()` 拿中间结果，然后通过 `_AUuXfEG27Xa3x` setter 替换为 mns0301：
+x-s 签名链在 `vendor-dynamic.js`（webpack bundle，~1.3MB）中：
 
 ```javascript
-Object.defineProperty(global, "_AUuXfEG27Xa3x", {
-  get: function () { return _ra || _oa; },
-  set: function (fn) {
-    if (typeof fn === "function" && fn.toString().length > 100000) {
-      _ra = function (bc, env) {
-        for (var i = 0; i < 200; i++) {
-          if (env[i] === undefined) {
-            var s = function () {}; s.prototype = {}; env[i] = s;
-          }
-        }
-        return fn.call(window, bc, env);
-      };
-    }
-  }
-});
-eval(fs.readFileSync("data/ds_v2.js", "utf8"));
-// 此时 window.mnsv2 已被 ds_v2.js 替换为 mns0301
+function seccore_signv2(e, a) {
+    var s = window.toString, u = e;
+    if ("[object Object]" === s.call(a) || "[object Array]" === s.call(a))
+        u += JSON.stringify(a);
+    else if (typeof a === "string")
+        u += a;
+
+    var m = Pu([u].join("")),    // MD5(url+body)
+        w = Pu(e),               // MD5(url)
+        C = window.mnsv2(u, m, w);  // ← VMP 签名核心
+
+    var P = {
+        x0: "4.3.5",        // 语言/库版本
+        x1: "xhs-pc-web",   // App ID
+        x2: "Windows",       // 操作系统
+        x3: C,               // VMP 输出 (mns0301_xxx)
+        x4: a ? "object" : "" // POST/GET 区分
+    };
+
+    return "XYS_" + xE(lz(JSON.stringify(P)));
+    //              ↑ UTF8   ↑ 自定义 Base64
+}
 ```
 
-## x-s 内部结构
+## mnsv2 创建链
 
 ```
-XYS_ + 自定义Base64({
-  x0: "4.3.5",       // 语言版本号
-  x1: "xhs-pc-web",  // App ID
-  x2: "Windows",      // 操作系统
-  x3: "mns0301_加密数据",  // window.mnsv2() 的输出
-  x4: "object" / ""   // POST 有 body 时 = "object", GET 为空
-})
+ds_loader.js (151KB, 混淆代码)
+  → 创建 VMP 解释器基础（字节码执行引擎）
+
+ds_api.js (60KB, 混淆代码)
+  → 定义本地变量 __$c (VMP 字节码字符串)
+  → 调用 glb['_BHjFmfUMEtxhI'](__$c, [,, undefined, Uint8Array, getdss])
+  → 内部执行字节码，创建 __bc (2466 chars)
+  → 创建 mns0201 版本的 window.mnsv2
+
+ds_v2.js (62KB, 混淆代码)
+  → 定义本地变量 __$c (另一份 VMP 字节码)
+  → 调用 glb['_AUuXfEG27Xa3x'](__$c, [,, Function, document, performance, MutationObserver, Object])
+  → 内部通过 Object.defineProperty setter 升级 mns0201 → mns0301
 ```
 
-## env.js 补环境要点
+## 从浏览器提取脚本
 
-VM 代码依赖浏览器环境，需要在 Node.js 中模拟：
+### 用 js-reverse MCP
 
-1. `Function.prototype.toString` 保护
-2. `window` / `global` / `self` 循环引用
-3. `document` 基础 DOM（createElement、querySelector 等）
-4. `navigator` 特征（platform、language、plugins、webdriver）
-5. `screen` 分辨率
-6. `localStorage` / `sessionStorage`
-7. `location` URL 解析
-8. Canvas / WebGL 检测桩
-9. 定时器、事件系统桩
+1. `new_page("https://www.xiaohongshu.com/explore")`
+2. `list_scripts` → 过滤 `fe-static.xhscdn.com/as/` 找到 DS 脚本 URL
+3. `save_script_source` 保存到本地
+
+### 用 camoufox-reverse MCP
+
+1. `navigate("https://www.xiaohongshu.com/explore")`
+2. `scripts(action="list")` → 找到 DS 脚本
+3. `scripts(action="save", url=..., save_path=...)` 保存
+
+### 需要保存的脚本
+
+| 脚本 URL 特征 | 保存为 | 大小 |
+|-------------|--------|------|
+| `as/v2/ds/` 开头的 JS | `ds_v2.js` | ~62KB |
+| `as/v1/3e44/public/a9ef72` (sdt_source_init) | `sdt_source_init.js` | ~246KB |
+| `as/v1/3e44/public/04b294` | `ds_loader.js` | ~151KB |
+| `as/v1/f218/a15/public/` | `v1_f218.js` | ~149KB |
+| `as/v2/fp/` | `fp.js` | ~396KB |
+| `as/v1/3e44/public/bf7d4e` | `bf7d4e.js` | ~45B |
+| `as.xiaohongshu.com/api/sec/v1/ds` | `ds_api.js` | ~60KB |
+
+## 补环境加载与测试
+
+1. 编写 `env.js`，使用原型链补环境（见 [env-patching.md](env-patching.md)）
+2. 按顺序加载：`ds_loader.js` → `ds_api.js` → `ds_v2.js`
+3. 无需加载 `sdt_source_init.js`（它是另一个 VMP 解释器变体，会导致栈溢出）
+4. 验证：`window.mnsv2("test", "test", "object")` 输出前缀为 `mns0301_`
+
+## 验证方法
+
+- 输入 `("url", "md5(url+body)", "object")` → 输出 `mns0301_xxx`（200 字符）
+- x-s 总长度 ~364 字符（XYS_ 前缀 + 自定义 Base64）
+- 解码 x-s 后 JSON 结构：`{x0, x1, x2, x3, x4}`
+- x3 前缀必须为 `mns0301_`，不是 `mns0201_`
