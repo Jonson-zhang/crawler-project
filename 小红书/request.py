@@ -264,10 +264,10 @@ def main():
             likes = (nc.get("interact_info") or {}).get("liked_count") or 0
             show_item((pg - 1) * 20 + i, {"title": title, "author": author, "likes": likes})
 
-        cursor = data.get("data", {}).get("cursor", "")
+        cursor = data.get("data", {}).get("cursor_score") or data.get("data", {}).get("cursor", "")
         note_index += len(items)
 
-        if not data.get("data", {}).get("has_more") or not cursor:
+        if not cursor:
             print("(已到最后一页)")
             break
 
