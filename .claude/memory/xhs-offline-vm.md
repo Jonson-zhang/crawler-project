@@ -7,27 +7,44 @@ metadata:
   originSessionId: 56372508-3582-40ae-a666-c28c940a1b11
 ---
 
-# 小红书离线 VM 签名 — 2026-06-25 状态
+# 小红书离线 VM 签名 — 2026-06-25
 
 > **核心目标：纯离线 Node.js/Python 产出 XYS_ 签名，不需要浏览器自动化。**
 
-## 一、已确认的签名链 ✅
+## 一、签名链已确认 ✅
+
+| 环节 | 实现 |
+|------|------|
+| K.Pu (MD5) | 标准 MD5 — Python/Node 均可 |
+| K.lz (UTF-8) | encodeURIComponent → 字节数组 |
+| K.xE (Base64) | 自定义码表 `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5` |
+| Payload | `{x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3:mnsv2Hash, x4:dataType}` |
+| mnsv2 | `window.mnsv2(url+body, MD5(url+body), MD5(url))` → `"mns0301_<base64>"` (200字符) |
+
+**阻塞点：`window.mnsv2` 是 VMP 字节码运行时动态创建的函数，离线环境中 4 个 DS 脚本加载后仍未出现。**
+
+## 二、当前困境
+
+### 2.1 已尝试：在 Node.js 中硬跑 DS 脚本
 
 ```
-url + body → MD5(url+body) + MD5(url) → window.mnsv2(combined, md5c, md5u) → {x0..x4} payload
-  → JSON.stringify → encodeUtf8 → b64Encode → "XYS_" + result
+env.js → ds_api(59K)→ ds_v2(61K)→ fp(395K)
+结果: 4个脚本全部加载不崩溃，但 window.mnsv2 = undefined
 ```
 
-| 环节 | 实现 | 来源 |
-|------|------|------|
-| K.Pu (MD5) | 标准 MD5 | node `crypto.createHash('md5')` |
-| K.lz (UTF-8) | encodeURIComponent → 字节数组 | webpack module 40055 |
-| K.xE (Base64) | 自定义码表 | `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5` |
-| payload | `{x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3: mnsv2Hash, x4: dataType}` | vendor-dynamic.js seccore_signv2 |
-| mnsv2 Hash | `"mns0301_" + base64(VMP字节码内部运算结果)` — 200字符 | VMP 运行时 |
+### 2.2 根因分析
 
-**MD5 / UTF-8 / Base64 / Payload 组装** 全部可在 Python/Node.js 离线完成。
-**唯一阻塞点：`window.mnsv2(combined, md5c, md5u)`** 必须在 VMP 字节码解释器环境中运行。
+不是在 Node.js 里逐行调试环境就能解决的——FP 脚本 395KB、ds_v2 61KB 的 VMP 字节码内部逻辑对离线环境的要求是黑盒的。**试错式补环境效率极低。**
+
+### 2.3 正确方向（来自文章经验）
+
+文章的核心步骤：
+1. 在 `window.mnsv2` 调用处下断点
+2. 断住后点进去进 VM → VM 文件开头打上断点
+3. 刷新页面断住 → **回溯堆栈**，去到进入虚拟机的前一个堆栈
+4. 把所有 eval/VM 文件的断点都打上 → 拷出来 → 补几行环境 → 跑
+
+**关键动作是"回溯堆栈"**——去观察浏览器里 VMP 到底通过什么路径把 mnsv2 赋给 window 的，而不是在 Node.js 里硬跑猜测。
 
 ---
 
@@ -115,43 +132,16 @@ window.mnsv2           → undefined ❌  (未创建)
 
 ---
 
-## 五、下一步：修复 FP 脚本环境
+## 五、下一步
 
-### 5.1 FP 脚本崩溃点分析
+正确的做法（文章思路）：
 
-`Function.prototype.bind called on incompatible undefined` 说明 FP 脚本内部调用了某个 `undefined.bind(...)`。
+1. **浏览器里给 `window.mnsv2` 赋值点打断点** — 用 `set_breakpoint_on_text` 搜 `mnsv2`
+2. **断住后回溯堆栈** — 找到是哪个 VMP 子函数、以什么方式把 mnsv2 写进 window
+3. **确认完整的 4 个 VM 文件** — 从堆栈里确认到底是 DS v1/v2/FP 中的哪个在什么时机创建 mnsv2
+4. **拷出 + 最小补环境** — 只补 mnsv2 创建所需的那些属性，不追求完整 DOM
 
-需要定位 FP 脚本中哪个函数试图 bind undefined，然后补对应的环境对象。
-
-```bash
-# 在 fp_raw.js 中搜索 bind 调用
-grep -oP '.{0,50}\.bind\(.{0,50}' data/fp_raw.js
-```
-
-### 5.2 最小补环境方案
-
-不需要完整 Vue/SPA。只需要让 4 个 DS 脚本正常执行：
-1. 修复 FP 脚本的 bind 崩溃
-2. 确保 env 数组（传给 _AUuXfEG27Xa3x 的参数）提供 FP 脚本需要的对象
-3. 验证 mnsv2 创建
-
-### 5.3 验证标准
-
-```javascript
-// 离线环境最终目标：
-require('./env');
-require('./ds_script');  // bf7d4e + ds_api + ds_v2 + fp
-typeof window.mnsv2  // → "function"
-window.mnsv2("combined", "md5hex1", "md5hex2")  // → "mns0301_..."
-```
-
-### 5.4 参照文章的思路
-
-文章的步骤完全可以借鉴：
-1. **搜到所有 eval/VM 入口** → 我们已确认 4 个 DS 脚本
-2. **全打上断点** → 离线化对应"全加载进 Node.js"
-3. **补环境让它们能跑** → 修复 FP 脚本的 bind 崩溃是关键
-4. **跑一下~0301出来了** → 我们已经在浏览器里验证 mns0301 能产出
+**不要在 Node.js 里硬跑 395KB 的 FP 脚本了。**
 
 ---
 
