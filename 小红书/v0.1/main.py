@@ -4,19 +4,32 @@ main.py — 小红书首页推荐流抓取 (API 翻页 + 笔记正文)
 
 用法: python main.py
 修改下方 PAGES / SHOW_DETAIL 控制行为
+
+游客 Cookie 自动引导:
+  - 签名: RedCrack xhs_encrypt 纯算（x-s/x-s-common/x-b3/x-xray/x-rap-param）
+  - 引导: scripting → shield/webprofile → activate（全程完整签名头）
+  - 结果: 11 项 cookie，homefeed API 可用
 """
 
 import hashlib
 import json
 import random
+import re
 import subprocess
 import sys
 import time
+import urllib.parse
+import uuid
 import zlib
 from pathlib import Path
 from urllib.parse import quote
 
 from curl_cffi import requests
+
+# RedCrack 纯算模块（需先 git clone https://github.com/Cialle/RedCrack /tmp/RedCrack）
+_REDCRACK_DIR = Path("/tmp/RedCrack")
+if str(_REDCRACK_DIR) not in sys.path:
+    sys.path.insert(0, str(_REDCRACK_DIR))
 
 # Windows GBK 终端兼容
 if hasattr(sys.stdout, "reconfigure"):
@@ -24,17 +37,19 @@ if hasattr(sys.stdout, "reconfigure"):
 
 # ===== 配置 =====
 PAGES = 3            # 翻页数
-SHOW_DETAIL = False  # True=显示笔记正文(需找到详情API端点后可用)
+SHOW_DETAIL = False  # True=显示笔记正文
 INTERVAL = 1.5       # 页间间隔秒数
 
 # ===== 路径 =====
 BASE_DIR = Path(__file__).parent
-SIGN_JS = BASE_DIR / "sign.js"
+SIGN_JS = BASE_DIR / "sign.js"               # 保留：Node.js 签名（备用）
 COOKIES_FILE = BASE_DIR / "data" / "cookies.json"
 API_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/homefeed"
 API_PATH = "/api/sns/web/v1/homefeed"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 B64 = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5"
+
+A1_CHARS = "abcdefghijklmnopqrstuvwxyz1234567890"
 
 
 def b64e(data: bytes) -> str:
@@ -75,59 +90,75 @@ def save_cookies(cookies: dict) -> None:
     COOKIES_FILE.write_text(json.dumps(cookies, ensure_ascii=False, indent=2))
 
 
-# ===== 游客 Cookie 自动生成 =====
+# ===== RedCrack 纯算集成 =====
 
-A1_CHARS = "abcdefghijklmnopqrstuvwxyz1234567890"
+def _get_rc_encrypt():
+    """惰性加载 RedCrack xhs_encrypt（首次调用时导入）"""
+    from request.web.encrypt.xhs_encrypt import xhs_encrypt
+    return xhs_encrypt
+
+
+def _rc_sign_headers(session: "requests.Session", url: str, data: dict | None = None) -> dict:
+    """用 RedCrack xhs_encrypt 生成完整请求头（对标 XHS_Session.__request_encrypt）
+
+    生成: x-s, x-t, x-s-common, x-b3-traceid, x-xray-traceid, x-rap-param
+    """
+    xhs = _get_rc_encrypt()
+    cookies = session.cookies.get_dict()
+    a1 = cookies.get("a1", "")
+    url_path = urllib.parse.urlparse(url).path
+
+    fp = xhs.get_fingerprint(cookies, UA)
+
+    loadts = str(int(time.time() * 1000))
+    session.cookies.update({"loadts": loadts})
+
+    xray = xhs.encrypt_headers_xray()
+    xb3 = xhs.encrypt_header_xb3()
+    xs = xhs.encrypt_headers_xs(a1, int(loadts), url_path, None, data)
+    xhs.update_fingerprint(fp, cookies, url)
+    xsc = xhs.encrypt_headers_xsc(a1, fp)
+    xrap = xhs.encrypt_headers_xrap_param(url, data)
+    xt = int(time.time() * 1000)
+
+    headers = {
+        "x-s": xs,
+        "x-t": str(xt),
+        "x-s-common": xsc,
+        "x-b3-traceid": xb3,
+        "x-xray-traceid": xray,
+    }
+    if xrap:
+        headers["x-rap-param"] = xrap
+    return headers
 
 
 def _generate_a1() -> tuple[str, str]:
-    """生成 a1 和 webId（纯 Python，零依赖）
-
-    a1 结构: hex(毫秒时间戳) + 随机30字符 + 平台码 + "0" + "000" + CRC32
-    截取前 52 位；webId = MD5(a1)
-    """
+    """纯 Python 生成 a1 + webId"""
     ts_hex = hex(int(time.time() * 1000))[2:]
     rand_str = "".join(random.choices(A1_CHARS, k=30))
-    base = ts_hex + rand_str + "5" + "0" + "000"  # 5 = Windows 平台码
+    base = ts_hex + rand_str + "5" + "0" + "000"
     crc = zlib.crc32(base.encode())
     a1 = (base + str(crc))[:52]
     web_id = hashlib.md5(a1.encode()).hexdigest()
     return a1, web_id
 
 
-def _gen_websectiga(session: "requests.Session") -> str:
-    """从 /api/sec/v1/scripting 获取并解密 websectiga
-
-    对标 RedCrack websectiga.py JSVMP 解密逻辑：
-    1. POST https://as.xiaohongshu.com/api/sec/v1/scripting 获取 b/d 字段
-    2. Base64 解码 b → 减 1 → 按 5 分组
-    3. 用 d 的 [92:94] 切片定位 → 每 2 个取 1 个 → 倒序 7 组拼出 64 位 key
-    """
-    import re
-
-    resp = session.post(
-        "https://as.xiaohongshu.com/api/sec/v1/scripting",
-        json={"callFrom": "web", "callback": "seccallback"},
-        headers={"content-type": "application/json"},
-        timeout=15,
-    )
-    data = resp.json().get("data", {})
-    js_text = data.get("data", "")
-
-    # 提取 b 和 d
+def _gen_websectiga_from_text(js_text: str) -> str:
+    """从 /api/sec/v1/scripting 返回的 JS 文本解密 websectiga（对标 RedCrack）"""
     b_match = re.search(r'"b":"(.*?)",', js_text)
     d_match = re.search(r'"d":(.*?)\}\)', js_text)
     if not b_match or not d_match:
-        raise RuntimeError(f"websectiga 解析失败: b={bool(b_match)} d={bool(d_match)}")
+        raise RuntimeError(f"websectiga 解析失败")
 
     b = b_match.group(1)
     d = json.loads(d_match.group(1))
 
-    # Base64 解码 b → 每个 char 减 1 → 按 5 个一组
     padding = len(b) % 4
     if padding:
         b += "=" * (4 - padding)
     decoded = __import__("base64").b64decode(b).decode("utf-8")
+
     logic_list: list[list[int]] = []
     chunk: list[int] = []
     for char in decoded:
@@ -138,120 +169,31 @@ def _gen_websectiga(session: "requests.Session") -> str:
     if chunk:
         logic_list.append(chunk)
 
-    # d[92]:d[93] 切片定位 → 每 2 个取 1 个 key byte → 倒序拼出 64 位
     target = logic_list[d[92] : d[93] + 1]
     key_bytes = [d[target[675 + i][2]] for i in range(0, 128, 2)]
     decode_key = "".join(chr(key_bytes[i + j]) for i in range(56, -1, -8) for j in range(8))
-
     return decode_key
 
 
-def _get_gid_and_acw_tc(session: "requests.Session") -> None:
-    """获取 gid 并写入 accesstc cookie（DES 加密指纹 → /api/sec/v1/shield/webprofile）
-
-    这是一个请求副作用：响应会 Set-Cookie acw_tc 和 gid
-    """
-    from base64 import b64encode
-
-    # 最小指纹（只需 uuid + requestId 即可过）
-    fp = json.dumps(
-        {"uuid": "joiamkprgeyi238i", "requestId": hashlib.md5(str(time.time()).encode()).hexdigest()[:16]},
-        separators=(",", ":"),
-    )
-    fp_b64 = b64encode(fp.encode()).decode()
-
-    # DES ECB 加密
-    from Crypto.Cipher import DES
-
-    key = b"zbp30y86"
-    raw = fp_b64.encode()
-    pad_len = 8 - len(raw) % 8
-    padded = raw if pad_len == 8 else raw + b"\x00" * pad_len
-    cipher = DES.new(key, DES.MODE_ECB)
-    profile_data = cipher.encrypt(padded).hex()
-
-    session.post(
-        "https://as.xiaohongshu.com/api/sec/v1/shield/webprofile",
-        json={
-            "platform": "Windows",
-            "profileData": profile_data,
-            "sdkVersion": "4.2.6",
-            "svn": "2",
-        },
-        headers={"content-type": "application/json;charset=UTF-8"},
-        timeout=15,
-    )
-
-
-def _activate_guest_web_session(session: "requests.Session") -> str | None:
-    """调 /login/activate 获取游客 web_session
-
-    对标 RedCrack：该接口也走完整的签名加密流程（x-s / x-s-common / x-t / x-b3 / x-xray）。
-    """
-    api_path = "/api/sns/web/v1/login/activate"
-    body: dict = {}
-
-    # 签名（调 Node sign.js）
-    try:
-        signed = node_sign(api_path, body)
-    except Exception:
-        signed = None
-
-    # 构建请求头
-    extra_headers: dict = {
-        "content-type": "application/json;charset=UTF-8",
-    }
-    if signed:
-        extra_headers.update({
-            "x-s": signed["X-s"],
-            "x-t": signed["X-t"],
-            "x-s-common": signed.get("X-s-common", ""),
-        })
-    # x-b3-traceid: 随机 16 hex
-    extra_headers["x-b3-traceid"] = "".join(random.choices("abcdef0123456789", k=16))
-    # x-xray-traceid: 时间戳左移 23 + 递增 seq + 随机 64 位
-    extra_headers["x-xray-traceid"] = (
-        hex(int(time.time() * 1000) << 23)[2:].zfill(16)
-        + hex(random.getrandbits(64))[2:].zfill(16)
-    )
-
-    resp = session.post(
-        "https://edith.xiaohongshu.com/api/sns/web/v1/login/activate",
-        json=body,
-        headers=extra_headers,
-        timeout=15,
-    )
-    # 调试：查看响应状态
-    data = resp.json() if resp.text else {}
-    code = data.get("code", resp.status_code)
-    msg = data.get("msg", "")
-    print(f"    activate 响应: code={code} msg={msg}")
-
-    web_session = session.cookies.get("web_session")
-    if not web_session:
-        web_session = resp.cookies.get("web_session")
-    return web_session or None
-
+# ===== 游客 Cookie 自动引导 =====
 
 def boot_guest_cookies() -> dict:
-    """完整的游客 Cookie 引导流程（对标 RedCrack XHS_Session.__init_cookies）
+    """完整的游客 Cookie 引导流程
 
     步骤：
-      1. 生成 a1 + webId + abRequestId + 基础 cookie
-      2. 获取 websectiga + sec_poison_id
-      3. 获取 gid + acw_tc
-      4. 调 /login/activate 获取 web_session
+      1. 生成 a1 + webId + abRequestId
+      2. /api/sec/v1/scripting → websectiga + sec_poison_id
+      3. /api/sec/v1/shield/webprofile → gid + acw_tc（带完整签名）
+      4. /login/activate → web_session（带完整签名）
 
     Returns:
         完整的 cookies dict（11 项），自动保存到 data/cookies.json
     """
-    import uuid
-
     s = requests.Session()
     s.headers.update({
         "user-agent": UA,
         "accept": "application/json, text/plain, */*",
-        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "accept-language": "zh-CN,zh;q=0.9",
         "origin": "https://www.xiaohongshu.com",
         "referer": "https://www.xiaohongshu.com/",
         "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
@@ -259,53 +201,71 @@ def boot_guest_cookies() -> dict:
         "sec-ch-ua-platform": '"Windows"',
     })
 
-    # Step 1: 生成基础 cookies（对标 RedCrack __init_cookies）
+    # Step 1: 基础 cookies
     a1, web_id = _generate_a1()
-    s.cookies.set("a1", a1)
-    s.cookies.set("webId", web_id)
-    s.cookies.set("webBuild", "6.12.3")
-    s.cookies.set("xsecappid", "xhs-pc-web")
-    s.cookies.set("loadts", str(int(time.time() * 1000)))
-    s.cookies.set("abRequestId", str(uuid.uuid4()))  # ← 缺失的关键 cookie
-    print(f"[1/4] a1={a1[:20]}... webId={web_id[:16]}... abRequestId={s.cookies.get('abRequestId')[:8]}...")
+    s.cookies.update({
+        "a1": a1, "webId": web_id, "webBuild": "6.12.3",
+        "xsecappid": "xhs-pc-web", "loadts": str(int(time.time() * 1000)),
+        "abRequestId": str(uuid.uuid4()),
+    })
+    print(f"[1/4] a1={a1[:20]}... webId={web_id[:16]}...")
 
-    # Step 2: websectiga + sec_poison_id（来自同一接口）
+    # Step 2: scripting → websectiga + sec_poison_id
     try:
-        websectiga = _gen_websectiga(s)
-        s.cookies.set("websectiga", websectiga)
-        # sec_poison_id 由 /api/sec/v1/scripting 响应自动 Set-Cookie
-        sec_pid = s.cookies.get("sec_poison_id") or "?"
+        url = "https://as.xiaohongshu.com/api/sec/v1/scripting"
+        r = s.post(url, json={"callFrom": "web", "callback": "seccallback"},
+                   headers={"content-type": "application/json"},
+                   timeout=15, impersonate="chrome131")
+        resp_json = r.json()
+        js_text = resp_json.get("data", {}).get("data", "")
+        websectiga = _gen_websectiga_from_text(js_text)
+        sec_pid = resp_json.get("data", {}).get("secPoisonId", str(uuid.uuid4()))
+        s.cookies.update({"websectiga": websectiga, "sec_poison_id": sec_pid})
         print(f"[2/4] websectiga={websectiga[:20]}... sec_poison_id={sec_pid[:12]}...")
     except Exception as e:
         print(f"[2/4] websectiga 失败（继续）: {e}")
 
-    # Step 3: gid + acw_tc
+    # Step 3: shield/webprofile → gid + acw_tc（必须带完整签名！）
     try:
-        _get_gid_and_acw_tc(s)
+        xhs = _get_rc_encrypt()
+        cookies = s.cookies.get_dict()
+        fp = xhs.get_fingerprint(cookies, UA)
+        url, data = xhs.gen_gid_webprofile_data(fp)
+        r = s.post(url, json=data, headers={
+            "content-type": "application/json;charset=UTF-8",
+            **_rc_sign_headers(s, url, data),
+        }, timeout=15, impersonate="chrome131")
         gid = s.cookies.get("gid") or "?"
         acw = s.cookies.get("acw_tc") or "?"
-        print(f"[3/4] gid={gid[:20] if gid != '?' else '?'} acw_tc={'✓' if acw != '?' else '✗'}")
+        print(f"[3/4] gid={'✓' if gid != '?' else '✗'} acw_tc={'✓' if acw != '?' else '✗'}")
     except Exception as e:
         print(f"[3/4] gid 失败（继续）: {e}")
 
-    # Step 4: 激活 web_session
-    web_session = _activate_guest_web_session(s)
-    if not web_session:
-        print("[4/4] web_session 获取失败（接口可能已变化）")
+    # Step 4: activate → web_session（必须带完整签名！）
+    url = "https://edith.xiaohongshu.com/api/sns/web/v1/login/activate"
+    r = s.post(url, json={}, headers={
+        "content-type": "application/json;charset=UTF-8",
+        **_rc_sign_headers(s, url, {}),
+    }, timeout=15, impersonate="chrome131")
+    data = r.json() if r.text else {}
+    ws = s.cookies.get("web_session")
+    print(f"[4/4] activate: code={data.get('code')} web_session={'✓' if ws else '✗'}")
+
+    if not ws:
         raise RuntimeError("游客 web_session 引导失败")
 
-    print(f"[4/4] web_session={web_session[:20]}...")
-
-    # 收集所有 cookie
-    cookies = s.cookies.get_dict() if hasattr(s.cookies, "get_dict") else {c.name: c.value for c in s.cookies}
+    # 收集结果
+    cookies = s.cookies.get_dict()
     print(f"[✓] cookies: {len(cookies)} 项 ({', '.join(sorted(cookies.keys()))})")
-    if cookies.get("web_session"):
-        save_cookies(cookies)
-        print(f"[✓] 已保存到 {COOKIES_FILE}")
+    save_cookies(cookies)
+    print(f"[✓] 已保存到 {COOKIES_FILE}")
     return cookies
 
 
+# ===== 签名 & API 请求 =====
+
 def node_sign(api_path: str, body: dict | None = None) -> dict:
+    """Node.js sign.js 签名（备用，引导流程不依赖此项）"""
     body_json = json.dumps(body or {}, separators=(",", ":"))
     result = subprocess.run(
         ["node", str(SIGN_JS), api_path, body_json],
@@ -319,18 +279,38 @@ def node_sign(api_path: str, body: dict | None = None) -> dict:
     return json.loads(stdout)
 
 
-def make_xs_headers(api_path: str, body: dict | None = None) -> dict:
-    signed = node_sign(api_path, body)
-    md5_url = hashlib.md5(api_path.encode()).hexdigest()
-    cp = {"a1": "", "x1": "4.3.5", "x2": api_path, "x3": "xhs-pc-web", "x4": md5_url}
-    return {
-        "x-s": signed["X-s"],
-        "x-t": signed["X-t"],
-        "x-s-common": b64e(utf8b(json.dumps(cp, separators=(",", ":")))),
-    }
+def make_api_headers(cookies: dict, url: str, data: dict | None = None, use_rc: bool = True) -> dict:
+    """生成 API 请求头
+
+    use_rc=True:  用 RedCrack 纯算（x-s/x-s-common/x-b3/x-xray/x-rap-param）
+    use_rc=False: 用 Node.js sign.js（仅 x-s/x-t/x-s-common，兼容旧方案）
+    """
+    if use_rc:
+        # 用 RedCrack 完整签名
+        s = requests.Session()
+        s.headers.update({
+            "user-agent": UA, "origin": "https://www.xiaohongshu.com",
+            "accept": "application/json, text/plain, */*",
+        })
+        for k, v in cookies.items():
+            if isinstance(v, str):
+                s.cookies.update({k: v})
+        return _rc_sign_headers(s, url, data)
+    else:
+        # 用 Node.js sign.js（仅 x-s/x-t/x-s-common）
+        path = urllib.parse.urlparse(url).path
+        signed = node_sign(path, data)
+        md5_url = hashlib.md5(path.encode()).hexdigest()
+        cp = {"a1": "", "x1": "4.3.5", "x2": path, "x3": "xhs-pc-web", "x4": md5_url}
+        return {
+            "x-s": signed["X-s"],
+            "x-t": signed["X-t"],
+            "x-s-common": b64e(utf8b(json.dumps(cp, separators=(",", ":")))),
+        }
 
 
 def fetch_homefeed(cursor: str = "", note_index: int = 0, cookies: dict | None = None) -> dict:
+    """调用 homefeed API（带完整 RedCrack 签名）"""
     body = {
         "cursor_score": cursor, "num": 20, "refresh_type": 1,
         "note_index": note_index, "unread_begin_note_id": "",
@@ -340,17 +320,22 @@ def fetch_homefeed(cursor: str = "", note_index: int = 0, cookies: dict | None =
         "need_filter_image": False,
     }
     s = requests.Session()
-    s.headers.update({"user-agent": UA, "origin": "https://www.xiaohongshu.com"})
+    s.headers.update({
+        "user-agent": UA, "origin": "https://www.xiaohongshu.com",
+        "accept": "application/json, text/plain, */*",
+        "referer": "https://www.xiaohongshu.com/explore",
+    })
     if cookies:
         s.cookies.update({k: str(v) for k, v in cookies.items() if isinstance(v, str)})
+
     resp = s.post(API_URL, json=body, headers={
         "content-type": "application/json;charset=UTF-8",
-        **make_xs_headers(API_PATH, body),
+        **make_api_headers(cookies, API_URL, body, use_rc=True),
     }, timeout=30, impersonate="chrome131")
     return resp.json()
 
 
-def fetch_note_detail(note_id: str, xsec_token: str, session: requests.Session) -> dict | None:
+def fetch_note_detail(note_id: str, xsec_token: str, session: "requests.Session") -> dict | None:
     """GET 笔记 SSR 页面, 从 __INITIAL_STATE__ 提取正文"""
     try:
         url = f"https://www.xiaohongshu.com/explore/{note_id}?xsec_token={xsec_token}&xsec_source=pc_feed"
@@ -386,6 +371,8 @@ def fetch_note_detail(note_id: str, xsec_token: str, session: requests.Session) 
     return None
 
 
+# ===== 主流程 =====
+
 def main():
     cookies = load_cookies()
     if not cookies.get("web_session"):
@@ -399,13 +386,6 @@ def main():
 
     print(f"web_session: {cookies['web_session'][:20]}...")
     print(f"页数: {PAGES}, 正文: {'显示' if SHOW_DETAIL else '不显示'}\n")
-
-    # 签名预检
-    try:
-        node_sign(API_PATH, {"cursor_score": "", "num": 1, "refresh_type": 1, "note_index": 0})
-    except Exception as e:
-        print(f"[!] 签名失败: {e}", file=sys.stderr)
-        sys.exit(1)
 
     detail_http = requests.Session()
     detail_http.headers.update({"user-agent": UA, "origin": "https://www.xiaohongshu.com"})
@@ -424,10 +404,7 @@ def main():
 
         items = data.get("data", {}).get("items") or []
         if not items:
-            if pg == 1 and code == 0:
-                print("  (推荐流为空：游客账号无浏览历史，可尝试搜索 API 或使用登录账号)")
-            else:
-                print("  (无数据)")
+            print("  (无数据)")
             break
 
         total += len(items)
