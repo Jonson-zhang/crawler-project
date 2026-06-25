@@ -2,9 +2,7 @@
 """
 main.py — 小红书首页推荐流抓取 (API 翻页)
 
-用法: python main.py               # 翻页抓取
-      python main.py --detail 3    # 翻页 + 前3条笔记详情
-
+用法: python main.py
 修改下方 PAGES 控制页数
 """
 
