@@ -26,10 +26,28 @@ from urllib.parse import quote
 
 from curl_cffi import requests
 
-# RedCrack 纯算模块（需先 git clone https://github.com/Cialle/RedCrack /tmp/RedCrack）
-_REDCRACK_DIR = Path("/tmp/RedCrack")
-if str(_REDCRACK_DIR) not in sys.path:
-    sys.path.insert(0, str(_REDCRACK_DIR))
+# RedCrack 纯算模块（需先 git clone https://github.com/Cialle/RedCrack）
+import os as _os
+_REDCRACK_DIR = _os.environ.get("REDCRACK_DIR", "")
+if not _REDCRACK_DIR or not _os.path.isdir(_REDCRACK_DIR):
+    # 自动探测：先试 Windows TEMP，再试 /tmp
+    for _cand in [
+        _os.path.expandvars(r"%TEMP%\RedCrack"),
+        _os.path.expanduser("~/AppData/Local/Temp/RedCrack"),
+        "/tmp/RedCrack",
+    ]:
+        if _os.path.isdir(_cand):
+            _REDCRACK_DIR = _cand
+            break
+if not _REDCRACK_DIR:
+    raise RuntimeError(
+        "未找到 RedCrack 目录。请先运行:\n"
+        "  git clone https://github.com/Cialle/RedCrack /tmp/RedCrack\n"
+        "或设置环境变量 REDCRACK_DIR"
+    )
+if _REDCRACK_DIR not in sys.path:
+    sys.path.insert(0, _REDCRACK_DIR)
+del _os
 
 # Windows GBK 终端兼容
 if hasattr(sys.stdout, "reconfigure"):
@@ -93,9 +111,15 @@ def save_cookies(cookies: dict) -> None:
 # ===== RedCrack 纯算集成 =====
 
 def _get_rc_encrypt():
-    """惰性加载 RedCrack xhs_encrypt（首次调用时导入）"""
-    from request.web.encrypt.xhs_encrypt import xhs_encrypt
-    return xhs_encrypt
+    """惰性加载 RedCrack xhs_encrypt（首次调用时导入，自动切换工作目录）"""
+    import os as _os2
+    _saved_cwd = _os2.getcwd()
+    try:
+        _os2.chdir(_REDCRACK_DIR)
+        from request.web.encrypt.xhs_encrypt import xhs_encrypt
+        return xhs_encrypt
+    finally:
+        _os2.chdir(_saved_cwd)
 
 
 def _rc_sign_headers(session: "requests.Session", url: str, data: dict | None = None) -> dict:
