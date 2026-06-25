@@ -11,9 +11,6 @@
 
 "use strict";
 
-require("./env");
-require("./ds_script");
-
 const CryptoJS = require("crypto-js");
 
 // ===== 自定义 Base64 编码 =====
@@ -97,6 +94,16 @@ if (!bodyArg) {
   process.exit(1);
 }
 
+// 静默加载期间的 VMP 字节码副作用输出
+const origStdoutWrite = process.stdout.write.bind(process.stdout);
+process.stdout.write = () => true;
+
+require("./env");
+require("./ds_script");
+
+// 恢复 stdout
+process.stdout.write = origStdoutWrite;
+
 if (typeof window.mnsv2 !== "function") {
   console.error("错误: window.mnsv2 不存在");
   process.exit(1);
@@ -113,4 +120,4 @@ try {
 const x_s = seccore_signv2(API_URL, bodyObj);
 const x_t = String(Date.now());
 
-console.log(JSON.stringify({ "X-s": x_s, "X-t": x_t }));
+process.stdout.write(JSON.stringify({ "X-s": x_s, "X-t": x_t }) + "\n");
