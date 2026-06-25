@@ -91,7 +91,46 @@ eval(fs.readFileSync("data/ds_v2.js", "utf8"));
 // 此时 window.mnsv2 已被 ds_v2.js 替换为 mns0301
 ```
 
-### 2.5 调用方式
+### 2.5 为什么必须找到 4 个 eval
+
+**这是 1.md 中最关键的一步，也是最容易遗漏的。**
+
+线上代码通过 4 个 `eval()` 分散加载 VM 模块：
+
+| eval | 内容 | 产物 | 作用 |
+|------|------|------|------|
+| 第 1 个 | 混淆 loader + 运行时 | `ds_script.js` (430KB) | 注册 mns0201 版本的 `window.mnsv2` |
+| 第 2 个 | API 辅助模块 | `ds_api.js` | 时间戳同步等辅助函数 |
+| 第 3~4 个 | VM 升级模块 | `ds_v2.js` (62KB) | mns0201 → mns0301 升级 |
+
+如果只找到前 2 个 eval，`window.mnsv2` 只能产出 `mns0201_`，验证如下：
+
+```
+仅加载 ds_script (eval 1):
+  window.mnsv2(input) → "mns0201_hdH79KQjs+h9sXYnhZNRGh..."
+
+加载 ds_script + ds_v2 (eval 1+3+4):
+  window.mnsv2(input) → "mns0301_gRaKqtrzeR67KaHAED0id11mr6cJRG5V..."
+```
+
+**mns0201 版本不能用于数据接口**。1.md 原文记录：
+
+> "生成的结果有个前缀 mns0301，但并不是所有接口都是0301，也有0201,0101，而上面的代码生成的结果貌似都是0201，而主要的数据接口基本都是0301的，这就是问题所在。"
+
+这就是为什么必须搜出全部 4 个 eval——少了任何一个都会导致 `window.mnsv2` 停留在 mns0201，homefeed 等接口拿不到数据。1.md 作者最初也只找到 2 个 eval，花了额外时间重新搜寻才把 3~4 号 eval 抠出来。
+
+#### 在浏览器中定位 eval 的方法
+
+```
+1. 在 VM 文件开头设断点 → 刷新页面 → 断住
+2. 回溯 Call Stack → 找到调用 VM 的上一个堆栈帧
+3. 在堆栈帧的 eval 位置设断点
+4. 刷新页面 → 逐个断住 → 把 eval 的参数（VM 源码）拷出
+5. 反复检查：grep 搜索 "eval" → 确认是否还有遗漏的 eval 调用
+6. 直到断点总数 = 4 → 全部抠出
+```
+
+### 2.6 调用方式
 
 ```python
 # main.py
