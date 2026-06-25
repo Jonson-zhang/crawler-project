@@ -3,10 +3,19 @@ var fs=require("fs"),L=console.log;console.log=function(){};
 
 var lines=fs.readFileSync("1.md","utf8").split("\n");
 eval(lines.slice(1642,2056).join("\n"));
-L("env ok");
+// Ensure MutationObserver exists (1.md env watches everything but we need the constructor)
+if(typeof MutationObserver==="undefined") global.MutationObserver=function(cb){this.observe=function(){};this.disconnect=function(){};};
+L("env ok, MO:"+typeof MutationObserver);
 
 eval(fs.readFileSync("data/ds_api_raw.js","utf8"));
 L("api ok, BHjFmf:"+(typeof _BHjFmfUMEtxhI));
+
+// FP with bind fix
+var oB=Function.prototype.bind;
+Function.prototype.bind=function(ctx){if(typeof this!=="function")return function(){};try{return oB.apply(this,arguments);}catch(e){return function(){}};};
+void eval(fs.readFileSync("data/fp_raw.js","utf8"));
+Function.prototype.bind=oB;
+L("fp ok");
 
 // Hook AUuXf with auto-fill env
 var ra;
