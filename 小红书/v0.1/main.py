@@ -8,9 +8,11 @@ main.py — 小红书首页推荐流抓取 (API 翻页 + 笔记正文)
 
 import hashlib
 import json
+import random
 import subprocess
 import sys
 import time
+import zlib
 from pathlib import Path
 from urllib.parse import quote
 
@@ -66,6 +68,231 @@ def utf8b(s: str) -> bytes:
 
 def load_cookies() -> dict:
     return json.loads(COOKIES_FILE.read_text()) if COOKIES_FILE.exists() else {}
+
+
+def save_cookies(cookies: dict) -> None:
+    COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COOKIES_FILE.write_text(json.dumps(cookies, ensure_ascii=False, indent=2))
+
+
+# ===== 游客 Cookie 自动生成 =====
+
+A1_CHARS = "abcdefghijklmnopqrstuvwxyz1234567890"
+
+
+def _generate_a1() -> tuple[str, str]:
+    """生成 a1 和 webId（纯 Python，零依赖）
+
+    a1 结构: hex(毫秒时间戳) + 随机30字符 + 平台码 + "0" + "000" + CRC32
+    截取前 52 位；webId = MD5(a1)
+    """
+    ts_hex = hex(int(time.time() * 1000))[2:]
+    rand_str = "".join(random.choices(A1_CHARS, k=30))
+    base = ts_hex + rand_str + "5" + "0" + "000"  # 5 = Windows 平台码
+    crc = zlib.crc32(base.encode())
+    a1 = (base + str(crc))[:52]
+    web_id = hashlib.md5(a1.encode()).hexdigest()
+    return a1, web_id
+
+
+def _gen_websectiga(session: "requests.Session") -> str:
+    """从 /api/sec/v1/scripting 获取并解密 websectiga
+
+    对标 RedCrack websectiga.py JSVMP 解密逻辑：
+    1. POST https://as.xiaohongshu.com/api/sec/v1/scripting 获取 b/d 字段
+    2. Base64 解码 b → 减 1 → 按 5 分组
+    3. 用 d 的 [92:94] 切片定位 → 每 2 个取 1 个 → 倒序 7 组拼出 64 位 key
+    """
+    import re
+
+    resp = session.post(
+        "https://as.xiaohongshu.com/api/sec/v1/scripting",
+        json={"callFrom": "web", "callback": "seccallback"},
+        headers={"content-type": "application/json"},
+        timeout=15,
+    )
+    data = resp.json().get("data", {})
+    js_text = data.get("data", "")
+
+    # 提取 b 和 d
+    b_match = re.search(r'"b":"(.*?)",', js_text)
+    d_match = re.search(r'"d":(.*?)\}\)', js_text)
+    if not b_match or not d_match:
+        raise RuntimeError(f"websectiga 解析失败: b={bool(b_match)} d={bool(d_match)}")
+
+    b = b_match.group(1)
+    d = json.loads(d_match.group(1))
+
+    # Base64 解码 b → 每个 char 减 1 → 按 5 个一组
+    padding = len(b) % 4
+    if padding:
+        b += "=" * (4 - padding)
+    decoded = __import__("base64").b64decode(b).decode("utf-8")
+    logic_list: list[list[int]] = []
+    chunk: list[int] = []
+    for char in decoded:
+        if len(chunk) == 5:
+            logic_list.append(chunk)
+            chunk = []
+        chunk.append(ord(char) - 1)
+    if chunk:
+        logic_list.append(chunk)
+
+    # d[92]:d[93] 切片定位 → 每 2 个取 1 个 key byte → 倒序拼出 64 位
+    target = logic_list[d[92] : d[93] + 1]
+    key_bytes = [d[target[675 + i][2]] for i in range(0, 128, 2)]
+    decode_key = "".join(chr(key_bytes[i + j]) for i in range(56, -1, -8) for j in range(8))
+
+    return decode_key
+
+
+def _get_gid_and_acw_tc(session: "requests.Session") -> None:
+    """获取 gid 并写入 accesstc cookie（DES 加密指纹 → /api/sec/v1/shield/webprofile）
+
+    这是一个请求副作用：响应会 Set-Cookie acw_tc 和 gid
+    """
+    from base64 import b64encode
+
+    # 最小指纹（只需 uuid + requestId 即可过）
+    fp = json.dumps(
+        {"uuid": "joiamkprgeyi238i", "requestId": hashlib.md5(str(time.time()).encode()).hexdigest()[:16]},
+        separators=(",", ":"),
+    )
+    fp_b64 = b64encode(fp.encode()).decode()
+
+    # DES ECB 加密
+    from Crypto.Cipher import DES
+
+    key = b"zbp30y86"
+    raw = fp_b64.encode()
+    pad_len = 8 - len(raw) % 8
+    padded = raw if pad_len == 8 else raw + b"\x00" * pad_len
+    cipher = DES.new(key, DES.MODE_ECB)
+    profile_data = cipher.encrypt(padded).hex()
+
+    session.post(
+        "https://as.xiaohongshu.com/api/sec/v1/shield/webprofile",
+        json={
+            "platform": "Windows",
+            "profileData": profile_data,
+            "sdkVersion": "4.2.6",
+            "svn": "2",
+        },
+        headers={"content-type": "application/json;charset=UTF-8"},
+        timeout=15,
+    )
+
+
+def _activate_guest_web_session(session: "requests.Session") -> str | None:
+    """调 /login/activate 获取游客 web_session
+
+    对标 RedCrack：该接口也走完整的签名加密流程（x-s / x-s-common / x-t / x-b3 / x-xray）。
+    """
+    api_path = "/api/sns/web/v1/login/activate"
+    body: dict = {}
+
+    # 签名（调 Node sign.js）
+    try:
+        signed = node_sign(api_path, body)
+    except Exception:
+        signed = None
+
+    # 构建请求头
+    extra_headers: dict = {
+        "content-type": "application/json;charset=UTF-8",
+    }
+    if signed:
+        extra_headers.update({
+            "x-s": signed["X-s"],
+            "x-t": signed["X-t"],
+            "x-s-common": signed.get("X-s-common", ""),
+        })
+    # x-b3-traceid: 随机 16 hex
+    extra_headers["x-b3-traceid"] = "".join(random.choices("abcdef0123456789", k=16))
+    # x-xray-traceid: 时间戳左移 23 + 递增 seq + 随机 64 位
+    extra_headers["x-xray-traceid"] = (
+        hex(int(time.time() * 1000) << 23)[2:].zfill(16)
+        + hex(random.getrandbits(64))[2:].zfill(16)
+    )
+
+    resp = session.post(
+        "https://edith.xiaohongshu.com/api/sns/web/v1/login/activate",
+        json=body,
+        headers=extra_headers,
+        timeout=15,
+    )
+    # 调试：查看响应状态
+    data = resp.json() if resp.text else {}
+    code = data.get("code", resp.status_code)
+    msg = data.get("msg", "")
+    print(f"    activate 响应: code={code} msg={msg}")
+
+    web_session = session.cookies.get("web_session", domain=".xiaohongshu.com")
+    if not web_session:
+        web_session = resp.cookies.get("web_session")
+    return web_session or None
+
+
+def boot_guest_cookies() -> dict:
+    """完整的游客 Cookie 引导流程（对标 RedCrack XHS_Session.__init_cookies）
+
+    步骤：
+      1. 生成 a1 + webId，写入 cookie jar
+      2. 获取 websectiga + sec_poison_id
+      3. 获取 gid + acw_tc
+      4. 调 /login/activate 获取 web_session
+
+    Returns:
+        完整的 cookies dict，自动保存到 data/cookies.json
+    """
+    s = requests.Session()
+    s.headers.update({
+        "user-agent": UA,
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "origin": "https://www.xiaohongshu.com",
+        "referer": "https://www.xiaohongshu.com/",
+    })
+
+    # Step 1: 生成 a1 + webId
+    a1, web_id = _generate_a1()
+    s.cookies.set("a1", a1, domain=".xiaohongshu.com")
+    s.cookies.set("webId", web_id, domain=".xiaohongshu.com")
+    s.cookies.set("webBuild", "6.12.3", domain=".xiaohongshu.com")
+    s.cookies.set("xsecappid", "xhs-pc-web", domain=".xiaohongshu.com")
+    s.cookies.set("loadts", str(int(time.time() * 1000)), domain=".xiaohongshu.com")
+    print(f"[1/4] a1={a1[:20]}... webId={web_id[:16]}...")
+
+    # Step 2: websectiga
+    try:
+        websectiga = _gen_websectiga(s)
+        s.cookies.set("websectiga", websectiga, domain=".xiaohongshu.com")
+        print(f"[2/4] websectiga={websectiga[:20]}...")
+    except Exception as e:
+        print(f"[2/4] websectiga 失败（继续）: {e}")
+
+    # Step 3: gid + acw_tc
+    try:
+        _get_gid_and_acw_tc(s)
+        gid = s.cookies.get("gid", domain=".xiaohongshu.com") or "?"
+        print(f"[3/4] gid={gid[:20] if gid != '?' else '?'}")
+    except Exception as e:
+        print(f"[3/4] gid 失败（继续）: {e}")
+
+    # Step 4: 激活 web_session
+    web_session = _activate_guest_web_session(s)
+    if not web_session:
+        print("[4/4] web_session 获取失败（接口可能已变化）")
+        raise RuntimeError("游客 web_session 引导失败")
+
+    print(f"[4/4] web_session={web_session[:20]}...")
+
+    # 收集结果
+    cookies = {cookie.name: cookie.value for cookie in s.cookies}
+    if cookies.get("web_session"):
+        save_cookies(cookies)
+        print(f"[✓] cookies 已保存到 {COOKIES_FILE}")
+    return cookies
 
 
 def node_sign(api_path: str, body: dict | None = None) -> dict:
@@ -152,8 +379,13 @@ def fetch_note_detail(note_id: str, xsec_token: str, session: requests.Session) 
 def main():
     cookies = load_cookies()
     if not cookies.get("web_session"):
-        print("[!] cookies.json 缺少 web_session", file=sys.stderr)
-        sys.exit(1)
+        print("[*] cookies.json 缺少 web_session，开始自动引导游客 Cookie...\n")
+        try:
+            cookies = boot_guest_cookies()
+        except Exception as e:
+            print(f"[!] 游客 Cookie 引导失败: {e}", file=sys.stderr)
+            sys.exit(1)
+        print()
 
     print(f"web_session: {cookies['web_session'][:20]}...")
     print(f"页数: {PAGES}, 正文: {'显示' if SHOW_DETAIL else '不显示'}\n")
