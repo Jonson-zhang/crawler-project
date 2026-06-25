@@ -1,57 +1,24 @@
 /**
- * sign.js — 小红书 XYS_ 离线签名入口
+ * sign.js — 小红书 XYS_ 离线签名入口（占位）
  *
- * 用法: node sign.js '<json_body>'
- * 输出: {"X-s":"XYS_...","X-t":"...","X-s-common":"..."}
+ * 当前状态: env.js 可复用，DS 脚本待从线上抓取并攻克离线化
+ * 用法: node sign.js '<json_body>'  （待 mnsv2 攻克后可用）
  */
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const CryptoJS = require("crypto-js");
-
-// ── 静默加载 VMP 环境 ──
-const _stdout = process.stdout.write.bind(process.stdout);
-process.stdout.write = () => true;
-
-// Step 1-2: 补环境 + 扣下来的 VMP 代码 → 创建 window.mnsv2 (mns0201)
 require("./env");
-require("./ds_script");
 
-// Step 3: 修复 MutationObserver（在线 bytecode 需要）
-global.MutationObserver = function () {
-  this.observe = function () {};
-  this.disconnect = function () {};
-};
-
-// Step 4: 拦截 _AUuXfEG27Xa3x → 加载在线 ds_v2 → 覆盖升级 mns0201 → mns0301
-var _ra, _origAu = global._AUuXfEG27Xa3x;
-Object.defineProperty(global, "_AUuXfEG27Xa3x", {
-  get: function () { return _ra || _origAu; },
-  set: function (fn) {
-    if (typeof fn === "function" && fn.toString().length > 100000) {
-      _ra = function (bc, env) {
-        for (var i = 0; i < 200; i++) {
-          if (env[i] === undefined) { var s = function () {}; s.prototype = {}; env[i] = s; }
-        }
-        return fn.call(window, bc, env);
-      };
-    }
-  },
-  configurable: true, enumerable: true,
-});
-
-eval(fs.readFileSync(path.join(__dirname, "data", "ds_v2_6545c_online.js"), "utf8"));
-
-process.stdout.write = _stdout;
+// TODO: 加载在线 DS 脚本，创建 window.mnsv2
+// 待浏览器断点溯源确定 mnsv2 创建路径后实现
 
 if (typeof window.mnsv2 !== "function") {
-  console.error("错误: window.mnsv2 不存在，请检查 env.js / ds_script.js");
+  console.error("mnsv2 尚未攻克");
   process.exit(1);
 }
 
-// ── 编码工具 (K.xE / K.lz) ──
+const CryptoJS = require("crypto-js");
+
 const U = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5".split("");
 
 function b64Encode(e) {
@@ -77,28 +44,22 @@ function encodeUtf8(s) {
   return b;
 }
 
-// ── 签名 ──
 function seccore_signv2(url, body) {
   var c = url + JSON.stringify(body);
   var h = window.mnsv2(c, CryptoJS.MD5(c).toString(), CryptoJS.MD5(url).toString());
   return "XYS_" + b64Encode(encodeUtf8(JSON.stringify({
-    x0: "4.3.5", x1: "xhs-pc-web", x2: "Windows", x3: h,
-    x4: body ? "object" : "",
+    x0: "4.3.5", x1: "xhs-pc-web", x2: "Windows", x3: h, x4: body ? "object" : "",
   })));
 }
 
-// ── CLI ──
 var API = "/api/sns/web/v1/homefeed";
 var arg = process.argv[2];
 if (!arg) { console.error("用法: node sign.js '<json_body>'"); process.exit(1); }
-
 var bodyObj;
-try { bodyObj = JSON.parse(arg); } catch (e) { console.error("错误: body 不是有效 JSON"); process.exit(1); }
-
+try { bodyObj = JSON.parse(arg); } catch (e) { console.error("body 不是有效 JSON"); process.exit(1); }
 var xs = seccore_signv2(API, bodyObj);
 var xt = String(Date.now());
 var xsc = b64Encode(encodeUtf8(JSON.stringify({
   a1: "", x1: "4.3.5", x2: API, x3: "xhs-pc-web", x4: CryptoJS.MD5(API).toString(),
 })));
-
 process.stdout.write(JSON.stringify({ "X-s": xs, "X-t": xt, "X-s-common": xsc }) + "\n");
