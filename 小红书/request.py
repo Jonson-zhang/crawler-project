@@ -169,18 +169,27 @@ def fetch_homefeed_api(cursor: str = "", note_index: int = 0, cookies: dict = No
     resp = s.post(API_URL, json=body, headers={
         "content-type": "application/json;charset=UTF-8",
         "x-s": signed["X-s"], "x-t": signed["X-t"],
+        "x-s-common": signed.get("X-s-common", ""),
     }, timeout=30, impersonate="chrome131")
 
     return resp.json()
 
 
+def safe_print(s: str):
+    """安全打印，过滤终端不支持的 Unicode 字符"""
+    try:
+        print(s)
+    except UnicodeEncodeError:
+        print(s.encode("ascii", errors="replace").decode("ascii"))
+
+
 def show_item(i: int, item: dict):
     title = item.get("title", "") or item.get("id", "?")[:12]
     if "author" in item:
-        print(f"  {i:2d}. {title[:60]}")
-        print(f"      @{item['author']}  likes:{item.get('likes', '?')}")
+        safe_print(f"  {i:2d}. {title[:60]}")
+        safe_print(f"      @{item['author']}  likes:{item.get('likes', '?')}")
     else:
-        print(f"  {i:2d}. {title[:60]}")
+        safe_print(f"  {i:2d}. {title[:60]}")
 
 
 def main():

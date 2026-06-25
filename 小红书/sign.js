@@ -151,4 +151,8 @@ try {
 const x_s = seccore_signv2(API_URL, bodyObj);
 const x_t = String(Date.now());
 
-process.stdout.write(JSON.stringify({ "X-s": x_s, "X-t": x_t }) + "\n");
+// x-s-common
+const xsCommonPayload = { a1: "", x1: "4.3.5", x2: API_URL, x3: "xhs-pc-web", x4: CryptoJS.MD5(API_URL).toString() };
+const x_s_common = b64Encode(encodeUtf8(JSON.stringify(xsCommonPayload)));
+
+process.stdout.write(JSON.stringify({ "X-s": x_s, "X-t": x_t, "X-s-common": x_s_common }) + "\n");

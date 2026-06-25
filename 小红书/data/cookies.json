@@ -1,8 +1,9 @@
 {
-  "a1": "19efc4ceeeajffza1ewumahd8otvfw4kanbj475fx50000290041",
-  "webId": "d9baccd6bad95da341e29141d72f0657",
-  "gid": "yjdi0yfWfqCSyjdi0yfWK7l080yuxWCCv9KKDfkA22W29J28FlV8l1888yqq4qq8fYddqS4W",
+  "a1": "19efcc453f2zukuqodx9wic7ub5n0gg7qtzghpqoc50000429448",
+  "webId": "23eb28c912e56dae43bdfe6dfbf98e84",
+  "gid": "yjdiSS424SADyjdiSS42q9UAiJu7T7AlfCjEulS3SW7D2k28I8kkWx8884Jj44Y8Sd0dSYjS",
   "abRequestId": "6c0b562e7f6cf39a7c9f3a2d6b39725e",
   "webBuild": "6.24.0",
-  "xsecappid": "xhs-pc-web"
+  "xsecappid": "xhs-pc-web",
+  "web_session": "030037ad0fc8ca547972f2da442d4ada4c8a98"
 }
