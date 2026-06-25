@@ -25,10 +25,7 @@ global.MutationObserver = function () {
   this.disconnect = function () {};
 };
 
-// Step 4: 加载在线 ds_api（_BHjFmfUMEtxhI）
-eval(fs.readFileSync(path.join(__dirname, "data", "ds_api_raw.js"), "utf8"));
-
-// Step 5: 拦截 _AUuXfEG27Xa3x → 加载在线 ds_v2 → 覆盖升级 mns0201 → mns0301
+// Step 4: 拦截 _AUuXfEG27Xa3x → 加载在线 ds_v2 → 覆盖升级 mns0201 → mns0301
 var _ra, _origAu = global._AUuXfEG27Xa3x;
 Object.defineProperty(global, "_AUuXfEG27Xa3x", {
   get: function () { return _ra || _origAu; },
