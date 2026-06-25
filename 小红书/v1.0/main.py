@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-main.py — 小红书首页推荐流抓取
+小红书首页推荐流抓取 v1.0
 
 用法: python main.py
 
-架构（全自研，零外部依赖）:
-  x-s         → sign.js  (mnsv2 扣代码)
-  x-t         → time.time() * 1000
+签名头:
+  x-s         → sign.js (mns0301, 线上 VM 抠代码 + 补环境)
+  x-t         → int(time.time() * 1000)
   x-b3        → random 16 hex
-  x-xray      → 时间戳 << 23 | random
-  x-s-common  → 自研：指纹 + RC4(b1) + MRC_CRC32 + 自定义 Base64
-  Cookie 引导 → 自研：a1 → scripting → shield/webprofile → activate
+  x-xray      → (ts << 23) | random
+  x-s-common  → 指纹 + RC4(b1) + MRC_CRC32 + 自定义 Base64
+
+Cookie 引导（全自动 4 步）:
+  a1/webId → scripting → shield/webprofile → activate
+
+依赖:
+  pip: curl_cffi, pycryptodome
+  npm: crypto-js (npm install)
 """
 
 import hashlib
