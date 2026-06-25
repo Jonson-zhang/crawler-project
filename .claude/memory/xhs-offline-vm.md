@@ -7,7 +7,17 @@ metadata:
   originSessionId: 56372508-3582-40ae-a666-c28c940a1b11
 ---
 
-# 小红书离线 VM 签名 — 2026-06-24 进度
+# 小红书离线 VM 签名 — 2026-06-25 🔥 重大突破
+
+> **2026-06-25**：mnsv2 + 完整 XYS_ 签名链已攻破！
+> - `window.mnsv2` 在浏览器 DS 脚本初始化后存在（VMP 运行时创建）
+> - 完整 XYS_ 编码链已还原：MD5 → mnsv2 → payload → JSON → UTF-8 → custom base64 → XYS_
+> - 自定义 base64 表: `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5`
+> - Webpack module 40055: `Pu=MD5, lz=encodeUtf8, xE=b64Encode`
+> - mnsv2 输入: `(url+body, MD5(url+body), MD5(url))` → 输出: `mns0301_<base64>`
+> - 新文件: `sign_xys.js` / `sign_xys.py` — 完整签名实现（Python 需浏览器桥接 mnsv2）
+
+## 〇、原始进度 (2026-06-24)
 
 ## 一、文件结构
 
