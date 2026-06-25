@@ -1,80 +1,121 @@
 /**
- * sign.js — 小红书 XYS_ 离线签名
+ * sign.js - 小红书 XYS_ 离线签名 (mns0301)
  *
  * 用法: node sign.js '<json_body>'
- * 例:   node sign.js '{"cursor_score":"","num":20,"refresh_type":1,"note_index":0}'
+ * 输出: {"X-s":"XYS_...","X-t":"..."}
  *
- * 输出: {"X-s":"XYS_...","X-t":"1782348627791"}
- *
- * 依赖: env.js (浏览器环境) + ds_script.js (VMP 字节码, 创建 window.mnsv2)
+ * 初始化链:
+ *   1.md env → 1.md ds → mns0201 baseline
+ *   → online ds_api + ds_v2 overlay → mns0201 → mns0301 升级
  */
 
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const CryptoJS = require("crypto-js");
+
+// ===== 静默初始化 =====
+const origStdout = process.stdout.write.bind(process.stdout);
+process.stdout.write = () => true;
+
+// Step 1: 1.md env + ds → mns0201 baseline
+require("./env");
+require("./ds_script");
+
+// Step 2: 补充 MutationObserver (VMP bytecode 需要)
+if (typeof MutationObserver === "undefined") {
+  global.MutationObserver = function (cb) {
+    this.observe = function () {};
+    this.disconnect = function () {};
+  };
+}
+
+// Step 3: 加载在线 ds_api (提供 _BHjFmfUMEtxhI 环境)
+eval(fs.readFileSync(path.join(__dirname, "data", "ds_api_raw.js"), "utf8"));
+
+// Step 4: Hook _AUuXfEG27Xa3x, 拦截在线解释器 + 自动填充 env 数组
+var _ra, _origAu = global._AUuXfEG27Xa3x;
+Object.defineProperty(global, "_AUuXfEG27Xa3x", {
+  get: function () { return _ra || _origAu; },
+  set: function (fn) {
+    if (typeof fn === "function" && fn.toString().length > 100000) {
+      _ra = function (bc, env) {
+        for (var i = 0; i < 200; i++) {
+          if (env[i] === undefined) {
+            var stub = function () {};
+            stub.prototype = {};
+            env[i] = stub;
+          }
+        }
+        return fn.call(window, bc, env);
+      };
+    } else {
+      _ra = fn;
+    }
+  },
+  configurable: true,
+  enumerable: true,
+});
+
+// Step 5: 加载在线 ds_v2 — 覆盖升级 mns0201 → mns0301
+eval(fs.readFileSync(path.join(__dirname, "data", "ds_v2_6545c_online.js"), "utf8"));
+
+// 恢复 stdout
+process.stdout.write = origStdout;
 
 // ===== 自定义 Base64 编码 =====
 const BASE64_TABLE = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5";
-
-let u = [];
-for (let w = 0, C = BASE64_TABLE.length; w < C; ++w) u[w] = BASE64_TABLE[w];
-
-function tripletToBase64(e) {
-  return (
-    u[(e >> 18) & 63] + u[(e >> 12) & 63] + u[(e >> 6) & 63] + u[63 & e]
-  );
-}
-
-function encodeChunk(e, a, s) {
-  let m = [];
-  for (let w = a; w < s; w += 3) {
-    let t =
-      ((e[w] << 16) & 0xff0000) + ((e[w + 1] << 8) & 65280) + (255 & e[w + 2]);
-    m.push(tripletToBase64(t));
-  }
-  return m.join("");
-}
+const u = [];
+for (let w = 0; w < BASE64_TABLE.length; w++) u[w] = BASE64_TABLE[w];
 
 function b64Encode(e) {
-  let s = e.length, m = s % 3, w = [];
-  const C = 16383;
-  for (let R = 0, P = s - m; R < P; R += C)
-    w.push(encodeChunk(e, R, R + C > P ? P : R + C));
-
-  if (m === 1) {
-    let a = e[s - 1];
-    w.push(u[a >> 2] + u[(a << 4) & 63] + "==");
-  } else if (m === 2) {
-    let a = (e[s - 2] << 8) + e[s - 1];
-    w.push(u[a >> 10] + u[(a >> 4) & 63] + u[(a << 2) & 63] + "=");
+  const len = e.length;
+  const mod = len % 3;
+  const result = [];
+  const CHUNK = 16383;
+  for (let i = 0, end = len - mod; i < end; i += CHUNK) {
+    const limit = Math.min(i + CHUNK, end);
+    for (let j = i; j < limit; j += 3) {
+      const t = (e[j] << 16) + (e[j + 1] << 8) + e[j + 2];
+      result.push(
+        u[(t >> 18) & 63] + u[(t >> 12) & 63] + u[(t >> 6) & 63] + u[t & 63]
+      );
+    }
   }
-  return w.join("");
+  if (mod === 1) {
+    const b = e[len - 1];
+    result.push(u[b >> 2] + u[(b << 4) & 63] + "==");
+  } else if (mod === 2) {
+    const p = (e[len - 2] << 8) + e[len - 1];
+    result.push(u[p >> 10] + u[(p >> 4) & 63] + u[(p << 2) & 63] + "=");
+  }
+  return result.join("");
 }
 
 // ===== UTF-8 字节编码 =====
-function encodeUtf8(e) {
-  let a = encodeURIComponent(e), s = [];
-  for (let u = 0; u < a.length; u++) {
-    let m = a.charAt(u);
-    if (m === "%") {
-      let w = parseInt(a.charAt(u + 1) + a.charAt(u + 2), 16);
-      s.push(w);
-      u += 2;
+function encodeUtf8(str) {
+  const encoded = encodeURIComponent(str);
+  const bytes = [];
+  for (let i = 0; i < encoded.length; i++) {
+    if (encoded[i] === "%") {
+      bytes.push(parseInt(encoded[i + 1] + encoded[i + 2], 16));
+      i += 2;
     } else {
-      s.push(m.charCodeAt(0));
+      bytes.push(encoded.charCodeAt(i));
     }
   }
-  return s;
+  return bytes;
 }
 
 // ===== seccore_signv2 =====
 function seccore_signv2(url, body) {
-  let combined = url + JSON.stringify(body);
-  let md5Combined = CryptoJS.MD5(combined).toString();
-  let md5Url = CryptoJS.MD5(url).toString();
-  let mnsv2Hash = window.mnsv2(combined, md5Combined, md5Url);
+  const combined = url + JSON.stringify(body);
+  const md5Combined = CryptoJS.MD5(combined).toString();
+  const md5Url = CryptoJS.MD5(url).toString();
+  const mnsv2Hash = window.mnsv2(combined, md5Combined, md5Url);
 
-  let payload = {
+  const payload = {
     x0: "4.3.5",
     x1: "xhs-pc-web",
     x2: "Windows",
@@ -94,16 +135,6 @@ if (!bodyArg) {
   process.exit(1);
 }
 
-// 静默加载期间的 VMP 字节码副作用输出
-const origStdoutWrite = process.stdout.write.bind(process.stdout);
-process.stdout.write = () => true;
-
-require("./env");
-require("./ds_script");
-
-// 恢复 stdout
-process.stdout.write = origStdoutWrite;
-
 if (typeof window.mnsv2 !== "function") {
   console.error("错误: window.mnsv2 不存在");
   process.exit(1);
@@ -119,5 +150,11 @@ try {
 
 const x_s = seccore_signv2(API_URL, bodyObj);
 const x_t = String(Date.now());
+
+// 验证 mns0301
+const testHash = window.mnsv2(API_URL + bodyArg, "abc", "def");
+if (!String(testHash).startsWith("mns0301")) {
+  console.error("警告: mnsv2 未升级到 mns0301, 当前: " + String(testHash).substring(0, 15));
+}
 
 process.stdout.write(JSON.stringify({ "X-s": x_s, "X-t": x_t }) + "\n");
