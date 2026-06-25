@@ -1498,4 +1498,43 @@ var __$c = '56544b424251464d00283e0e1d08c04d3bd3c82a000000000002deaa1500003b01a5
 var glb = typeof window === 'undefined' ? global : window;
 glb['_AUuXfEG27Xa3x'](__$c, [, , typeof globalThis !== "undefined" ? globalThis : undefined, typeof undefined !== "undefined" ? undefined : undefined, typeof performance !== "undefined" ? performance : undefined, typeof encodeURIComponent !== "undefined" ? encodeURIComponent : undefined, typeof Array !== "undefined" ? Array : undefined, typeof TextEncoder !== "undefined" ? TextEncoder : undefined, typeof Date !== "undefined" ? Date : undefined, typeof Math !== "undefined" ? Math : undefined, typeof Uint8Array !== "undefined" ? Uint8Array : undefined, typeof document !== "undefined" ? document : undefined, typeof setTimeout !== "undefined" ? setTimeout : undefined, typeof RegExp !== "undefined" ? RegExp : undefined, typeof unescape !== "undefined" ? unescape : undefined, typeof parseInt !== "undefined" ? parseInt : undefined, typeof Object !== "undefined" ? Object : undefined, typeof navigator !== "undefined" ? navigator : undefined, typeof InstallTrigger !== "undefined" ? InstallTrigger : undefined, typeof Set !== "undefined" ? Set : undefined, typeof Function !== "undefined" ? Function : undefined, typeof String !== "undefined" ? String : undefined, typeof Error !== "undefined" ? Error : undefined, typeof chrome !== "undefined" ? chrome : undefined, typeof Event !== "undefined" ? Event : undefined, typeof top !== "undefined" ? top : undefined, typeof Reflect !== "undefined" ? Reflect : undefined])
 
-
+
+// ===== mns0201 → mns0301 升级 =====
+(function () {
+  var fs = require("fs");
+  var path = require("path");
+
+  // MutationObserver fix
+  global.MutationObserver = function (cb) {
+    this.observe = function () {};
+    this.disconnect = function () {};
+  };
+
+  // 加载在线 ds_api
+  eval(fs.readFileSync(path.join(__dirname, "data", "ds_api_raw.js"), "utf8"));
+
+  // 拦截 _AUuXfEG27Xa3x，在线解释器 + 自动填充 env 数组
+  var _ra, _origAu = global._AUuXfEG27Xa3x;
+  Object.defineProperty(global, "_AUuXfEG27Xa3x", {
+    get: function () { return _ra || _origAu; },
+    set: function (fn) {
+      if (typeof fn === "function" && fn.toString().length > 100000) {
+        _ra = function (bc, env) {
+          for (var i = 0; i < 200; i++) {
+            if (env[i] === undefined) {
+              var stub = function () {};
+              stub.prototype = {};
+              env[i] = stub;
+            }
+          }
+          return fn.call(window, bc, env);
+        };
+      }
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  // 加载在线 ds_v2 字节码 — 覆盖升级 mns0201 → mns0301
+  eval(fs.readFileSync(path.join(__dirname, "data", "ds_v2_6545c_online.js"), "utf8"));
+})();
