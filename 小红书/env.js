@@ -40,8 +40,8 @@ function watch(func, name) {
   // &#128295; 确保 name 是有效的字符串（避免 undefined 或 null）
   const objName = name || 'unknown';
  
-  // &#128295; 修复：定义 console_log 函数（或使用 console.log）
-  const console_log = (...args) => console.log(...args);
+  // &#128295; 修复：定义 console_log 函数（静默模式，避免干扰 stdout）
+  const console_log = (...args) => {};
  
   return new Proxy(func, {
     get(target, p, receiver) {
@@ -65,7 +65,7 @@ function watch(func, name) {
           const val = Reflect.get(target, p, receiver);
  
           // &#128295; 修复：记录取值操作，格式化输出
-          console_log('取值:', `${objName}.${propKey}`, '=>', val);
+          // console_log('取值:', `${objName}.${propKey}`, '=>', val);
  
           return val;
         }
@@ -85,7 +85,7 @@ function watch(func, name) {
         const propKey = typeof p === 'symbol' ? p.toString() : p;
         const currentValue = Reflect.get(target, p, receiver); // 获取当前值
  
-        console_log('设置值:', `${objName}.${propKey}`, currentValue, '=>', value);
+        // console_log('设置值:', `${objName}.${propKey}`, currentValue, '=>', value);
  
         // &#128295; 修复：正确执行设置操作
         return Reflect.set(target, p, value, receiver);
@@ -99,13 +99,13 @@ function watch(func, name) {
  
     // &#128295; 可选：添加 apply 拦截器（如果 func 是函数）
     apply(target, thisArg, argumentsList) {
-      console_log('函数调用:', `${objName}(...)`, 'with args:', argumentsList);
+      // console_log('函数调用:', `${objName}(...)`);
       return Reflect.apply(target, thisArg, argumentsList);
     },
  
     // &#128295; 可选：添加 construct 拦截器（如果 func 是构造函数）
     construct(target, argumentsList, newTarget) {
-      console_log('构造函数调用:', `new ${objName}(...)`, 'with args:', argumentsList);
+      // console_log('构造函数调用:', `new ${objName}(...)`);
       return Reflect.construct(target, argumentsList, newTarget);
     }
   });
@@ -411,4 +411,4 @@ window.MouseEvent = function() {}
 // 最后再 watch window，避免代理内置对象时报错
 window = watch(window, 'window')
  
-console.log("&#9989; 基础环境补充完成")
+// console.log("基础环境补充完成");
