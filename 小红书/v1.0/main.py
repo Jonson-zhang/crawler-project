@@ -38,7 +38,7 @@ from curl_cffi import requests
 # ===== 配置 =====
 PAGES = 3
 SHOW_DETAIL = True
-INTERVAL = 1.5
+INTERVAL = 0
 
 BASE_DIR = Path(__file__).parent
 SIGN_JS = BASE_DIR / "sign.js"
