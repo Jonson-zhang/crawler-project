@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-request.py — 小红书首页推荐流抓取（离线版）
+main.py — 小红书首页推荐流抓取
 
 方案:
-  1. SSR HTML → 解析笔记（无需 cookie，无需签名）
-  2. homefeed API → 翻页（需 web_session cookie + mns0201 签名）
+  1. SSR HTML  → 解析笔记（无需 cookie，无需签名）
+  2. homefeed API → 翻页（需 web_session cookie）
 
 用法:
-  python request.py             # 抓首页 SSR 数据
-  python request.py --api       # 用 API 模式（需 cookies.json 含 web_session）
-  python request.py --pages 3   # 翻页（API 模式）
+  python main.py             # 抓首页 SSR 数据
+  python main.py --api       # API 翻页（需 cookies.json 含 web_session）
+  python main.py --pages 3   # 翻 3 页（API 模式）
 """
 
 import json
@@ -211,7 +211,7 @@ def main():
             if len(notes) > 20:
                 print(f"  ... 还有 {len(notes) - 20} 条")
             print(f"\n[提示] 首次访问已自动保存 cookies 到 data/cookies.json")
-            print(f"[提示] 需要翻页时使用: python request.py --api --pages 3")
+            print(f"[提示] 需要翻页时使用: python main.py --api --pages 3")
         return
 
     # API 模式
@@ -222,7 +222,7 @@ def main():
     cookies = load_cookies()
     if not cookies.get("web_session"):
         print("[!] web_session 不存在")
-        print("[!] 请先运行: python request.py (获取临时 cookie)")
+        print("[!] 请先运行: python main.py (获取临时 cookie)")
         print("[!] 或手动设置 data/cookies.json 中的 web_session")
         sys.exit(1)
 
