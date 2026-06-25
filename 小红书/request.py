@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
 """
-request.py — 小红书首页推荐流抓取 (离线签名)
+request.py — 小红书首页推荐流抓取（离线版）
 
-签名链: Node.js (env + VMP → mnsv2 → seccore_signv2) → Python HTTP
+方案:
+  1. SSR HTML → 解析笔记（无需 cookie，无需签名）
+  2. homefeed API → 翻页（需 web_session cookie + mns0201 签名）
 
 用法:
-  python request.py [--pages 3]
-
-前提:
-  - node 已安装, crypto-js 已安装 (npm install crypto-js)
-  - data/cookies.json 含有效登录 cookie (a1, webId, web_session 等)
+  python request.py             # 抓首页 SSR 数据
+  python request.py --api       # 用 API 模式（需 cookies.json 含 web_session）
+  python request.py --pages 3   # 翻页（API 模式）
 """
 
 import json
+import re
 import subprocess
+import sys
 import time
 from pathlib import Path
+from urllib.parse import urljoin
 
 from curl_cffi import requests
 
 BASE_DIR = Path(__file__).parent
 SIGN_JS = BASE_DIR / "sign.js"
 COOKIES_FILE = BASE_DIR / "data" / "cookies.json"
+EXPLORE_URL = "https://www.xiaohongshu.com/explore"
 API_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/homefeed"
 API_PATH = "/api/sns/web/v1/homefeed"
 
@@ -31,165 +35,233 @@ UA = (
     "Chrome/139.0.0.0 Safari/537.36"
 )
 
+NOTE_LINK_RE = re.compile(r"/explore/([a-f0-9]{24})")
+
+
+def extract_notes_from_html(html: str) -> list[dict]:
+    """从 SSR HTML 提取笔记（title + author）"""
+    notes = []
+    seen = set()
+
+    # 匹配所有 note-item section
+    # SSR 中的结构: <section ... class=\"note-item\" ...> ... <a href=\"/explore/<id>\"> ... 文本 ... </section>
+    sections = re.split(r'<section[^>]*class="[^"]*note-item[^"]*"[^>]*>', html)
+
+    for section in sections[1:]:  # 跳过第一个（section 之前的内容）
+        # 提取 note ID
+        id_match = re.search(r'href="/explore/([a-f0-9]{24})', section)
+        if not id_match:
+            continue
+        note_id = id_match.group(1)
+        if note_id in seen:
+            continue
+        seen.add(note_id)
+
+        # 在 section 结尾之前提取所有文本
+        sec_end = section.find("</section>")
+        if sec_end < 0:
+            sec_end = len(section)
+        text_block = section[:sec_end]
+
+        # 去掉所有 HTML 标签
+        text = re.sub(r"<[^>]+>", " ", text_block)
+        # 合并空白
+        text = " ".join(text.split())
+
+        # 格式通常是: "标题文本 作者名 点赞数"
+        # 尝试用数字分割来区分 likes
+        parts = text.split()
+        title = parts[0] if parts else note_id[:12]
+        author = ""
+        likes = ""
+
+        # 查找作者（通常最后一个非纯数字的片段前面）
+        for i in range(len(parts) - 1, 0, -1):
+            if re.match(r"^\d+[\d.]*[万kKmM]?$", parts[i]):
+                likes = parts[i]
+            elif not author and i > 0:
+                author = parts[i]
+                title = " ".join(parts[:i])
+
+        notes.append({
+            "id": note_id,
+            "title": title[:80],
+            "author": author[:20],
+            "likes": likes,
+        })
+
+    return notes
+
+
+def fetch_explore_ssr() -> list[dict]:
+    """GET explore 页面，从 SSR HTML 提取笔记（无需 cookie）"""
+    s = requests.Session()
+    s.headers.update({
+        "user-agent": UA,
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "accept-language": "zh-CN,zh;q=0.9",
+    })
+
+    # 先访问首页获取基础 cookie
+    s.get("https://www.xiaohongshu.com/", impersonate="chrome131", timeout=15)
+
+    # 再访问 explore
+    resp = s.get(EXPLORE_URL, impersonate="chrome131", timeout=15)
+    html = resp.text
+
+    # 保存 cookie 以备 API 模式使用
+    cookies = {k: v for k, v in s.cookies.items()}
+    if cookies.get("web_session"):
+        print(f"[*] 获取到 web_session: {cookies['web_session'][:20]}...")
+        COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        existing = {}
+        if COOKIES_FILE.exists():
+            existing = json.loads(COOKIES_FILE.read_text())
+        existing.update(cookies)
+        COOKIES_FILE.write_text(json.dumps(existing, ensure_ascii=False, indent=2))
+
+    notes = extract_notes_from_html(html)
+    print(f"[+] SSR 提取 {len(notes)} 条笔记")
+    return notes
+
 
 def load_cookies() -> dict:
-    """加载 cookies.json"""
     if COOKIES_FILE.exists():
         return json.loads(COOKIES_FILE.read_text())
-    print("[WARN] cookies.json 不存在")
     return {}
 
 
 def node_sign(body: dict) -> dict:
-    """调用 Node.js 签名脚本, 返回 {"X-s": "...", "X-t": "..."}"""
     body_json = json.dumps(body, separators=(",", ":"))
     result = subprocess.run(
         ["node", str(SIGN_JS), body_json],
-        capture_output=True,
-        text=True,
-        timeout=15,
-        cwd=str(BASE_DIR),
+        capture_output=True, text=True, timeout=20, cwd=str(BASE_DIR),
     )
-
     if result.returncode != 0:
-        raise RuntimeError(f"sign.js 失败 (exit={result.returncode}): {result.stderr.strip()}")
-
-    stdout = result.stdout.strip()
-    try:
-        return json.loads(stdout)
-    except json.JSONDecodeError:
-        # 尝试提取最后一行 JSON
-        for line in reversed(stdout.split("\n")):
-            line = line.strip()
-            if line.startswith("{"):
-                try:
-                    return json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-        raise RuntimeError(f"无法解析 sign.js 输出: {stdout[:200]}")
+        raise RuntimeError(f"sign.js 失败: {result.stderr.strip()}")
+    return json.loads(result.stdout.strip())
 
 
-class XhsClient:
-    """小红书客户端"""
+def fetch_homefeed_api(cursor: str = "", note_index: int = 0, cookies: dict = None) -> dict:
+    body = {
+        "cursor_score": cursor, "num": 20, "refresh_type": 1,
+        "note_index": note_index, "unread_begin_note_id": "",
+        "unread_end_note_id": "", "unread_note_count": 0,
+        "category": "homefeed_recommend", "search_key": "",
+        "need_num": 14, "image_formats": ["jpg", "webp", "avif"],
+        "need_filter_image": False,
+    }
 
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            "user-agent": UA,
-            "origin": "https://www.xiaohongshu.com",
-            "referer": "https://www.xiaohongshu.com/",
-        })
-        cookies = load_cookies()
-        if cookies:
-            # filter to string values only
-            self.session.cookies.update({
-                k: str(v) for k, v in cookies.items() if isinstance(v, str)
-            })
+    signed = node_sign(body)
 
-    def homefeed(self, cursor: str = "", note_index: int = 0) -> dict:
-        """获取首页推荐流"""
-        body = {
-            "cursor_score": cursor,
-            "num": 20,
-            "refresh_type": 1,
-            "note_index": note_index,
-            "unread_begin_note_id": "",
-            "unread_end_note_id": "",
-            "unread_note_count": 0,
-            "category": "homefeed_recommend",
-            "search_key": "",
-            "need_num": 14,
-            "image_formats": ["jpg", "webp", "avif"],
-            "need_filter_image": False,
-        }
+    s = requests.Session()
+    s.headers.update({
+        "user-agent": UA, "origin": "https://www.xiaohongshu.com",
+        "referer": "https://www.xiaohongshu.com/",
+    })
+    if cookies:
+        s.cookies.update({k: str(v) for k, v in cookies.items() if isinstance(v, str)})
 
-        signed = node_sign(body)
+    resp = s.post(API_URL, json=body, headers={
+        "content-type": "application/json;charset=UTF-8",
+        "x-s": signed["X-s"], "x-t": signed["X-t"],
+    }, timeout=30, impersonate="chrome131")
 
-        headers = {
-            "content-type": "application/json;charset=UTF-8",
-            "x-s": signed["X-s"],
-            "x-t": signed["X-t"],
-        }
-
-        r = self.session.post(
-            API_URL, json=body, headers=headers,
-            timeout=30, impersonate="chrome131",
-        )
-        return r.json()
+    return resp.json()
 
 
 def show_item(i: int, item: dict):
-    """打印笔记摘要"""
-    nc = item.get("note_card") or item
-    title = nc.get("display_title") or nc.get("title", "(无标题)")
-    user = nc.get("user", {})
-    author = user.get("nickname") or user.get("nick_name", "?")
-    likes = nc.get("interact_info", {}).get("liked_count", "?")
-    print(f"  {i:2d}. {title[:60]}")
-    print(f"      @{author}  ♥{likes}")
+    title = item.get("title", "") or item.get("id", "?")[:12]
+    if "author" in item:
+        print(f"  {i:2d}. {title[:60]}")
+        print(f"      @{item['author']}  likes:{item.get('likes', '?')}")
+    else:
+        print(f"  {i:2d}. {title[:60]}")
 
 
 def main():
     import argparse
-
     parser = argparse.ArgumentParser(description="小红书首页抓取")
-    parser.add_argument("--pages", type=int, default=1, help="抓取页数")
+    parser.add_argument("--api", action="store_true", help="API 模式（需 web_session）")
+    parser.add_argument("--pages", type=int, default=1, help="翻页数")
+    parser.add_argument("--refresh-cookies", action="store_true", help="先访问页面获取 cookie")
     args = parser.parse_args()
 
-    # 预检: 签名脚本能否运行
+    # SSR 模式：无需 cookie，无需签名
+    if not args.api:
+        notes = fetch_explore_ssr()
+        if notes:
+            print(f"\n{'=' * 50}")
+            print(f"共 {len(notes)} 条:")
+            for i, n in enumerate(notes[:20]):
+                show_item(i + 1, n)
+            if len(notes) > 20:
+                print(f"  ... 还有 {len(notes) - 20} 条")
+            print(f"\n[提示] 首次访问已自动保存 cookies 到 data/cookies.json")
+            print(f"[提示] 需要翻页时使用: python request.py --api --pages 3")
+        return
+
+    # API 模式
+    if args.refresh_cookies:
+        print("[*] 先访问页面获取 cookie...")
+        fetch_explore_ssr()
+
+    cookies = load_cookies()
+    if not cookies.get("web_session"):
+        print("[!] web_session 不存在")
+        print("[!] 请先运行: python request.py (获取临时 cookie)")
+        print("[!] 或手动设置 data/cookies.json 中的 web_session")
+        sys.exit(1)
+
+    print(f"[*] API 模式, web_session: {cookies['web_session'][:20]}...")
+
+    # 签名预检
     try:
         node_sign({"cursor_score": "", "num": 1, "refresh_type": 1, "note_index": 0})
     except Exception as e:
-        print(f"[!] 签名预检失败: {e}")
-        print("[!] 请检查: npm install crypto-js 是否已执行")
-        return
+        print(f"[!] 签名失败: {e}")
+        sys.exit(1)
 
-    client = XhsClient()
     total = 0
-    try:
-        cursor, note_index = "", 0
-        for pg in range(1, args.pages + 1):
-            print(f"\n{'=' * 50}")
-            print(f"[*] 第 {pg}/{args.pages} 页 ...")
-
-            data = client.homefeed(cursor, note_index)
-
-            if not data.get("success") and data.get("code") != 0:
-                print(f"[!] API 错误: code={data.get('code')}, msg={data.get('msg', '?')}")
-                print(f"    响应: {json.dumps(data, ensure_ascii=False)[:300]}")
-                break
-
-            items = (
-                data.get("data", {}).get("notes")
-                or data.get("data", {}).get("items", [])
-            )
-            if not items:
-                print("(无数据)")
-                break
-
-            total += len(items)
-            for i, it in enumerate(items, 1):
-                show_item((pg - 1) * 20 + i, it)
-
-            cursor = data.get("data", {}).get("cursor", "")
-            note_index += len(items)
-
-            if not data.get("data", {}).get("has_more", False) or not cursor:
-                print("(已到最后一页)")
-                break
-
-            time.sleep(1.5)
-
-    except KeyboardInterrupt:
-        print("\n[!] 中断")
-    except Exception as e:
-        print(f"[FAIL] {e}")
-        import traceback
-
-        traceback.print_exc()
-    finally:
+    cursor, note_index = "", 0
+    for pg in range(1, args.pages + 1):
         print(f"\n{'=' * 50}")
-        print(f"[+] 共 {total} 条")
+        print(f"[*] 第 {pg}/{args.pages} 页 ...")
+
+        data = fetch_homefeed_api(cursor, note_index, cookies)
+
+        if not data.get("success") and data.get("code") != 0:
+            code = data.get("code")
+            msg = data.get("msg", "")
+            print(f"[!] API 错误: code={code} msg={msg}")
+            if code == 300011:
+                print("[!] 账号风控，需换 IP 或重新获取 web_session")
+            break
+
+        items = data.get("data", {}).get("notes") or data.get("data", {}).get("items", [])
+        if not items:
+            print("(无数据)")
+            break
+
+        total += len(items)
+        for i, it in enumerate(items, 1):
+            nc = it.get("note_card") or it
+            title = (nc.get("display_title") or nc.get("title") or "?")[:60]
+            author = (nc.get("user") or {}).get("nickname") or "?"
+            likes = (nc.get("interact_info") or {}).get("liked_count") or 0
+            show_item((pg - 1) * 20 + i, {"title": title, "author": author, "likes": likes})
+
+        cursor = data.get("data", {}).get("cursor", "")
+        note_index += len(items)
+
+        if not data.get("data", {}).get("has_more") or not cursor:
+            print("(已到最后一页)")
+            break
+
+        time.sleep(1.5)
+
+    print(f"\n{'=' * 50}")
+    print(f"[+] 共 {total} 条")
 
 
 if __name__ == "__main__":
