@@ -227,7 +227,7 @@ def _activate_guest_web_session(session: "requests.Session") -> str | None:
     msg = data.get("msg", "")
     print(f"    activate 响应: code={code} msg={msg}")
 
-    web_session = session.cookies.get("web_session", domain=".xiaohongshu.com")
+    web_session = session.cookies.get("web_session")
     if not web_session:
         web_session = resp.cookies.get("web_session")
     return web_session or None
@@ -274,7 +274,7 @@ def boot_guest_cookies() -> dict:
     # Step 3: gid + acw_tc
     try:
         _get_gid_and_acw_tc(s)
-        gid = s.cookies.get("gid", domain=".xiaohongshu.com") or "?"
+        gid = s.cookies.get("gid") or "?"
         print(f"[3/4] gid={gid[:20] if gid != '?' else '?'}")
     except Exception as e:
         print(f"[3/4] gid 失败（继续）: {e}")
@@ -288,7 +288,7 @@ def boot_guest_cookies() -> dict:
     print(f"[4/4] web_session={web_session[:20]}...")
 
     # 收集结果
-    cookies = {cookie.name: cookie.value for cookie in s.cookies}
+    cookies = s.cookies.get_dict() if hasattr(s.cookies, "get_dict") else {c.name: c.value for c in s.cookies}
     if cookies.get("web_session"):
         save_cookies(cookies)
         print(f"[✓] cookies 已保存到 {COOKIES_FILE}")
