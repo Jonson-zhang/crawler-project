@@ -414,7 +414,10 @@ def main():
 
         items = data.get("data", {}).get("items") or []
         if not items:
-            print("  (无数据)")
+            if pg == 1 and code == 0:
+                print("  (推荐流为空：游客账号无浏览历史，可尝试搜索 API 或使用登录账号)")
+            else:
+                print("  (无数据)")
             break
 
         total += len(items)

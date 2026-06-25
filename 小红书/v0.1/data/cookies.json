@@ -1,11 +1,9 @@
 {
-  "a1": "19efda485b23ndqtv25e0cm4im5oxpkyzhrws94zy50000159088",
-  "webId": "fd5156f7bad1387e7909d0c38cbd5ad9",
-  "webBuild": "6.12.3",
+  "a1": "19efcc453f2zukuqodx9wic7ub5n0gg7qtzghpqoc50000429448",
+  "webId": "23eb28c912e56dae43bdfe6dfbf98e84",
+  "gid": "yjdiSS424SADyjdiSS42q9UAiJu7T7AlfCjEulS3SW7D2k28I8kkWx8884Jj44Y8Sd0dSYjS",
+  "abRequestId": "6c0b562e7f6cf39a7c9f3a2d6b39725e",
+  "webBuild": "6.24.0",
   "xsecappid": "xhs-pc-web",
-  "loadts": "1782371878322",
-  "websectiga": "396f162eff299ebdf0c1346cf70a1f0d32f377eea82b510b64e1c45bfbb00962",
-  "gid": "yjdif04WjYJdRG7y0ynw0q367tg2M23kIWWHmjHRkUWTMzl23Pvp6PhRqlBR7ouyYKfdqyjjt00sX21",
-  "web_session": "030037ad0f82595465746190442d4a41221d29",
-  "acw_tc": "0a8f044817823718853816987e781dc0dc0d5d547b0a95d62abd35e8db147e"
+  "web_session": "030037ad0fc8ca547972f2da442d4ada4c8a98"
 }
