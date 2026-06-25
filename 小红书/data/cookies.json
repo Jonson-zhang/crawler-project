@@ -1,14 +1,10 @@
 {
-  "abRequestId": "8f1fc5ea-a376-59d6-af59-5e3b487b6b58",
-  "ets": "1782312695277",
-  "webBuild": "6.24.0",
-  "xsecappid": "xhs-pc-web",
-  "loadts": "1782312695304",
   "a1": "19efa1d760a1zh7xxyt66q5575troj0oxub2loadg50000133433",
   "webId": "6c0b562e7f6cf39a7c9f3a2d6b39725e",
-  "websectiga": "984412fef754c018e472127b8effd174be8a5d51061c991aadd200c69a2801d6",
-  "sec_poison_id": "ef338244-36ee-4eea-bfed-a7b7963b84b2",
-  "web_session": "030037ad08ba81578175b9a8432d4a53ac9b30",
   "gid": "yjdi0yfWfqCSyjdi0yfWK7l080yuxWCCv9KKDfkA22W29J28FlV8l1888yqq4qq8fYddqS4W",
-  "unread": "{%22ub%22:%226a14fea50000000035039dd8%22%2C%22ue%22:%226a13f18d000000000702d13a%22%2C%22uc%22:48}"
+  "abRequestId": "6c0b562e7f6cf39a7c9f3a2d6b39725e",
+  "webBuild": "6.24.0",
+  "xsecappid": "xhs-pc-web",
+  "websectiga": "10f9a40ba454a07755a08f27ef8194c53637eba4551cf9751c009d9afb564467",
+  "sec_poison_id": "d17842d1-4e28-40ce-9003-3cafd00bec2c"
 }
