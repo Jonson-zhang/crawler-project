@@ -14,4 +14,5 @@ dependencies = [
     "pyexecjs>=1.5.1",
     "requests>=2.34.2",
     "wasmtime>=45.0.0",
+    "xhshow>=0.2.0",
 ]
