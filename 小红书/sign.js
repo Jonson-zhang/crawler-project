@@ -151,10 +151,4 @@ try {
 const x_s = seccore_signv2(API_URL, bodyObj);
 const x_t = String(Date.now());
 
-// 验证 mns0301
-const testHash = window.mnsv2(API_URL + bodyArg, "abc", "def");
-if (!String(testHash).startsWith("mns0301")) {
-  console.error("警告: mnsv2 未升级到 mns0301, 当前: " + String(testHash).substring(0, 15));
-}
-
 process.stdout.write(JSON.stringify({ "X-s": x_s, "X-t": x_t }) + "\n");

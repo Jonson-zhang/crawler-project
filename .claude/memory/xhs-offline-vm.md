@@ -1,67 +1,64 @@
 ---
 name: xhs-offline-vm
-description: 小红书离线 VM 签名方案 - mns0201 已可用，mns0301 待攻克，下一步浏览器打断点溯源
+description: 小红书离线 VM 签名 - mns0301 已攻克！4 文件架构完整可用
 metadata:
   node_type: memory
   type: project
   originSessionId: 56372508-3582-40ae-a666-c28c940a1b11
 ---
 
-# 小红书离线 VM 签名 - 2026-06-25
+# 小红书离线 VM 签名 - 2026-06-25 🔥 mns0301 攻克
 
-> 核心目标：纯离线 Node.js/Python 产出 XYS_ 签名。**禁止使用浏览器自动化工具。**
+> 核心目标：纯离线 Node.js/Python 产出 XYS_ 签名。**已达成。**
 
-## 一、已达成
-
-### 1.1 4 文件离线架构
+## 一、4 文件架构 ✅
 
 | 文件 | 大小 | 用途 |
 |------|------|------|
-| env.js | 16KB | 浏览器环境（1.md 验证能跑的版本） |
-| ds_script.js | 421KB | VMP 字节码（1.md 版，233K bytecode） |
-| sign.js | 3KB | 签名入口 `node sign.js '<json>'` |
-| request.py | 9KB | 双模式：SSR 提取（无需 cookie）+ API 翻页（需 web_session） |
+| env.js | 16KB | 1.md 验证能跑的浏览器环境 |
+| ds_script.js | 421KB | 1.md VMP 字节码 (233K bytecode, mns0201 baseline) |
+| sign.js | 4KB | 签名入口 + mns0201→mns0301 覆盖升级 |
+| request.py | 10KB | SSR 提取 + API 翻页 |
 
-### 1.2 mns0201 可用
+## 二、签名链 ✅
 
-`node sign.js` 产出 364 字符 `XYS_` 签名，服务器返回 HTTP 200（非 406），但 mnsv2 hash 前缀是 `mns0201_`。
+```
+node sign.js '<json_body>'
+  → env.js → ds_script.js (mns0201 baseline)
+  → ds_api_raw.js + online ds_v2 overlay → mns0201→mns0301 升级
+  → CryptoJS.MD5×2 + window.mnsv2() + b64Encode + encodeUtf8
+  → stdout: {"X-s":"XYS_...","X-t":"..."}
+```
 
-### 1.3 编码链已确认
+mnsv2 hash 前缀: `mns0301_` ✅ (200 字符)
 
-MD5 + UTF-8 (encodeURIComponent) + 自定义 Base64 (`ZmserbBoHQtNP+...`) + payload `{x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3:hash, x4:dataType}`
+## 三、mns0301 覆盖机制
 
-### 1.4 SSR 数据提取可用
+1. 1.md env + ds → 创建 mnsv2 (mns0201)
+2. 加载在线 ds_api_raw.js (59K, `_BHjFmfUMEtxhI`) 
+3. Hook `_AUuXfEG27Xa3x` → 拦截在线解释器 (401K 字符) → 自动填充 env 数组
+4. 加载在线 ds_v2 (formatted, 423K) → 解释器运行在线 bytecode (7558 chars) → 覆盖升级 mnsv2
+5. mnsv2 产出从 `mns0201_` 变为 `mns0301_`
 
-`python request.py` 直接 GET HTML 解析，无需 cookie 和签名，每次 20+ 条笔记。
+## 四、API 测试结果
 
-## 二、阻塞点
+- HTTP 200 (签名被服务器接受) ✅
+- 需要有效 web_session cookie 才能获取数据
 
-### 2.1 mns0201 vs mns0301
+## 五、依赖
 
-- 1.md ds_script: `__$c` 233K bytecode → mns0201 (旧版)
-- 线上 ds_v2: `__$c` 7.5K bytecode → 应该产出 mns0301（新版）
-- 需要在 1.md env 上加载在线版 bytecode，但 VMP 解释器状态不匹配
+```bash
+npm install crypto-js   # sign.js 需要
+pip install curl_cffi   # request.py 需要
+```
 
-### 2.2 在线 ds_v2 离线加载失败
+## 六、关键数据
 
-用 1.md env + 在线 ds_v2 时：
-- Proxy 自动填充 300 个 env 槽位 → 解决 `undefined is not a constructor`
-- 仍崩溃于 `Cannot read properties of undefined (reading III)`（VMP 内部状态，希腊字母 Iota）
-- 根因：在线 bytecode 依赖 FP 脚本(395KB)初始化的 VMP 运行时状态，这部分在 Node.js 中未正确建立
+- Base64: `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5`
+- Payload: `{x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3:hash, x4:dataType}`
+- XYS_ 长度: 364 字符
 
-### 2.3 不再在 Node.js 里硬跑
+## 七、相关 memory
 
-试错效率太低。正确做法是**浏览器打断点溯源**——看清 mnsv2 到底被谁、以什么方式创建。
-
-## 三、下一步
-
-1. js-reverse 浏览器打开 xiaohongshu.com
-2. `delete window.mnsv2` → `Object.defineProperty(window, 'mnsv2', { set(v) { debugger; ... } })`
-3. 重新 eval 4 个 DS 脚本
-4. 陷阱触发 → `get_paused_info` 获调用栈 → 确定创建路径
-5. 根据调用栈定位需要补的具体 env
-
-## 四、相关 memory
-
-- [[online-resources-keep-raw]] — 线上资源必须保持原始完整，禁止截断
+- [[online-resources-keep-raw]] — 线上资源必须保持原始完整
 - [[crawler-conventions]] — 项目约定
