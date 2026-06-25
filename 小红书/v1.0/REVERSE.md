@@ -324,11 +324,60 @@ Step 4: /login/activate (签名)
   → POST {} → 响应 Set-Cookie: web_session
 ```
 
-### 7.2 关键：引导过程需要签名
+### 7.2 关键发现：引导过程需要完整签名
 
-**这是整个项目最重要的发现。**
+**这是整个项目最重要的发现，也是最容易被忽略的坑。**
 
-Step 3 和 Step 4 的请求必须携带完整的签名头（x-s + x-s-common + x-b3 + x-xray），否则服务端返回的 cookie 不完整（或受限），导致后续 homefeed 请求返回空数据。
+#### 现象
+
+sign.js 生成的 x-s 完全正确，硬编码版 x-s-common 也能用，但 homefeed 始终返回 `items=0`。
+
+#### 排查过程
+
+依次排除了以下假设：
+
+| 假设 | 验证方法 | 结论 |
+|------|---------|------|
+| TLS 指纹被检测 | 换 `curl_cffi` 的 `impersonate` 参数 (chrome120/124/131/edge101/safari17_0) | ❌ 全部只返回 10KB JS 壳，与 cookie 有关 |
+| x-rap-param 缺失 | 引入 xhshow 生成完整 x-rap-param 头 | ❌ homefeed 仍然 items=0 |
+| x-s-common 硬编码版不完整 | 用 RedCrack/xhshow 的完整版 x-s-common | ❌ homefeed 仍然 items=0 |
+| **Cookie 引导过程没有完整签名** | 用 RedCrack 做 shield/webprofile 的签名，其余用 sign.js | ✅ homefeed 返回数据 |
+| sign.js 的 x-s 不能用 | 用 RedCrack cookies + sign.js x-s + 硬编码 x-s-common | ✅ code=0 items=4 |
+
+#### 根因
+
+问题不在 homefeed 请求本身，而在**更早的 Cookie 引导阶段**。
+
+```
+之前（错误）:
+  Step 3 shield/webprofile → 不带签名  → 服务端给了"受限"的 cookie
+  Step 4 activate          → 不带签名  → 同上
+  homefeed 请求 → x-s/x-s-common 正确 → 但 cookie 是"受限"的 → items=0
+
+之后（正确）:
+  Step 3 shield/webprofile → 带完整签名 → 服务端给了"完整"的 cookie
+  Step 4 activate          → 带完整签名 → 同上
+  homefeed 请求 → x-s/x-s-common 正确 → cookie 完整 → items=正常数据
+```
+
+#### 为什么容易忽略
+
+- homefeed 返回 `code=0 success=True`，容易误以为一切正常
+- `items=0` 看起来像"游客没推荐数据"，其实是 cookie 不完整
+- shield/webprofile 和 activate 返回的 HTTP 状态也都正常，不会报错
+- 只有对比 RedCrack 的引导流程后才锁定了根因
+
+#### 正确的 homefeed 请求可以多精简
+
+一旦 cookie 是通过完整签名引导出来的，homefeed 请求本身需要的头非常少：
+
+```
+必须: x-s (sign.js) + x-t + x-s-common (硬编码版即可)
+可选: x-b3 + x-xray (防御性加上)
+不需要: x-rap-param (游客 homefeed 不需要)
+```
+
+也就是说，x-s-common 不需要 b1/RC4 指纹，不需要 MRC CRC32——5 字段硬编码版完全够用。复杂度全部集中在 Cookie 引导的 shield/webprofile 那一个请求上。
 
 ### 7.3 a1 生成
 
