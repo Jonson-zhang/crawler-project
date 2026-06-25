@@ -21,6 +21,7 @@
 - [env.js / sign.js 分离架构](env-sign-separation.md) — 补环境与签名逻辑分离的目录结构规范
 - [Crawler 项目约定](crawler-conventions.md) — 工具链、代码组织、输出方式的默认约定
 - [WAF/TLS 指纹识别与应对](waf-tls-fingerprint.md) — requests 返回 WAF HTML 的诊断 + 浏览器桥接方案 + Cookie 保鲜
+- [补环境通用模板](env-core-template.md) — 经小红书实战验证的通用补环境核心（toString保护/setNative/watch），可复用于任何 JS 逆向
 - [WAF 浏览器引擎检测](waf-browser-engine.md) — **新**：阿里云 WAF 对 Firefox/Gecko 全线拦截，Chromium/Blink 天然通过
 - [WAF 风控升级机制](waf-rate-limiting.md) — **新**：三级升级（JS 挑战→滑块→405 封杀）+ IP 冷却恢复
 - [DrissionPage 踩坑汇总](drissionpage-practice.md) — **新**：API 陷阱、进程管理、headless 配置
