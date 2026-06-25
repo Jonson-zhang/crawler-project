@@ -39,16 +39,14 @@ NOTE_LINK_RE = re.compile(r"/explore/([a-f0-9]{24})")
 
 
 def extract_notes_from_html(html: str) -> list[dict]:
-    """从 SSR HTML 提取笔记（title + author）"""
+    """从 SSR HTML 提取笔记（title + author + likes）"""
     notes = []
     seen = set()
 
-    # 匹配所有 note-item section
-    # SSR 中的结构: <section ... class=\"note-item\" ...> ... <a href=\"/explore/<id>\"> ... 文本 ... </section>
+    # SSR 结构: <section class="note-item"> ... <a href="/explore/<24位hex>"> ... </section>
     sections = re.split(r'<section[^>]*class="[^"]*note-item[^"]*"[^>]*>', html)
 
-    for section in sections[1:]:  # 跳过第一个（section 之前的内容）
-        # 提取 note ID
+    for section in sections[1:]:
         id_match = re.search(r'href="/explore/([a-f0-9]{24})', section)
         if not id_match:
             continue
@@ -57,31 +55,37 @@ def extract_notes_from_html(html: str) -> list[dict]:
             continue
         seen.add(note_id)
 
-        # 在 section 结尾之前提取所有文本
         sec_end = section.find("</section>")
         if sec_end < 0:
             sec_end = len(section)
         text_block = section[:sec_end]
 
-        # 去掉所有 HTML 标签
+        # 去掉 HTML 标签和空白
         text = re.sub(r"<[^>]+>", " ", text_block)
-        # 合并空白
         text = " ".join(text.split())
+        if not text:
+            continue
 
-        # 格式通常是: "标题文本 作者名 点赞数"
-        # 尝试用数字分割来区分 likes
         parts = text.split()
-        title = parts[0] if parts else note_id[:12]
-        author = ""
-        likes = ""
 
-        # 查找作者（通常最后一个非纯数字的片段前面）
-        for i in range(len(parts) - 1, 0, -1):
-            if re.match(r"^\d+[\d.]*[万kKmM]?$", parts[i]):
-                likes = parts[i]
-            elif not author and i > 0:
-                author = parts[i]
-                title = " ".join(parts[:i])
+        # 解析: title_words... author_name likes_count
+        likes = ""
+        author = ""
+        title_end = len(parts)
+
+        # 从末尾向前找 likes 数字
+        if parts and re.match(r"^\d+[\d.]*[万kmK]?$", parts[-1]):
+            likes = parts[-1]
+            title_end -= 1
+
+        # 作者通常在末尾一个非数字 tokens 之前
+        if title_end > 0:
+            author = parts[title_end - 1]
+            title_end -= 1
+
+        title = " ".join(parts[:title_end]) if title_end > 0 else text[:60]
+        if not title:
+            title = note_id[:12]
 
         notes.append({
             "id": note_id,
