@@ -37,7 +37,7 @@ from curl_cffi import requests
 
 # ===== 配置 =====
 PAGES = 3
-SHOW_DETAIL = False
+SHOW_DETAIL = True
 INTERVAL = 1.5
 
 BASE_DIR = Path(__file__).parent
@@ -57,6 +57,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # ============================================================
 B64_CHARS = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5"
 
+
 def _b64e(data: bytes) -> str:
     """自定义 Base64 编码"""
     n, m, r = len(data), len(data) % 3, []
@@ -64,12 +65,23 @@ def _b64e(data: bytes) -> str:
         limit = min(i + 16383, n - m)
         for j in range(i, limit, 3):
             t = (data[j] << 16) + (data[j + 1] << 8) + data[j + 2]
-            r.append(B64_CHARS[(t>>18)&63] + B64_CHARS[(t>>12)&63] + B64_CHARS[(t>>6)&63] + B64_CHARS[t&63])
+            r.append(
+                B64_CHARS[(t >> 18) & 63]
+                + B64_CHARS[(t >> 12) & 63]
+                + B64_CHARS[(t >> 6) & 63]
+                + B64_CHARS[t & 63]
+            )
     if m == 1:
-        b = data[n-1]; r.append(B64_CHARS[b>>2] + B64_CHARS[(b<<4)&63] + "==")
+        b = data[n - 1]
+        r.append(B64_CHARS[b >> 2] + B64_CHARS[(b << 4) & 63] + "==")
     elif m == 2:
-        p = (data[n-2]<<8) + data[n-1]
-        r.append(B64_CHARS[p>>10] + B64_CHARS[(p>>4)&63] + B64_CHARS[(p<<2)&63] + "=")
+        p = (data[n - 2] << 8) + data[n - 1]
+        r.append(
+            B64_CHARS[p >> 10]
+            + B64_CHARS[(p >> 4) & 63]
+            + B64_CHARS[(p << 2) & 63]
+            + "="
+        )
     return "".join(r)
 
 
@@ -80,15 +92,18 @@ def _json_to_bytes(obj: dict) -> bytes:
     result, i = bytearray(), 0
     while i < len(e):
         if e[i] == "%":
-            result.append(int(e[i+1:i+3], 16)); i += 3
+            result.append(int(e[i + 1 : i + 3], 16))
+            i += 3
         else:
-            result.append(ord(e[i])); i += 1
+            result.append(ord(e[i]))
+            i += 1
     return bytes(result)
 
 
 # ============================================================
 # 签名头: x-s, x-t, x-b3, x-xray, x-s-common
 # ============================================================
+
 
 class SignDaemon:
     """sign.js 常驻进程封装
@@ -99,10 +114,14 @@ class SignDaemon:
 
     def __init__(self):
         import atexit
+
         self._proc = subprocess.Popen(
             ["node", str(SIGN_JS), "--daemon"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True, cwd=str(BASE_DIR),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(BASE_DIR),
         )
         atexit.register(self.close)
 
@@ -153,43 +172,74 @@ def _xb3() -> str:
 
 def _xxray() -> str:
     """x-xray-traceid: 时间戳左移 23 位 | 随机 64 位"""
-    return (hex(int(time.time() * 1000) << 23)[2:].zfill(16) +
-            hex(random.getrandbits(64))[2:].zfill(16))
+    return hex(int(time.time() * 1000) << 23)[2:].zfill(16) + hex(
+        random.getrandbits(64)
+    )[2:].zfill(16)
 
 
 # ============================================================
 # x-s-common 自研实现
 # ============================================================
 
+
 def _make_fp(ts: int | None = None) -> dict:
     """生成浏览器指纹（b1 需要的 18 项子集）"""
     ts = ts or int(time.time() * 1000)
     return {
-        "x33": "0", "x34": "0", "x35": "0",
+        "x33": "0",
+        "x34": "0",
+        "x35": "0",
         "x36": str(random.randint(1, 20)),
         "x37": "0|0|0|0|0|0|0|0|0|1|0|0|0|0|0|0|0|0|1|0|0|0|0|0",
         "x38": "0|0|1|0|1|0|0|0|0|0|1|0|1|0|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0",
-        "x39": 0, "x42": "3.5.4", "x43": "Canvas not supported",
-        "x44": str(ts), "x45": "__SEC_CAV__1-1-1-1-1|__SEC_WSA__|",
-        "x46": "false", "x48": "", "x49": "{list:[],type:}",
-        "x50": "", "x51": "", "x52": "",
+        "x39": 0,
+        "x42": "3.5.4",
+        "x43": "Canvas not supported",
+        "x44": str(ts),
+        "x45": "__SEC_CAV__1-1-1-1-1|__SEC_WSA__|",
+        "x46": "false",
+        "x48": "",
+        "x49": "{list:[],type:}",
+        "x50": "",
+        "x51": "",
+        "x52": "",
         "x82": "_0x17a2|_0x1954",
     }
 
 
 def _make_b1(fp: dict) -> str:
     """b1: RC4 加密 18 项指纹子集 → 自定义 Base64"""
-    keys = ["x33","x34","x35","x36","x37","x38","x39",
-            "x42","x43","x44","x45","x46",
-            "x48","x49","x50","x51","x52","x82"]
+    keys = [
+        "x33",
+        "x34",
+        "x35",
+        "x36",
+        "x37",
+        "x38",
+        "x39",
+        "x42",
+        "x43",
+        "x44",
+        "x45",
+        "x46",
+        "x48",
+        "x49",
+        "x50",
+        "x51",
+        "x52",
+        "x82",
+    ]
     s = json.dumps({k: fp[k] for k in keys}, separators=(",", ":"), ensure_ascii=False)
     ct = ARC4.new(b"xhswebmplfbt").encrypt(s.encode("utf-8"))
     u = urllib.parse.quote(ct.decode("latin1"), safe="!*'()~_-")
     r = bytearray()
     for p in u.split("%"):
-        if not p: continue
-        ch = list(p); r.append(int("".join(ch[:2]), 16))
-        for c in ch[2:]: r.append(ord(c))
+        if not p:
+            continue
+        ch = list(p)
+        r.append(int("".join(ch[:2]), 16))
+        for c in ch[2:]:
+            r.append(ord(c))
     return _b64e(bytes(r))
 
 
@@ -231,10 +281,20 @@ def make_xsc(a1: str, fp: dict | None = None) -> str:
     b1 = _make_b1(fp)
     x9 = _js_crc32("" + "" + b1)
     obj = {
-        "s0": 5, "s1": "",
-        "x0": "1", "x1": "4.3.5", "x2": "Windows", "x3": "xhs-pc-web",
-        "x4": "6.12.3", "x5": a1, "x6": "", "x7": "",
-        "x8": b1, "x9": x9, "x10": fp["x39"], "x11": "normal",
+        "s0": 5,
+        "s1": "",
+        "x0": "1",
+        "x1": "4.3.5",
+        "x2": "Windows",
+        "x3": "xhs-pc-web",
+        "x4": "6.12.3",
+        "x5": a1,
+        "x6": "",
+        "x7": "",
+        "x8": b1,
+        "x9": x9,
+        "x10": fp["x39"],
+        "x11": "normal",
     }
     return _b64e(_json_to_bytes(obj))
 
@@ -284,21 +344,25 @@ def _gen_websectiga(js_text: str) -> str:
     logic, chunk = [], []
     for c in decoded:
         if len(chunk) == 5:
-            logic.append(chunk); chunk = []
+            logic.append(chunk)
+            chunk = []
         chunk.append(ord(c) - 1)
     if chunk:
         logic.append(chunk)
-    target = logic[d[92]: d[93] + 1]
+    target = logic[d[92] : d[93] + 1]
     kb = [d[target[675 + i][2]] for i in range(0, 128, 2)]
     return "".join(chr(kb[i + j]) for i in range(56, -1, -8) for j in range(8))
 
 
 def _get_gid(session: "requests.Session") -> None:
     """shield/webprofile → gid + acw_tc（DES ECB + 自研签名）"""
-    fp_json = json.dumps({
-        "uuid": "joiamkprgeyi238i",
-        "requestId": hashlib.md5(str(time.time()).encode()).hexdigest()[:16],
-    }, separators=(",", ":"))
+    fp_json = json.dumps(
+        {
+            "uuid": "joiamkprgeyi238i",
+            "requestId": hashlib.md5(str(time.time()).encode()).hexdigest()[:16],
+        },
+        separators=(",", ":"),
+    )
     fp_b64 = std_b64(fp_json.encode()).decode()
     raw = fp_b64.encode()
     pad = 8 - len(raw) % 8
@@ -308,16 +372,26 @@ def _get_gid(session: "requests.Session") -> None:
     url = "https://as.xiaohongshu.com/api/sec/v1/shield/webprofile"
     data = {"platform": "Windows", "profileData": pf, "sdkVersion": "4.2.6", "svn": "2"}
     cookies = session.cookies.get_dict()
-    session.post(url, json=data, headers=sign_headers(url, cookies, data),
-                 timeout=15, impersonate="chrome131")
+    session.post(
+        url,
+        json=data,
+        headers=sign_headers(url, cookies, data),
+        timeout=15,
+        impersonate="chrome131",
+    )
 
 
 def _activate(session: "requests.Session") -> str | None:
     """/login/activate → web_session（自研签名）"""
     url = "https://edith.xiaohongshu.com/api/sns/web/v1/login/activate"
     cookies = session.cookies.get_dict()
-    session.post(url, json={}, headers=sign_headers(url, cookies, {}),
-                 timeout=15, impersonate="chrome131")
+    session.post(
+        url,
+        json={},
+        headers=sign_headers(url, cookies, {}),
+        timeout=15,
+        impersonate="chrome131",
+    )
     return session.cookies.get("web_session")
 
 
@@ -330,33 +404,45 @@ def boot_guest_cookies() -> dict:
     Step 4: /login/activate → web_session (自研签名)
     """
     s = requests.Session()
-    s.headers.update({
-        "user-agent": UA,
-        "accept": "application/json, text/plain, */*",
-        "origin": "https://www.xiaohongshu.com",
-        "referer": "https://www.xiaohongshu.com/",
-        "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-    })
+    s.headers.update(
+        {
+            "user-agent": UA,
+            "accept": "application/json, text/plain, */*",
+            "origin": "https://www.xiaohongshu.com",
+            "referer": "https://www.xiaohongshu.com/",
+            "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+        }
+    )
 
     a1, webId = _gen_a1()
-    s.cookies.update({
-        "a1": a1, "webId": webId, "webBuild": "6.12.3",
-        "xsecappid": "xhs-pc-web", "loadts": str(int(time.time() * 1000)),
-        "abRequestId": str(uuid.uuid4()),
-    })
+    s.cookies.update(
+        {
+            "a1": a1,
+            "webId": webId,
+            "webBuild": "6.12.3",
+            "xsecappid": "xhs-pc-web",
+            "loadts": str(int(time.time() * 1000)),
+            "abRequestId": str(uuid.uuid4()),
+        }
+    )
     print(f"[1/4] a1={a1[:20]}... webId={webId[:16]}...")
 
     try:
-        r = s.post("https://as.xiaohongshu.com/api/sec/v1/scripting",
-                   json={"callFrom": "web", "callback": "seccallback"},
-                   headers={"content-type": "application/json"},
-                   timeout=15, impersonate="chrome131")
+        r = s.post(
+            "https://as.xiaohongshu.com/api/sec/v1/scripting",
+            json={"callFrom": "web", "callback": "seccallback"},
+            headers={"content-type": "application/json"},
+            timeout=15,
+            impersonate="chrome131",
+        )
         resp = r.json()
         js_text = resp["data"]["data"]
         sec_pid = resp["data"].get("secPoisonId", str(uuid.uuid4()))
-        s.cookies.update({"websectiga": _gen_websectiga(js_text), "sec_poison_id": sec_pid})
+        s.cookies.update(
+            {"websectiga": _gen_websectiga(js_text), "sec_poison_id": sec_pid}
+        )
         print(f"[2/4] websectiga={s.cookies['websectiga'][:20]}...")
     except Exception as e:
         print(f"[2/4] websectiga 失败: {e}")
@@ -385,42 +471,61 @@ def boot_guest_cookies() -> dict:
 # API 请求
 # ============================================================
 
+
 def load_cookies() -> dict:
     return json.loads(COOKIES_FILE.read_text()) if COOKIES_FILE.exists() else {}
 
 
-def fetch_homefeed(cursor: str = "", note_index: int = 0,
-                   cookies: dict | None = None) -> dict:
+def fetch_homefeed(
+    cursor: str = "", note_index: int = 0, cookies: dict | None = None
+) -> dict:
     body = {
-        "cursor_score": cursor, "num": 20, "refresh_type": 1,
-        "note_index": note_index, "unread_begin_note_id": "",
-        "unread_end_note_id": "", "unread_note_count": 0,
-        "category": "homefeed_recommend", "search_key": "",
-        "need_num": 14, "image_formats": ["jpg", "webp", "avif"],
+        "cursor_score": cursor,
+        "num": 20,
+        "refresh_type": 1,
+        "note_index": note_index,
+        "unread_begin_note_id": "",
+        "unread_end_note_id": "",
+        "unread_note_count": 0,
+        "category": "homefeed_recommend",
+        "search_key": "",
+        "need_num": 14,
+        "image_formats": ["jpg", "webp", "avif"],
         "need_filter_image": False,
     }
     s = requests.Session()
-    s.headers.update({
-        "user-agent": UA,
-        "origin": "https://www.xiaohongshu.com",
-        "referer": "https://www.xiaohongshu.com/explore",
-        "accept": "application/json, text/plain, */*",
-    })
+    s.headers.update(
+        {
+            "user-agent": UA,
+            "origin": "https://www.xiaohongshu.com",
+            "referer": "https://www.xiaohongshu.com/explore",
+            "accept": "application/json, text/plain, */*",
+        }
+    )
     if cookies:
         s.cookies.update({k: str(v) for k, v in cookies.items() if isinstance(v, str)})
-    resp = s.post(API_URL, json=body,
-                  headers=sign_headers(API_URL, cookies, body),
-                  timeout=30, impersonate="chrome131")
+    resp = s.post(
+        API_URL,
+        json=body,
+        headers=sign_headers(API_URL, cookies, body),
+        timeout=30,
+        impersonate="chrome131",
+    )
     return resp.json()
 
 
-def fetch_note_detail(note_id: str, xsec_token: str,
-                      session: "requests.Session") -> dict | None:
+def fetch_note_detail(
+    note_id: str, xsec_token: str, session: "requests.Session"
+) -> dict | None:
     """从 SSR 页面提取笔记正文"""
     try:
         url = f"https://www.xiaohongshu.com/explore/{note_id}?xsec_token={xsec_token}&xsec_source=pc_feed"
-        resp = session.get(url, headers={"accept": "text/html", "user-agent": UA},
-                           timeout=20, impersonate="chrome131")
+        resp = session.get(
+            url,
+            headers={"accept": "text/html", "user-agent": UA},
+            timeout=20,
+            impersonate="chrome131",
+        )
         html = resp.text
         idx = html.find("window.__INITIAL_STATE__=")
         if idx < 0:
@@ -428,12 +533,20 @@ def fetch_note_detail(note_id: str, xsec_token: str,
         start = html.index("{", idx)
         depth, end = 0, start
         for i in range(start, len(html)):
-            if html[i] == "{": depth += 1
+            if html[i] == "{":
+                depth += 1
             elif html[i] == "}":
                 depth -= 1
-                if depth == 0: end = i + 1; break
+                if depth == 0:
+                    end = i + 1
+                    break
         data = json.loads(html[start:end].replace("undefined", "null"))
-        note = data.get("note", {}).get("noteDetailMap", {}).get(note_id, {}).get("note", {})
+        note = (
+            data.get("note", {})
+            .get("noteDetailMap", {})
+            .get(note_id, {})
+            .get("note", {})
+        )
         if note:
             return {
                 "desc": note.get("desc", ""),
@@ -450,6 +563,7 @@ def fetch_note_detail(note_id: str, xsec_token: str,
 # 主流程
 # ============================================================
 
+
 def main():
     cookies = load_cookies()
     if not cookies.get("web_session"):
@@ -465,8 +579,12 @@ def main():
     print(f"页数: {PAGES}, 正文: {'显示' if SHOW_DETAIL else '不显示'}\n")
 
     detail_http = requests.Session()
-    detail_http.headers.update({"user-agent": UA, "origin": "https://www.xiaohongshu.com"})
-    detail_http.cookies.update({k: str(v) for k, v in cookies.items() if isinstance(v, str)})
+    detail_http.headers.update(
+        {"user-agent": UA, "origin": "https://www.xiaohongshu.com"}
+    )
+    detail_http.cookies.update(
+        {k: str(v) for k, v in cookies.items() if isinstance(v, str)}
+    )
 
     total, cursor, note_index = 0, "", 0
 
@@ -490,7 +608,9 @@ def main():
             nc = it.get("note_card") or it
             ntype = nc.get("type", "?")
             icon = {"video": "🎬", "normal": "📝"}.get(ntype, "📌")
-            title = (nc.get("display_title") or nc.get("title") or "").strip() or "(无标题)"
+            title = (
+                nc.get("display_title") or nc.get("title") or ""
+            ).strip() or "(无标题)"
             author = (nc.get("user") or {}).get("nickname") or "?"
             likes = (nc.get("interact_info") or {}).get("liked_count", "0")
 
@@ -505,7 +625,7 @@ def main():
                     if detail and detail.get("desc"):
                         desc = detail["desc"]
                         for j in range(0, min(len(desc), 500), 80):
-                            print(f"      │ {desc[j:j+80]}")
+                            print(f"      │ {desc[j : j + 80]}")
                         if len(desc) > 500:
                             print(f"      │ ...(共 {len(desc)} 字)")
                     time.sleep(0.3)
