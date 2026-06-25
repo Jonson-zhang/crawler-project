@@ -13,57 +13,43 @@ eval(fs.readFileSync("data/fp_raw.js","utf8"));
 eval(fs.readFileSync("data/ds_api_raw.js","utf8"));
 origLog("[2] fp+api ok");
 
-// Intercept _AUuXfEG27Xa3x
+// Hook _AUuXfEG27Xa3x: auto-fill env array
 var realAu;
 Object.defineProperty(global,"_AUuXfEG27Xa3x",{
   get:function(){return realAu;},
   set:function(fn){
     if(typeof fn==="function"){
+      origLog("[3] _AUuXfEG27Xa3x defined, interp size="+fn.toString().length);
       realAu=function(bc,env){
-        for(var i=0;i<200;i++)if(env[i]===undefined)env[i]=function(){this.name="s"+i;};
-        origLog("[3] calling VMP, bc="+bc.length+" env="+env.length);
+        for(var i=0;i<200;i++){
+          if(env[i]===undefined){
+            var stub=function(){};
+            stub.prototype={};
+            env[i]=stub;
+          }
+        }
+        origLog("[4] VMP called, bc="+bc.length);
         return fn.call(this,bc,env);
       };
-    }
+    } else { realAu=fn; }
   },
   configurable:true,enumerable:true
 });
 
-// Build hybrid: 1.md VMP + online bytecode + 1.md init env
-var ds1md=lines.slice(137,1638).join("\n");
-var onlineBc=fs.readFileSync("data/online_bc.txt","utf8");
-
-// 1.md bytecode: '56544b424251464d00283e...378760...'
-// Find it by header
-var bcStart=ds1md.indexOf("56544b424251464d00283e");
-var bcEnd=ds1md.indexOf("';",bcStart);
-if(bcEnd<0)bcEnd=ds1md.lastIndexOf("';");
-
-origLog("[3] 1.md bc: "+bcStart+"-"+bcEnd+" len="+(bcEnd-bcStart));
-var hybrid=ds1md.substring(0,bcStart)+onlineBc+ds1md.substring(bcEnd);
-
-// The init call: glb['_AUuXfEG27Xa3x'](__$c, [28 items])
-// This stays from 1.md - provides 28 env items which is more than online needs
-
+// Load ONLINE ds_v2 (formatted) with ITS OWN interpreter + bytecode
 try {
-  eval(hybrid);
-  origLog("[3] hybrid eval OK");
+  eval(fs.readFileSync("data/ds_v2_6545c_online.js","utf8"));
+  origLog("[4] online ds_v2 loaded");
 } catch(e) {
-  origLog("[3] hybrid ERR: "+e.message.substring(0,200));
-  var stk=(e.stack||"").split("\n").filter(function(l){return l.indexOf("at ")>-1;}).slice(0,5);
-  stk.forEach(function(l){origLog("  "+l.trim().substring(0,150));});
-  Function.prototype.bind=oB; Function.prototype.apply=oA;
-  origLog("mnsv2: "+typeof mnsv2);
-  process.exit(1);
+  origLog("[4] ds_v2 ERR: "+e.message.substring(0,200));
 }
 
 Function.prototype.bind=oB; Function.prototype.apply=oA;
 
-origLog("=== RESULT ===");
 origLog("mnsv2: "+typeof mnsv2);
 if(typeof mnsv2==="function"){
-  var r=mnsv2("test","abca","def4");
-  origLog("prefix: "+(r||"").substring(0,40));
+  var r=mnsv2("test","abc123abc123abc123abc123abc123ab","def456def456def456def456def456de");
+  origLog("PREFIX: "+(r||"").substring(0,40));
   origLog("0301:"+String(r||"").startsWith("mns0301"));
   origLog("0201:"+String(r||"").startsWith("mns0201"));
 }
