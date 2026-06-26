@@ -168,26 +168,41 @@ env.js → ds_script.js → ds_api.js → ds_v2.js
 ds_v2.js 的 VMP 升级时，解释器 `new env[i]()` 构造对象。
 env 数组有空 slot → `undefined is not a constructor`。
 
-**解决**：加载 ds_v2.js **之前**，用 `Object.defineProperty` 拦截 `_AUuXfEG27Xa3x` setter：
+**解决**：加载 ds_v2.js **之前**，**动态发现** VMP 解释器（不硬编码变量名，混淆器每次生成不同标识符），批量设置 setter 拦截：
 
 ```javascript
-var _ra, _oa = global._AUuXfEG27Xa3x;
-Object.defineProperty(global, "_AUuXfEG27Xa3x", {
-  set: function (fn) {
-    if (typeof fn === "function" && fn.toString().length > 100000) {
-      _ra = function (bc, env) {
-        for (var i = 0; i < 200; i++)
-          if (env[i] === undefined) { var s = function(){}; s.prototype={}; env[i]=s; }
-        return fn.call(window, bc, env);
-      };
-    }
-  }
-});
+// 扫描 global 上 toString().length > 100K 的函数 → VMP 解释器指纹
+(function () {
+  var _vmpFound = 0;
+  Object.getOwnPropertyNames(global).forEach(function (name) {
+    try {
+      var val = global[name];
+      if (typeof val !== "function" || val.toString().length <= 100000) return;
+      _vmpFound++;
+      var _ra, _oa = val;
+      Object.defineProperty(global, name, {
+        get: function () { return _ra || _oa; },
+        set: function (fn) {
+          if (typeof fn === "function" && fn.toString().length > 100000) {
+            _ra = function (bc, env) {
+              for (var i = 0; i < 200; i++)
+                if (env[i] === undefined) { var s = function(){}; s.prototype={}; env[i]=s; }
+              return fn.call(window, bc, env);
+            };
+          } else { _oa = fn; }
+        },
+        configurable: true, enumerable: true,
+      });
+    } catch (e) {}
+  });
+  if (_vmpFound === 0) console.error("未发现 VMP 解释器，setter 拦截未生效");
+})();
 eval(fs.readFileSync("data/ds_v2.js", "utf8"));
 // window.mnsv2 现在产出 mns0301_
 ```
 
-- `toString().length > 100000` 精准识别 VMP 升级函数
+- **动态发现代替硬编码**：不依赖 `_AUuXfEG27Xa3x` 这一特定变量名，跨版本自适应
+- `toString().length > 100000` 精准识别 VMP 混淆函数（字节码内嵌 → 函数体巨大）
 - `env[i] = function(){}`（可构造，不是普通对象）
 - 200 个 slot 保守覆盖，不够再加
 
