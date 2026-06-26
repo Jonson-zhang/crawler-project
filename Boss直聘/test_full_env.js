@@ -33,6 +33,7 @@ sandbox.navigator = {
     languages: ['zh-CN', 'zh'], cookieEnabled: true, webdriver: false,
     hardwareConcurrency: 8, maxTouchPoints: 0,
     vendor: '', vendorSub: '', productSub: '20100101', doNotTrack: '1', onLine: true,
+    deviceMemory: 8, webkitTemporaryStorage: { queryUsageAndQuota: mf('queryUsageAndQuota') },
     plugins: { length: 5, item: mf('item'), namedItem: mf('namedItem'), refresh: mf('refresh') },
     mimeTypes: { length: 2, item: mf('item'), namedItem: mf('namedItem') }
 };
