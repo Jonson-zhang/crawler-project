@@ -23,21 +23,52 @@ global.MutationObserver = function () { this.observe = function () {}; this.disc
 
 eval(fs.readFileSync(path.join(__dirname, "data", "ds_api.js"), "utf8"));
 
-// 覆盖升级 mns0201 → mns0301
-var _ra, _oa = global._AUuXfEG27Xa3x;
-Object.defineProperty(global, "_AUuXfEG27Xa3x", {
-  get: function () { return _ra || _oa; },
-  set: function (fn) {
-    if (typeof fn === "function" && fn.toString().length > 100000) {
-      _ra = function (bc, env) {
-        for (var i = 0; i < 200; i++) {
-          if (env[i] === undefined) { var s = function () {}; s.prototype = {}; env[i] = s; }
-        }
-        return fn.call(window, bc, env);
-      };
-    }
-  }, configurable: true, enumerable: true,
-});
+// 动态发现 VMP 解释器 → 设 setter 拦截 → 加载 ds_v2 升级 mns0201 → mns0301
+//
+// 策略：不硬编码 _AUuXfEG27Xa3x（混淆器每次可能生成不同变量名）。
+// ds_script.js 加载后，扫描 global 上 toString().length > 100K 的函数 —
+// VMP 解释器内嵌大量字节码，函数体远超普通混淆函数，此特征精准唯一。
+// 拦截所有候选者的 setter，等 ds_v2.js 覆盖时自动包装 env slot 预填充。
+(function () {
+  var _vmpFound = 0;
+  Object.getOwnPropertyNames(global).forEach(function (name) {
+    try {
+      var val = global[name];
+      if (typeof val !== "function" || val.toString().length <= 100000) return;
+
+      _vmpFound++;
+      var _ra, _oa = val;
+      Object.defineProperty(global, name, {
+        get: function () { return _ra || _oa; },
+        set: function (fn) {
+          // ds_v2.js 覆盖时触发：识别升级函数（同样是 >100K 的巨型函数）
+          if (typeof fn === "function" && fn.toString().length > 100000) {
+            _ra = function (bc, env) {
+              // 预填充 env 数组所有空 slot 为可构造的空函数
+              for (var i = 0; i < 200; i++) {
+                if (env[i] === undefined) {
+                  var s = function () {};
+                  s.prototype = {};
+                  env[i] = s;
+                }
+              }
+              return fn.call(window, bc, env);
+            };
+          } else {
+            // 非 VMP 函数赋值 → 透传原始值（兼容 ds_script 内部的重赋值）
+            _oa = fn;
+          }
+        },
+        configurable: true, enumerable: true,
+      });
+    } catch (e) {}
+  });
+
+  if (_vmpFound === 0) {
+    console.error("⚠ 未发现 VMP 解释器候选 (toString().length > 100K)，setter 拦截未生效");
+  }
+})();
+
 eval(fs.readFileSync(path.join(__dirname, "data", "ds_v2.js"), "utf8"));
 
 process.stdout.write = _s;
