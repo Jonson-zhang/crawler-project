@@ -102,7 +102,8 @@ global.history = {length:1,pushState:mf('pushState'),replaceState:mf('replaceSta
 global.localStorage = {getItem:mf('getItem'),setItem:mf('setItem'),length:0};
 global.sessionStorage = {getItem:mf('getItem'),setItem:mf('setItem'),length:0};
 global.performance = {now:function(){return Date.now()}};sn(global.performance.now,'now');
-global.crypto = {getRandomValues:function(arr){var b=require('crypto').randomBytes(arr.length);for(var i=0;i<arr.length;i++)arr[i]=b[i];return arr},subtle:null};
+var _cryptoMod = require('crypto');
+global.crypto = {getRandomValues:function(arr){var b=_cryptoMod.randomBytes(arr.length);for(var i=0;i<arr.length;i++)arr[i]=b[i];return arr},subtle:null};
 sn(global.crypto.getRandomValues,'getRandomValues');
 global.btoa = function(s){return Buffer.from(s).toString('base64')};sn(global.btoa,'btoa');
 global.atob = function(s){return Buffer.from(s,'base64').toString()};sn(global.atob,'atob');
@@ -118,14 +119,14 @@ global.requestAnimationFrame=mf('requestAnimationFrame');
 global.name='';global.length=0;global.opener=null;global.closed=false;
 global.scrollX=0;global.scrollY=0;global.screenX=0;global.screenY=0;
 
-// ===== Step 5: Hide Node.js globals =====
-// Can't delete - Node.js internals crash. Replace with empty stub.
-global.process_saved = global.process;
-global.require_saved = global.require;
-global.process = { env: {}, argv: [], version: '', platform: '', pid: 0, title: '', arch: '' };
-delete global.require;
-delete global.module;
-delete global.exports;
+// ===== Step 5: Stub Node.js globals (keep alive for Node internals) =====
+// Set to innocuous values but DON'T delete (crashes Node internals)
+global._zp_savedProcess = global.process;
+global._zp_savedRequire = global.require;
+global.process = { env: {}, argv: [], version: '', platform: '', pid: 0 };
+global.require = undefined;
+global.module = undefined;
+global.exports = undefined;
 
 // ===== Step 6: Execute security JS =====
 console.log('[1] Loading security JS...');
