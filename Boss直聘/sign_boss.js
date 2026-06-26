@@ -258,7 +258,9 @@ function makeStorage(){
 }
 
 var perf = new Performance();
-perf.now=function(){return Date.now()};sn(perf.now,'now');
+perf.now = FakePerf.now;
+sn(perf.now, 'now');
+perf.memory = FakePerf.memory;
 var nowTs=Date.now();
 perf.timing={navigationStart:nowTs,fetchStart:nowTs,domainLookupStart:nowTs,domainLookupEnd:nowTs,connectStart:nowTs,connectEnd:nowTs,requestStart:nowTs,responseStart:nowTs,responseEnd:nowTs,domLoading:nowTs,domInteractive:nowTs,domContentLoadedEventStart:nowTs,domContentLoadedEventEnd:nowTs,domComplete:nowTs,loadEventStart:nowTs,loadEventEnd:nowTs};
 
