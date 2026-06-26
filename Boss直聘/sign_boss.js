@@ -258,6 +258,8 @@ sandbox.focus=mf('focus');sandbox.blur=mf('blur');sandbox.stop=mf('stop');
 sandbox.scroll=mf('scroll');sandbox.scrollTo=mf('scrollTo');sandbox.scrollBy=mf('scrollBy');
 sandbox.alert=mf('alert');sandbox.confirm=mf('confirm');sandbox.prompt=mf('prompt');
 sandbox.performance.memory={}; // accessed by VMP
+sandbox.document.all = undefined; // typeof document.all === 'undefined' in real browsers
+sandbox.CSSRuleList = mc('CSSRuleList'); // VMP checks for CSSRuleList existence
 
 // ===== WebGL context for canvas (fingerprinting) =====
 function makeWebGLContext() {
