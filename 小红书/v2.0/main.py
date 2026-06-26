@@ -633,7 +633,7 @@ def main():
             idx = (pg - 1) * 20 + i
             nc = it.get("note_card") or it
             ntype = nc.get("type", "?")
-            icon = {"video": "🎬", "normal": "📝"}.get(ntype, "📌")
+            icon = {"video": "[V]", "normal": "[N]"}.get(ntype, "[?]")
             title = (
                 nc.get("display_title") or nc.get("title") or ""
             ).strip() or "(无标题)"
@@ -641,7 +641,7 @@ def main():
             likes = (nc.get("interact_info") or {}).get("liked_count", "0")
 
             print(f"  {idx:2d}. {icon} {title[:70]}")
-            print(f"      @{author}  ❤{likes}")
+            print(f"      @{author}  likes:{likes}")
 
             if SHOW_DETAIL:
                 note_id = it.get("id", "")
