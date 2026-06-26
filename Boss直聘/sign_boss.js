@@ -169,47 +169,93 @@ sandbox.HTMLScriptElement = HTMLScriptElement; sandbox.Location = Location;
 sandbox.Screen = Screen; sandbox.History = History; sandbox.Storage = Storage;
 sandbox.Performance = Performance;
 
-// ===== Navigator =====
-var nav = new Navigator();
-nav.userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
-nav.appVersion='5.0 (Windows)';nav.platform='Win32';
-nav.appCodeName='Mozilla';nav.appName='Netscape';nav.product='Gecko';
-nav.oscpu='Windows NT 10.0; Win64; x64';nav.buildID='20181001000000';
-nav.language='en-US';
-nav.languages=['en-US','en'];
-nav.cookieEnabled=true;nav.webdriver=false;
-nav.hardwareConcurrency=16;nav.maxTouchPoints=0;
-nav.vendor='';nav.vendorSub='';nav.productSub='20100101';
-nav.doNotTrack='1';nav.onLine=true;
-nav.deviceMemory=undefined;nav.webkitTemporaryStorage=undefined;
+// ===== Navigator with PROTOTYPE GETTERS (matching browser descriptors) =====
+// CRITICAL: In real browser, ALL navigator properties are getters on the prototype,
+// NOT data properties on the instance. Object.keys(navigator) returns [].
+// The VMP fingerprint detection checks this distinction.
 
-// Plugin / MimeType constructors (needed for instanceof checks in VMP)
+function defineNavGetter(proto, name, value) {
+    Object.defineProperty(proto, name, {
+        get: function() { return value; },
+        enumerable: true, configurable: true
+    });
+}
+
+// Plugin / MimeType constructors
 function PluginCtor(){} sn(PluginCtor,'Plugin');
 PluginCtor.prototype[toStringTag]='Plugin';
 PluginCtor.prototype.item=mf('item');PluginCtor.prototype.namedItem=mf('namedItem');
 function MimeTypeCtor(){} sn(MimeTypeCtor,'MimeType');
 MimeTypeCtor.prototype[toStringTag]='MimeType';
 
-// Plugins (5 PDF viewers — FireFox on Windows)
-var plgnames=['PDF Viewer','Chrome PDF Viewer','Chromium PDF Viewer','Microsoft Edge PDF Viewer','WebKit built-in PDF'];
-var pls=Object.create(PluginArray_f.prototype);pls.length=5;pls.refresh=mf('refresh');pls.item=mf('item');pls.namedItem=mf('namedItem');
-for(var i=0;i<5;i++){
-    var p=Object.create(PluginCtor.prototype);
-    p.name=plgnames[i];p.filename='internal-pdf-viewer';p.description='Portable Document Format';p.length=2;
-    p.item=mf('item');p.namedItem=mf('namedItem');
-    var mt0=Object.create(MimeTypeCtor.prototype);mt0.type='application/pdf';mt0.suffixes='pdf';mt0.description='Portable Document Format';mt0.enabledPlugin=p;
-    var mt1=Object.create(MimeTypeCtor.prototype);mt1.type='text/pdf';mt1.suffixes='pdf';mt1.description='Portable Document Format';mt1.enabledPlugin=p;
-    p[0]=mt0;p[1]=mt1;
-    pls[i]=p;
+// Build plugins/mimeTypes once (lazily cached)
+var _navPlugins = null;
+var _navMimeTypes = null;
+function buildPlugins() {
+    if (_navPlugins) return;
+    var plgnames=['PDF Viewer','Chrome PDF Viewer','Chromium PDF Viewer','Microsoft Edge PDF Viewer','WebKit built-in PDF'];
+    _navPlugins = Object.create(PluginArray_f.prototype);
+    _navPlugins.length=5;_navPlugins.refresh=mf('refresh');_navPlugins.item=mf('item');_navPlugins.namedItem=mf('namedItem');
+    for(var i=0;i<5;i++){
+        var p=Object.create(PluginCtor.prototype);
+        p.name=plgnames[i];p.filename='internal-pdf-viewer';p.description='Portable Document Format';p.length=2;
+        p.item=mf('item');p.namedItem=mf('namedItem');
+        var mt0=Object.create(MimeTypeCtor.prototype);mt0.type='application/pdf';mt0.suffixes='pdf';mt0.description='Portable Document Format';mt0.enabledPlugin=p;
+        var mt1=Object.create(MimeTypeCtor.prototype);mt1.type='text/pdf';mt1.suffixes='pdf';mt1.description='Portable Document Format';mt1.enabledPlugin=p;
+        p[0]=mt0;p[1]=mt1;
+        _navPlugins[i]=p;
+    }
+    _navMimeTypes = Object.create(MimeTypeArray_f.prototype);
+    _navMimeTypes.length=2;_navMimeTypes.item=mf('item');_navMimeTypes.namedItem=mf('namedItem');
+    var mmt0=Object.create(MimeTypeCtor.prototype);mmt0.type='application/pdf';mmt0.suffixes='pdf';mmt0.description='Portable Document Format';mmt0.enabledPlugin=_navPlugins[0];
+    var mmt1=Object.create(MimeTypeCtor.prototype);mmt1.type='text/pdf';mmt1.suffixes='pdf';mmt1.description='Portable Document Format';mmt1.enabledPlugin=_navPlugins[0];
+    _navMimeTypes[0]=mmt0;_navMimeTypes[1]=mmt1;
 }
-nav.plugins=pls;
+function getPlugins() { buildPlugins(); return _navPlugins; }
+function getMimeTypes() { buildPlugins(); return _navMimeTypes; }
 
-// MimeTypes
-var mts=Object.create(MimeTypeArray_f.prototype);mts.length=2;mts.item=mf('item');mts.namedItem=mf('namedItem');
-var mmt0=Object.create(MimeTypeCtor.prototype);mmt0.type='application/pdf';mmt0.suffixes='pdf';mmt0.description='Portable Document Format';mmt0.enabledPlugin=pls[0];
-var mmt1=Object.create(MimeTypeCtor.prototype);mmt1.type='text/pdf';mmt1.suffixes='pdf';mmt1.description='Portable Document Format';mmt1.enabledPlugin=pls[0];
-mts[0]=mmt0;mts[1]=mmt1;
-nav.mimeTypes=mts;
+// Define all navigator properties as prototype GETTERS
+var NP = Navigator.prototype;
+defineNavGetter(NP, 'userAgent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0');
+defineNavGetter(NP, 'appVersion', '5.0 (Windows)');
+defineNavGetter(NP, 'platform', 'Win32');
+defineNavGetter(NP, 'appCodeName', 'Mozilla');
+defineNavGetter(NP, 'appName', 'Netscape');
+defineNavGetter(NP, 'product', 'Gecko');
+defineNavGetter(NP, 'oscpu', 'Windows NT 10.0; Win64; x64');
+defineNavGetter(NP, 'buildID', '20181001000000');
+defineNavGetter(NP, 'language', 'en-US');
+defineNavGetter(NP, 'languages', ['en-US','en']);
+defineNavGetter(NP, 'cookieEnabled', true);
+defineNavGetter(NP, 'webdriver', false);
+defineNavGetter(NP, 'hardwareConcurrency', 8);
+defineNavGetter(NP, 'maxTouchPoints', 0);
+defineNavGetter(NP, 'vendor', '');
+defineNavGetter(NP, 'vendorSub', '');
+defineNavGetter(NP, 'productSub', '20100101');
+defineNavGetter(NP, 'doNotTrack', '1');
+defineNavGetter(NP, 'onLine', true);
+defineNavGetter(NP, 'pdfViewerEnabled', true);
+defineNavGetter(NP, 'globalPrivacyControl', false);
+// DO NOT add deviceMemory or webkitTemporaryStorage - they don't exist in Firefox!
+// Functions on navigator prototype
+Object.defineProperty(NP, 'plugins', {get: getPlugins, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'mimeTypes', {get: getMimeTypes, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'javaEnabled', {get: function(){ return mf('javaEnabled'); }, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'taintEnabled', {get: function(){ return mf('taintEnabled'); }, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'getGamepads', {get: function(){ return mf('getGamepads'); }, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'sendBeacon', {get: function(){ return mf('sendBeacon'); }, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'requestMediaKeySystemAccess', {get: function(){ return mf('requestMediaKeySystemAccess'); }, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'getAutoplayPolicy', {get: function(){ return mf('getAutoplayPolicy'); }, enumerable:true, configurable:true});
+Object.defineProperty(NP, 'registerProtocolHandler', {get: function(){ return mf('registerProtocolHandler'); }, enumerable:true, configurable:true});
+// Stub objects on navigator (permissions, mediaDevices, etc.)
+['permissions','mediaDevices','mediaCapabilities','serviceWorker','credentials','clipboard',
+ 'mediaSession','userActivation','wakeLock','locks','storage','geolocation'].forEach(function(k) {
+    Object.defineProperty(NP, k, {get: function(){ return {}; }, enumerable:true, configurable:true});
+});
+
+// Create navigator INSTANCE (inherits all getters from prototype)
+var nav = new Navigator();
 
 // ===== Document =====
 var doc = new Document();
@@ -246,9 +292,15 @@ loc.hostname='www.zhipin.com';loc.host='www.zhipin.com';loc.pathname='/web/geek/
 loc.protocol='https:';loc.origin='https://www.zhipin.com';loc.port='';
 loc.search='?city=101010100&query=python';loc.hash='';
 
+// ===== Screen with prototype getters =====
+var SP = Screen.prototype;
+defineNavGetter(SP, 'width', 5120);
+defineNavGetter(SP, 'height', 1440);
+defineNavGetter(SP, 'availWidth', 5120);
+defineNavGetter(SP, 'availHeight', 1392);
+defineNavGetter(SP, 'colorDepth', 24);
+defineNavGetter(SP, 'pixelDepth', 24);
 var scr = new Screen();
-scr.width=5120;scr.height=1440;scr.availWidth=5120;scr.availHeight=1392;
-scr.colorDepth=24;scr.pixelDepth=24;
 
 var hist = new History();
 hist.length=1;hist.pushState=mf('pushState');hist.replaceState=mf('replaceState');
