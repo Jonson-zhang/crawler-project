@@ -37,9 +37,7 @@ sandbox.navigator = {
     plugins: { length: 5, item: mf('item'), namedItem: mf('namedItem'), refresh: mf('refresh') },
     mimeTypes: { length: 2, item: mf('item'), namedItem: mf('namedItem') }
 };
-sandbox.document = {
-    cookie: 'ab_guid=test; __a=16364972.1782458175..1782458175.2.1.2.2; __c=1782458175; __g=-',
-    createElement: function(tag) {
+var docCreateEl = function(tag) {
         if (tag === 'iframe') {
             return { style: {}, setAttribute: mf('setAttribute'), getAttribute: function(){return null}, contentWindow: sandbox };
         }
