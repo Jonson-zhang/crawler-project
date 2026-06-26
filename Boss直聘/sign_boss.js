@@ -1,79 +1,130 @@
 /**
- * Boss直聘 __zp_stoken__ 离线签名 (最终版)
+ * Boss直聘 __zp_stoken__ 离线签名 (v2.0)
  * 用法: node sign_boss.js <__a> <__c> <seed> <ts>
+ *
+ * 注意: JS 文件 (7c91433f.js) 每天凌晨可能更换，需配合主流程动态下载。
+ * 文件名由 API code=37 响应中的 zpData.name 字段指定。
  */
 var vm = require('vm');
 var fs = require('fs');
 var code = fs.readFileSync(__dirname + '/config/security-7c91433f.js', 'utf8');
 
-// ===== 所有定义都在闭包内，确保 instanceof 正确 =====
+// ===== Native toString protection =====
 var mm = new Map();
 var rt = Function.prototype.toString;
 Function.prototype.toString = function() { return typeof this === 'function' && mm.get(this) || rt.call(this); };
 function sn(o, n) { mm.set(o, 'function ' + n + '() { [native code] }'); }
 function mf(n) { var f = function() {}; sn(f, n); return f; }
-function mc(n) { var f = function() {}; f.prototype = { constructor: f }; sn(f, n); return f; }
+function mc(n) { var f = function() {}; f.prototype = {}; f.prototype.constructor = f; sn(f, n); return f; }
 
-// 这个 map 保存所有类的引用
-var classes = {};
+// ===== Browser class constructors =====
+var brCls = [
+'Blob','CDATASection','CSSRule','CSSRuleList','CSSStyleDeclaration','CSSStyleSheet',
+'CanvasGradient','CanvasPattern','CanvasRenderingContext2D','CloseEvent','Comment',
+'CompositionEvent','Crypto','CustomEvent','DOMException','DOMImplementation','DOMParser',
+'DOMRect','DOMRectList','DataTransfer','DeviceMotionEvent','DocumentFragment','DragEvent',
+'Element','ErrorEvent','Event','EventSource','EventTarget','File','FileList','FileReader',
+'FocusEvent','FormData','HashChangeEvent','Headers','HTMLAllCollection','HTMLAnchorElement',
+'HTMLAreaElement','HTMLAudioElement','HTMLBRElement','HTMLBaseElement','HTMLButtonElement',
+'HTMLCollection','HTMLDListElement','HTMLDataElement','HTMLDataListElement','HTMLDetailsElement',
+'HTMLDialogElement','HTMLDirectoryElement','HTMLDivElement','HTMLEmbedElement','HTMLFieldSetElement',
+'HTMLFontElement','HTMLFormControlsCollection','HTMLFormElement','HTMLFrameElement',
+'HTMLFrameSetElement','HTMLHRElement','HTMLHeadingElement','HTMLIFrameElement','HTMLImageElement',
+'HTMLInputElement','HTMLLIElement','HTMLLabelElement','HTMLLegendElement','HTMLLinkElement',
+'HTMLMapElement','HTMLMarqueeElement','HTMLMediaElement','HTMLMenuElement','HTMLMetaElement',
+'HTMLMeterElement','HTMLModElement','HTMLOListElement','HTMLObjectElement','HTMLOptGroupElement',
+'HTMLOptionElement','HTMLOptionsCollection','HTMLOutputElement','HTMLParagraphElement',
+'HTMLParamElement','HTMLPictureElement','HTMLPreElement','HTMLProgressElement','HTMLQuoteElement',
+'HTMLScriptElement','HTMLSelectElement','HTMLSlotElement','HTMLSourceElement','HTMLSpanElement',
+'HTMLStyleElement','HTMLTableCaptionElement','HTMLTableCellElement','HTMLTableColElement',
+'HTMLTableElement','HTMLTableRowElement','HTMLTableSectionElement','HTMLTemplateElement',
+'HTMLTextAreaElement','HTMLTimeElement','HTMLTitleElement','HTMLTrackElement','HTMLUListElement',
+'HTMLUnknownElement','HTMLVideoElement','Image','ImageData','InputEvent',
+'IntersectionObserver','KeyboardEvent','MediaList','MessageChannel','MessageEvent','MessagePort',
+'MimeType','MimeTypeArray','MouseEvent','MutationObserver','MutationRecord','NamedNodeMap',
+'Navigator','Node','NodeFilter','NodeIterator','NodeList','Notification','PageTransitionEvent',
+'Path2D','Performance','PerformanceEntry','PerformanceNavigation','PerformanceObserver',
+'PerformanceResourceTiming','PerformanceTiming','Plugin','PluginArray','PointerEvent',
+'PopStateEvent','ProcessingInstruction','ProgressEvent','PromiseRejectionEvent',
+'RTCPeerConnection','RadioNodeList','Range','ReadableStream','Request','ResizeObserver',
+'Response','SVGAElement','SVGCircleElement','SVGDefsElement','SVGDescElement','SVGElement',
+'SVGEllipseElement','SVGFilterElement','SVGGElement','SVGGraphicsElement','SVGImageElement',
+'SVGLineElement','SVGLinearGradientElement','SVGMetadataElement','SVGNumber','SVGPathElement',
+'SVGPolygonElement','SVGPolylineElement','SVGRect','SVGSVGElement','SVGScriptElement',
+'SVGStopElement','SVGStyleElement','SVGSwitchElement','SVGSymbolElement','SVGTSpanElement',
+'SVGTextElement','SVGTitleElement','SVGUseElement','Screen','Selection','ShadowRoot',
+'StorageEvent','SubmitEvent','SubtleCrypto','Text','TextDecoder','TextEncoder','Touch',
+'TouchEvent','TouchList','TransitionEvent','TreeWalker','UIEvent','URL','URLSearchParams',
+'ValidityState','VisualViewport','WebSocket','WheelEvent','Window','Worker','WritableStream',
+'XMLDocument','XMLHttpRequest','XMLHttpRequestEventTarget','XMLHttpRequestUpload','XMLSerializer',
+'XPathEvaluator','XPathResult','XSLTProcessor'
+];
 
-// ===== 浏览器类层次 =====
-function defineClass(name, parent) {
-    var c = function() {};
-    if (parent) {
-        c.prototype = Object.create(parent.prototype);
-        c.prototype.constructor = c;
+// ===== Built sandbox with proper prototype chain =====
+var sandbox = {
+    Object, Array, Function, String, Number, Boolean, Date, Math,
+    RegExp, Error, TypeError, SyntaxError, ReferenceError, RangeError,
+    parseInt, parseFloat, isNaN, isFinite,
+    encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
+    JSON, Promise, Symbol, Map, Set, WeakMap, WeakSet,
+    ArrayBuffer, DataView, Uint8Array, Uint16Array, Uint32Array,
+    Int8Array, Int16Array, Int32Array, Float32Array, Float64Array, Uint8ClampedArray,
+    BigInt, NaN, Infinity, undefined, Proxy, Reflect,
+    setTimeout, setInterval, clearTimeout, clearInterval,
+    eval: function(s) { return vm.runInContext(s, vm.createContext(sandbox)); },
+};
+
+// All browser classes
+brCls.forEach(function(n) { if (!(n in sandbox)) sandbox[n] = mc(n); });
+
+// ===== Object.prototype.toString fix =====
+// Set Symbol.toStringTag on all browser constructors so that
+// Object.prototype.toString.call(new Foo()) returns "[object Foo]"
+var toStringTag = Symbol.toStringTag;
+Object.keys(sandbox).forEach(function(k) {
+    var v = sandbox[k];
+    if (typeof v === 'function' && /^[A-Z]/.test(k) && v.prototype) {
+        try { v.prototype[toStringTag] = k; } catch(e) {}
     }
-    sn(c, name);
-    classes[name] = c;
-    return c;
-}
-var EvtTarget = defineClass('EventTarget');
-var Window = defineClass('Window', EvtTarget);
-var Navigator = defineClass('Navigator', EvtTarget);
-var Document = defineClass('Document', EvtTarget);
-var HTMLElement = defineClass('HTMLElement', EvtTarget);
-var HTMLHtmlElement = defineClass('HTMLHtmlElement', HTMLElement);
-var HTMLHeadElement = defineClass('HTMLHeadElement', HTMLElement);
-var HTMLBodyElement = defineClass('HTMLBodyElement', HTMLElement);
-var HTMLCanvasElement = defineClass('HTMLCanvasElement', HTMLElement);
-var HTMLIFrameElement = defineClass('HTMLIFrameElement', HTMLElement);
-var HTMLScriptElement = defineClass('HTMLScriptElement', HTMLElement);
-var HTMLImageElement = defineClass('HTMLImageElement', HTMLElement);
-var CanvasRenderingContext2D = defineClass('CanvasRenderingContext2D');
-var Location = defineClass('Location');
-var Screen = defineClass('Screen');
-var History = defineClass('History');
-var Storage = defineClass('Storage');
-var Performance = defineClass('Performance');
+});
 
-// HTMLElement 属性
-var hProto = HTMLElement.prototype;
-hProto.offsetWidth=1920;hProto.offsetHeight=1080;hProto.clientWidth=1920;hProto.clientHeight=1080;
-hProto.style={};hProto.className='';hProto.id='';hProto.innerHTML='';hProto.textContent='';
-hProto.appendChild=mf('appendChild');hProto.removeChild=mf('removeChild');
-hProto.setAttribute=mf('setAttribute');hProto.getAttribute=function(){return null};sn(hProto.getAttribute,'getAttribute');
-hProto.getBoundingClientRect=function(){return{top:0,left:0,width:1920,height:1080,right:1920,bottom:1080}};
-sn(hProto.getBoundingClientRect,'getBoundingClientRect');
-hProto.focus=mf('focus');hProto.blur=mf('blur');hProto.click=mf('click');
+// ===== Proper prototype hierarchy =====
+function EvtTgt(){} sn(EvtTgt,'EventTarget'); EvtTgt.prototype[toStringTag] = 'EventTarget';
 
-// Canvas 元素
-var cProto=HTMLCanvasElement.prototype;
-cProto.width=300;cProto.height=150;
-cProto.getContext=function(type){
-    if(type!=='2d')return null;
-    var ctx = new CanvasRenderingContext2D();
-    ['fillText','fillRect','clearRect','strokeText','beginPath','closePath','moveTo','lineTo','arc','fill','stroke','clip','save','restore','scale','rotate','translate','transform','setTransform'].forEach(function(m){ctx[m]=mf(m)});
-    ctx.measureText=function(t){return{width:t.length*10}};
-    ctx.getImageData=function(x,y,w,h){return{data:new Uint8ClampedArray(w*h*4)}};
-    ctx.putImageData=mf('putImageData');ctx.drawImage=mf('drawImage');ctx.createPattern=mf('createPattern');
-    ctx.createLinearGradient=function(){return{addColorStop:mf('addColorStop')}};
-    ctx.createRadialGradient=function(){return{addColorStop:mf('addColorStop')}};
-    ctx.toDataURL=function(){return'data:image/png;base64,test'};
-    ctx.canvas=null;
-    return ctx;
-};sn(cProto.getContext,'getContext');
-cProto.toDataURL=function(){return'data:image/png;base64,test'};sn(cProto.toDataURL,'toDataURL');
+function Navigator(){} Navigator.prototype = Object.create(EvtTgt.prototype); Navigator.prototype.constructor = Navigator; sn(Navigator,'Navigator'); Navigator.prototype[toStringTag] = 'Navigator';
+
+function Document(){} Document.prototype = Object.create(EvtTgt.prototype); Document.prototype.constructor = Document; sn(Document,'Document'); Document.prototype[toStringTag] = 'HTMLDocument';
+
+function HTMLElement(){} HTMLElement.prototype = Object.create(EvtTgt.prototype); HTMLElement.prototype.constructor = HTMLElement; HTMLElement.prototype.offsetWidth=1920; HTMLElement.prototype.offsetHeight=1080; HTMLElement.prototype.clientWidth=1920; HTMLElement.prototype.clientHeight=1080; HTMLElement.prototype.style={}; HTMLElement.prototype.className=''; HTMLElement.prototype.id=''; HTMLElement.prototype.innerHTML=''; HTMLElement.prototype.textContent=''; HTMLElement.prototype.appendChild=mf('appendChild'); HTMLElement.prototype.removeChild=mf('removeChild'); HTMLElement.prototype.setAttribute=mf('setAttribute'); HTMLElement.prototype.getAttribute=function(){return null}; sn(HTMLElement.prototype.getAttribute,'getAttribute'); HTMLElement.prototype.getBoundingClientRect=function(){return{x:0,y:0,width:0,height:0,top:0,left:0,right:0,bottom:0}}; sn(HTMLElement.prototype.getBoundingClientRect,'getBoundingClientRect'); sn(HTMLElement,'HTMLElement'); HTMLElement.prototype[toStringTag] = 'HTMLElement';
+
+function HTMLHtmlElement(){} HTMLHtmlElement.prototype = Object.create(HTMLElement.prototype); HTMLHtmlElement.prototype.constructor = HTMLHtmlElement; HTMLHtmlElement.prototype.tagName='HTML'; sn(HTMLHtmlElement,'HTMLHtmlElement'); HTMLHtmlElement.prototype[toStringTag] = 'HTMLHtmlElement';
+
+function HTMLHeadElement(){} HTMLHeadElement.prototype = Object.create(HTMLElement.prototype); HTMLHeadElement.prototype.constructor = HTMLHeadElement; sn(HTMLHeadElement,'HTMLHeadElement'); HTMLHeadElement.prototype[toStringTag] = 'HTMLHeadElement';
+
+function HTMLBodyElement(){} HTMLBodyElement.prototype = Object.create(HTMLElement.prototype); HTMLBodyElement.prototype.constructor = HTMLBodyElement; sn(HTMLBodyElement,'HTMLBodyElement'); HTMLBodyElement.prototype[toStringTag] = 'HTMLBodyElement';
+
+function HTMLCanvasElement(){} HTMLCanvasElement.prototype = Object.create(HTMLElement.prototype); HTMLCanvasElement.prototype.constructor = HTMLCanvasElement; HTMLCanvasElement.prototype.width=300; HTMLCanvasElement.prototype.height=150; HTMLCanvasElement.prototype.getContext=function(t){if(t==='2d'){var c={};c[toStringTag]='CanvasRenderingContext2D';['fillText','fillRect','clearRect','save','restore','scale','rotate','translate'].forEach(function(m){c[m]=mf(m)});c.measureText=function(t){return{width:t.length*10}};c.getImageData=function(x,y,w,h){return{data:new Uint8ClampedArray(w*h*4)}};c.toDataURL=function(){return'data:image/png;base64,test'};return c}return null}; sn(HTMLCanvasElement.prototype.getContext,'getContext'); HTMLCanvasElement.prototype.toDataURL=function(){return'data:image/png;base64,test'}; sn(HTMLCanvasElement.prototype.toDataURL,'toDataURL'); sn(HTMLCanvasElement,'HTMLCanvasElement'); HTMLCanvasElement.prototype[toStringTag] = 'HTMLCanvasElement';
+
+function HTMLIFrameElement(){} HTMLIFrameElement.prototype = Object.create(HTMLElement.prototype); HTMLIFrameElement.prototype.constructor = HTMLIFrameElement; sn(HTMLIFrameElement,'HTMLIFrameElement'); HTMLIFrameElement.prototype[toStringTag] = 'HTMLIFrameElement';
+
+function HTMLScriptElement(){} HTMLScriptElement.prototype = Object.create(HTMLElement.prototype); HTMLScriptElement.prototype.constructor = HTMLScriptElement; sn(HTMLScriptElement,'HTMLScriptElement'); HTMLScriptElement.prototype[toStringTag] = 'HTMLScriptElement';
+
+function Location(){} sn(Location,'Location'); Location.prototype[toStringTag] = 'Location';
+function Screen(){} sn(Screen,'Screen'); Screen.prototype[toStringTag] = 'Screen';
+function History(){} sn(History,'History'); History.prototype[toStringTag] = 'History';
+function Storage(){} sn(Storage,'Storage'); Storage.prototype[toStringTag] = 'Storage';
+function Performance(){} sn(Performance,'Performance'); Performance.prototype[toStringTag] = 'Performance';
+function PluginArray_f(){} sn(PluginArray_f,'PluginArray'); PluginArray_f.prototype[toStringTag] = 'PluginArray';
+function MimeTypeArray_f(){} sn(MimeTypeArray_f,'MimeTypeArray'); MimeTypeArray_f.prototype[toStringTag] = 'MimeTypeArray';
+
+// Override sandbox classes with proper prototyped versions
+sandbox.EventTarget = EvtTgt; sandbox.Navigator = Navigator; sandbox.Document = Document;
+sandbox.HTMLElement = HTMLElement; sandbox.HTMLHtmlElement = HTMLHtmlElement;
+sandbox.HTMLHeadElement = HTMLHeadElement; sandbox.HTMLBodyElement = HTMLBodyElement;
+sandbox.HTMLCanvasElement = HTMLCanvasElement; sandbox.HTMLIFrameElement = HTMLIFrameElement;
+sandbox.HTMLScriptElement = HTMLScriptElement; sandbox.Location = Location;
+sandbox.Screen = Screen; sandbox.History = History; sandbox.Storage = Storage;
+sandbox.Performance = Performance;
 
 // ===== Navigator =====
 var nav = new Navigator();
@@ -84,14 +135,21 @@ nav.hardwareConcurrency=8;nav.maxTouchPoints=0;
 nav.vendor='';nav.vendorSub='';nav.productSub='20100101';
 nav.doNotTrack='1';nav.onLine=true;
 nav.deviceMemory=undefined;nav.webkitTemporaryStorage=undefined;
-// plugins — 5 real PDF viewer plugins (Firefox on Camoufox)
-var pluginNames=['PDF Viewer','Chrome PDF Viewer','Chromium PDF Viewer','Microsoft Edge PDF Viewer','WebKit built-in PDF'];
-var pls={length:5,refresh:mf('PluginArray.refresh')};
-pls.item=mf('PluginArray.item');pls.namedItem=mf('PluginArray.namedItem');
-for(var i=0;i<5;i++){pls[i]={name:pluginNames[i],filename:'internal-pdf-viewer',description:'Portable Document Format',length:2};pls[i][0]={type:'application/pdf',suffixes:'pdf',description:'Portable Document Format'};pls[i][1]={type:'text/pdf',suffixes:'pdf',description:'Portable Document Format'}}
+
+// Plugins (5 PDF viewers — FireFox on Windows)
+var plgnames=['PDF Viewer','Chrome PDF Viewer','Chromium PDF Viewer','Microsoft Edge PDF Viewer','WebKit built-in PDF'];
+var pls=Object.create(PluginArray_f.prototype);pls.length=5;pls.refresh=mf('refresh');pls.item=mf('item');pls.namedItem=mf('namedItem');
+for(var i=0;i<5;i++){
+    var p={name:plgnames[i],filename:'internal-pdf-viewer',description:'Portable Document Format',length:2};
+    p.item=mf('item');p.namedItem=mf('namedItem');
+    p[0]={type:'application/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:p};
+    p[1]={type:'text/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:p};
+    pls[i]=p;
+}
 nav.plugins=pls;
-// mimeTypes — 2 entries
-var mts={length:2};mts.item=mf('MimeTypeArray.item');mts.namedItem=mf('MimeTypeArray.namedItem');
+
+// MimeTypes
+var mts=Object.create(MimeTypeArray_f.prototype);mts.length=2;mts.item=mf('item');mts.namedItem=mf('namedItem');
 mts[0]={type:'application/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:pls[0]};
 mts[1]={type:'text/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:pls[0]};
 nav.mimeTypes=mts;
@@ -99,19 +157,17 @@ nav.mimeTypes=mts;
 // ===== Document =====
 var doc = new Document();
 doc.createElement=function(tag){
-    if(tag==='iframe'){var f=new HTMLIFrameElement();f.style={};f.contentWindow=null;f.src='about:blank';f.setAttribute=mf('setAttribute');f.getAttribute=function(){return null};return f}
+    if(tag==='iframe'){var f=new HTMLIFrameElement();f.style={};f.setAttribute=mf('setAttribute');f.src='about:blank';f.contentWindow=null;return f}
     if(tag==='canvas')return new HTMLCanvasElement();
-    if(tag==='script'){var s=new HTMLScriptElement();s.src='';s.type='';s.onload=null;s.onerror=null;s.onreadystatechange=null;s.parentNode=null;s.setAttribute=mf('setAttribute');return s}
+    if(tag==='script'){var s=new HTMLScriptElement();s.src='';s.type='text/javascript';s.setAttribute=mf('setAttribute');return s}
     return new HTMLElement();
 };sn(doc.createElement,'createElement');
 doc.createElementNS=function(ns,tag){return doc.createElement(tag)};sn(doc.createElementNS,'createElementNS');
 doc.body=new HTMLBodyElement();
-doc.documentElement=new HTMLHtmlElement();doc.documentElement.tagName='HTML';
+doc.documentElement=new HTMLHtmlElement();
 doc.head=new HTMLHeadElement();
-doc.getElementsByTagName=function(t){
-    if(t==='head')return{item:function(i){return doc.head},length:1};
-    return{item:function(){return null},length:0};
-};sn(doc.getElementsByTagName,'getElementsByTagName');
+doc.getElementsByTagName=function(t){if(t==='head')return{item:function(i){return doc.head},length:1};return{item:function(){return null},length:0}};
+sn(doc.getElementsByTagName,'getElementsByTagName');
 doc.getElementById=function(){return new HTMLElement()};sn(doc.getElementById,'getElementById');
 doc.getElementsByClassName=function(){return[]};sn(doc.getElementsByClassName,'getElementsByClassName');
 doc.querySelector=function(){return new HTMLElement()};sn(doc.querySelector,'querySelector');
@@ -119,46 +175,40 @@ doc.querySelectorAll=function(){return[]};sn(doc.querySelectorAll,'querySelector
 doc.addEventListener=mf('addEventListener');
 doc.hidden=false;doc.readyState='complete';doc.characterSet='UTF-8';
 doc.visibilityState='visible';doc.title='BOSS直聘';doc.referrer='';
-// cookie getter
-var docCookie='';
+doc.domain='www.zhipin.com';doc.URL='https://www.zhipin.com/web/geek/jobs';
 Object.defineProperty(doc,'cookie',{
-    get: function(){return docCookie||('__a=16364972.1782458175..1782458175.2.1.2.2;__c=1782458175;__g=-')},
-    set: function(v){docCookie=v},
-    configurable:true,enumerable:true
+    get: function(){ return '__a='+(process.argv[2]||'0')+';__c='+(process.argv[3]||'0')+';__g=-'; },
+    set: function(v){},
+    configurable:true, enumerable:true
 });
 
-// ===== Location =====
+// ===== Location / Screen / History / Storage =====
 var loc = new Location();
 loc.href='https://www.zhipin.com/web/geek/jobs?city=101010100&query=python';
 loc.hostname='www.zhipin.com';loc.host='www.zhipin.com';loc.pathname='/web/geek/jobs';
 loc.protocol='https:';loc.origin='https://www.zhipin.com';loc.port='';
 loc.search='?city=101010100&query=python';loc.hash='';
 
-// ===== Screen (真实值 2560x1440) =====
 var scr = new Screen();
 scr.width=2560;scr.height=1440;scr.availWidth=2560;scr.availHeight=1440;
 scr.colorDepth=24;scr.pixelDepth=24;
 
-// ===== History =====
 var hist = new History();
 hist.length=1;hist.pushState=mf('pushState');hist.replaceState=mf('replaceState');
 hist.back=mf('back');hist.forward=mf('forward');hist.go=mf('go');
 
-// ===== Storage =====
 function makeStorage(){
-    var s=new Storage();
+    var s = new Storage();
     s.getItem=mf('getItem');s.setItem=mf('setItem');s.removeItem=mf('removeItem');
     s.clear=mf('clear');s.key=mf('key');s.length=0;
     return s;
 }
 
-// ===== Performance =====
 var perf = new Performance();
 perf.now=function(){return Date.now()};sn(perf.now,'now');
 var nowTs=Date.now();
 perf.timing={navigationStart:nowTs,fetchStart:nowTs,domainLookupStart:nowTs,domainLookupEnd:nowTs,connectStart:nowTs,connectEnd:nowTs,requestStart:nowTs,responseStart:nowTs,responseEnd:nowTs,domLoading:nowTs,domInteractive:nowTs,domContentLoadedEventStart:nowTs,domContentLoadedEventEnd:nowTs,domComplete:nowTs,loadEventStart:nowTs,loadEventEnd:nowTs};
 
-// ===== Crypto =====
 var cryptoFn = function(arr){
     var b = require('crypto').randomBytes(arr.length);
     for(var i=0;i<arr.length;i++)arr[i]=b[i];
@@ -166,130 +216,52 @@ var cryptoFn = function(arr){
 };
 sn(cryptoFn,'getRandomValues');
 
-// ===== XMLHttpRequest =====
-var XHR = function(){};
-XHR.prototype.open=mf('open');XHR.prototype.send=mf('send');
-XHR.prototype.setRequestHeader=mf('setRequestHeader');XHR.prototype.abort=mf('abort');
-XHR.prototype.getResponseHeader=function(){return null};XHR.prototype.getAllResponseHeaders=function(){return''};
-XHR.prototype.readyState=0;XHR.prototype.status=0;XHR.prototype.responseText='';XHR.prototype.DONE=4;
-sn(XHR,'XMLHttpRequest');
+// XHR / MO
+var XHR = function(){this.open=mf('open');this.send=mf('send');this.setRequestHeader=mf('setRequestHeader');this.readyState=0;this.status=0;this.responseText='';this.DONE=4};sn(XHR,'XMLHttpRequest');
+var MO = function(cb){this.observe=mf('observe');this.disconnect=mf('disconnect')};sn(MO,'MutationObserver');
 
-// ===== MutationObserver =====
-var MO = function(cb){this.observe=mf('observe');this.disconnect=mf('disconnect');this.takeRecords=mf('takeRecords')};
-sn(MO,'MutationObserver');
-
-// ===== 其他通用浏览器类 =====
-var genericClasses=[
-'Blob','CDATASection','CSSRule','CSSRuleList','CSSStyleDeclaration','CSSStyleSheet',
-'CloseEvent','Comment','CompositionEvent','Crypto','CustomEvent','DOMException',
-'DOMImplementation','DOMParser','DOMRect','DataTransfer','DeviceMotionEvent',
-'DocumentFragment','DocumentType','ErrorEvent','Event','EventSource',
-'File','FileList','FileReader','FocusEvent','FormData','HashChangeEvent','Headers',
-'HTMLAllCollection','HTMLAnchorElement','HTMLAreaElement','HTMLAudioElement',
-'HTMLBRElement','HTMLBaseElement','HTMLButtonElement','HTMLCollection','HTMLDListElement',
-'HTMLDataElement','HTMLDataListElement','HTMLDetailsElement','HTMLDialogElement',
-'HTMLDivElement','HTMLEmbedElement','HTMLFieldSetElement','HTMLFontElement',
-'HTMLFormElement','HTMLFrameElement','HTMLFrameSetElement','HTMLHRElement',
-'HTMLHeadingElement','HTMLInputElement','HTMLLIElement','HTMLLabelElement',
-'HTMLLegendElement','HTMLLinkElement','HTMLMapElement','HTMLMediaElement',
-'HTMLMenuElement','HTMLMetaElement','HTMLMeterElement','HTMLModElement',
-'HTMLOListElement','HTMLObjectElement','HTMLOptGroupElement','HTMLOptionElement',
-'HTMLOptionsCollection','HTMLOutputElement','HTMLParagraphElement','HTMLParamElement',
-'HTMLPreElement','HTMLProgressElement','HTMLQuoteElement','HTMLSelectElement',
-'HTMLSlotElement','HTMLSourceElement','HTMLSpanElement','HTMLStyleSheet',
-'HTMLTableCaptionElement','HTMLTableCellElement','HTMLTableColElement',
-'HTMLTableElement','HTMLTableRowElement','HTMLTableSectionElement','HTMLTemplateElement',
-'HTMLTextAreaElement','HTMLTimeElement','HTMLTitleElement','HTMLTrackElement',
-'HTMLUListElement','HTMLUnknownElement','HTMLVideoElement','ImageData',
-'InputEvent','IntersectionObserver','KeyboardEvent','MediaList','MessageChannel',
-'MessageEvent','MessagePort','MimeType','MimeTypeArray','MouseEvent',
-'MutationRecord','NamedNodeMap','Node','NodeFilter','NodeIterator','NodeList',
-'Notification','PageTransitionEvent','Path2D','PerformanceEntry',
-'PerformanceNavigation','PerformanceObserver','PerformanceResourceTiming',
-'PerformanceTiming','Plugin','PluginArray','PointerEvent','PopStateEvent',
-'ProcessingInstruction','ProgressEvent','PromiseRejectionEvent',
-'RTCPeerConnection','RadioNodeList','Range','ReadableStream','Request',
-'ResizeObserver','Response','SVGAElement','SVGCircleElement','SVGDefsElement',
-'SVGDescElement','SVGElement','SVGEllipseElement','SVGFilterElement','SVGGElement',
-'SVGGraphicsElement','SVGImageElement','SVGLineElement','SVGLinearGradientElement',
-'SVGMetadataElement','SVGNumber','SVGPathElement','SVGPolygonElement','SVGPolylineElement',
-'SVGRect','SVGSVGElement','SVGScriptElement','SVGStopElement','SVGStyleElement',
-'SVGSwitchElement','SVGSymbolElement','SVGTSpanElement','SVGTextElement','SVGTitleElement',
-'SVGUseElement','Selection','ShadowRoot','SharedWorker','StorageEvent','SubmitEvent',
-'SubtleCrypto','Text','TextDecoder','TextEncoder','Touch','TouchEvent','TouchList',
-'TransitionEvent','TreeWalker','UIEvent','URL','URLSearchParams','ValidityState',
-'VisualViewport','WebSocket','WheelEvent','Worker','WritableStream',
-'XMLDocument','XMLHttpRequestEventTarget','XMLSerializer','XPathEvaluator',
-'XPathResult','XSLTProcessor'
-].reduce(function(acc,n){
-    acc[n]=mc(n);
-    return acc;
-},{});
-
-// ===== 构建 sandbox =====
-var sandbox = Object.assign({}, genericClasses, {
-    Object, Array, Function, String, Number, Boolean, Date, Math,
-    RegExp, Error, TypeError, SyntaxError, ReferenceError, RangeError,
-    parseInt, parseFloat, isNaN, isFinite,
-    encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
-    JSON, Promise, Symbol, Map, Set, WeakMap, WeakSet,
-    ArrayBuffer, DataView, Uint8Array, Uint16Array, Uint32Array,
-    Int8Array, Int16Array, Int32Array, Float32Array, Float64Array, Uint8ClampedArray,
-    BigInt, NaN, Infinity, undefined, Proxy, Reflect,
-    setTimeout, setInterval, clearTimeout, clearInterval,
-});
-
-// 类定义
-Object.assign(sandbox, {
-    EventTarget: EvtTarget, Window: Window, Navigator: Navigator,
-    Document: Document, HTMLElement: HTMLElement, HTMLHtmlElement: HTMLHtmlElement,
-    HTMLHeadElement: HTMLHeadElement, HTMLBodyElement: HTMLBodyElement,
-    HTMLCanvasElement: HTMLCanvasElement, HTMLIFrameElement: HTMLIFrameElement,
-    HTMLScriptElement: HTMLScriptElement, HTMLImageElement: HTMLImageElement,
-    CanvasRenderingContext2D: CanvasRenderingContext2D,
-    Location: Location, Screen: Screen, History: History,
-    Storage: Storage, Performance: Performance,
-    XMLHttpRequest: XHR, MutationObserver: MO,
-    Image: function(){return new HTMLImageElement()},
-});
-
-// 浏览器对象
-Object.assign(sandbox, {
-    window: null, // set below
-    self: null, top: null, parent: null, globalThis: null,
-    console: {log:function(){},error:function(){},warn:function(){},info:function(){}},
-    navigator: nav, document: doc, location: loc, screen: scr, history: hist,
-    localStorage: makeStorage(), sessionStorage: makeStorage(),
-    performance: perf,
-    crypto: {getRandomValues:cryptoFn,subtle:null},
-    btoa: function(s){return Buffer.from(s).toString('base64')},
-    atob: function(s){return Buffer.from(s,'base64').toString()},
-});
-// 自引用
-sandbox.window=sandbox;sandbox.self=sandbox;sandbox.top=sandbox;sandbox.parent=sandbox;sandbox.globalThis=sandbox;
-// native toString for btoa/atob
-sn(sandbox.btoa,'btoa');sn(sandbox.atob,'atob');
-// window 属性
-sandbox.innerWidth=1920;sandbox.innerHeight=1080;sandbox.outerWidth=1920;sandbox.outerHeight=1080;
+// ===== Window =====
+sandbox.window = sandbox; sandbox.self = sandbox; sandbox.top = sandbox; sandbox.parent = sandbox;
+sandbox.globalThis = sandbox;
+sandbox.console = { log: function(){}, error: function(){}, warn: function(){}, info: function(){} };
+sandbox.navigator = nav; sandbox.document = doc; sandbox.location = loc;
+sandbox.screen = scr; sandbox.history = hist;
+sandbox.localStorage = makeStorage(); sandbox.sessionStorage = makeStorage();
+sandbox.performance = perf;
+sandbox.crypto = {getRandomValues:cryptoFn,subtle:null};
+sandbox.btoa = function(s){return Buffer.from(s).toString('base64')};sn(sandbox.btoa,'btoa');
+sandbox.atob = function(s){return Buffer.from(s,'base64').toString()};sn(sandbox.atob,'atob');
+sandbox.XMLHttpRequest = XHR; sandbox.MutationObserver = MO;
+sandbox.Image = function(){return new sandbox.HTMLImageElement()};
+sandbox.innerWidth=2560;sandbox.innerHeight=1440;sandbox.outerWidth=2560;sandbox.outerHeight=1440;
 sandbox.devicePixelRatio=1;sandbox.screenX=0;sandbox.screenY=0;sandbox.scrollX=0;sandbox.scrollY=0;
 sandbox.name='';sandbox.closed=false;sandbox.length=0;sandbox.opener=null;
 sandbox.origin='https://www.zhipin.com';sandbox.isSecureContext=true;
 sandbox.postMessage=mf('postMessage');sandbox.addEventListener=mf('addEventListener');
 sandbox.removeEventListener=mf('removeEventListener');sandbox.dispatchEvent=mf('dispatchEvent');
-sandbox.fetch=mf('fetch');
-sandbox.matchMedia=function(){return{matches:false,media:'',addListener:mf('addListener')}};sn(sandbox.matchMedia,'matchMedia');
+sandbox.fetch=mf('fetch');sandbox.requestAnimationFrame=mf('requestAnimationFrame');
+sandbox.matchMedia=function(){return{matches:false}};sn(sandbox.matchMedia,'matchMedia');
 sandbox.getComputedStyle=function(){return{}};sn(sandbox.getComputedStyle,'getComputedStyle');
 sandbox.getSelection=function(){return null};sn(sandbox.getSelection,'getSelection');
-sandbox.requestAnimationFrame=mf('requestAnimationFrame');
-sandbox.eval=function(s){return vm.runInContext(s,vm.createContext(sandbox))};
 sandbox.print=mf('print');sandbox.open=mf('open');sandbox.close=mf('close');
 sandbox.focus=mf('focus');sandbox.blur=mf('blur');sandbox.stop=mf('stop');
 sandbox.scroll=mf('scroll');sandbox.scrollTo=mf('scrollTo');sandbox.scrollBy=mf('scrollBy');
 sandbox.alert=mf('alert');sandbox.confirm=mf('confirm');sandbox.prompt=mf('prompt');
-sandbox.Audio=mf('Audio');
-sandbox.origin='https://www.zhipin.com';
 
-// ===== 执行 =====
+// ===== Anti-automation markers (must be undefined!) =====
+sandbox._phantom = undefined;
+sandbox.callphantom = undefined;
+sandbox.__phantomas = undefined;
+sandbox.Buffer = undefined;
+sandbox.process = undefined;
+sandbox.require = undefined;
+sandbox.module = undefined;
+sandbox.exports = undefined;
+sandbox.__dirname = undefined;
+sandbox.__filename = undefined;
+sandbox.global = sandbox; // global === window in browser
+
+// ===== Execute =====
 var ctx = vm.createContext(sandbox);
 try {
     new vm.Script(code).runInContext(ctx);
