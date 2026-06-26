@@ -136,22 +136,32 @@ nav.vendor='';nav.vendorSub='';nav.productSub='20100101';
 nav.doNotTrack='1';nav.onLine=true;
 nav.deviceMemory=undefined;nav.webkitTemporaryStorage=undefined;
 
+// Plugin / MimeType constructors (needed for instanceof checks in VMP)
+function PluginCtor(){} sn(PluginCtor,'Plugin');
+PluginCtor.prototype[toStringTag]='Plugin';
+PluginCtor.prototype.item=mf('item');PluginCtor.prototype.namedItem=mf('namedItem');
+function MimeTypeCtor(){} sn(MimeTypeCtor,'MimeType');
+MimeTypeCtor.prototype[toStringTag]='MimeType';
+
 // Plugins (5 PDF viewers — FireFox on Windows)
 var plgnames=['PDF Viewer','Chrome PDF Viewer','Chromium PDF Viewer','Microsoft Edge PDF Viewer','WebKit built-in PDF'];
 var pls=Object.create(PluginArray_f.prototype);pls.length=5;pls.refresh=mf('refresh');pls.item=mf('item');pls.namedItem=mf('namedItem');
 for(var i=0;i<5;i++){
-    var p={name:plgnames[i],filename:'internal-pdf-viewer',description:'Portable Document Format',length:2};
+    var p=Object.create(PluginCtor.prototype);
+    p.name=plgnames[i];p.filename='internal-pdf-viewer';p.description='Portable Document Format';p.length=2;
     p.item=mf('item');p.namedItem=mf('namedItem');
-    p[0]={type:'application/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:p};
-    p[1]={type:'text/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:p};
+    var mt0=Object.create(MimeTypeCtor.prototype);mt0.type='application/pdf';mt0.suffixes='pdf';mt0.description='Portable Document Format';mt0.enabledPlugin=p;
+    var mt1=Object.create(MimeTypeCtor.prototype);mt1.type='text/pdf';mt1.suffixes='pdf';mt1.description='Portable Document Format';mt1.enabledPlugin=p;
+    p[0]=mt0;p[1]=mt1;
     pls[i]=p;
 }
 nav.plugins=pls;
 
 // MimeTypes
 var mts=Object.create(MimeTypeArray_f.prototype);mts.length=2;mts.item=mf('item');mts.namedItem=mf('namedItem');
-mts[0]={type:'application/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:pls[0]};
-mts[1]={type:'text/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:pls[0]};
+var mmt0=Object.create(MimeTypeCtor.prototype);mmt0.type='application/pdf';mmt0.suffixes='pdf';mmt0.description='Portable Document Format';mmt0.enabledPlugin=pls[0];
+var mmt1=Object.create(MimeTypeCtor.prototype);mmt1.type='text/pdf';mmt1.suffixes='pdf';mmt1.description='Portable Document Format';mmt1.enabledPlugin=pls[0];
+mts[0]=mmt0;mts[1]=mmt1;
 nav.mimeTypes=mts;
 
 // ===== Document =====
@@ -248,6 +258,78 @@ sandbox.focus=mf('focus');sandbox.blur=mf('blur');sandbox.stop=mf('stop');
 sandbox.scroll=mf('scroll');sandbox.scrollTo=mf('scrollTo');sandbox.scrollBy=mf('scrollBy');
 sandbox.alert=mf('alert');sandbox.confirm=mf('confirm');sandbox.prompt=mf('prompt');
 
+// ===== WebGL context for canvas (fingerprinting) =====
+function makeWebGLContext() {
+    var gl = {};
+    gl[toStringTag] = 'WebGLRenderingContext';
+    gl.canvas = null;
+    // Rendering stubs
+    ['clear','clearColor','clearDepth','clearStencil','enable','disable','depthFunc','depthMask','blendFunc','blendFuncSeparate',
+     'viewport','scissor','cullFace','frontFace','lineWidth','polygonOffset','activeTexture','bindTexture','generateMipmap',
+     'bindBuffer','bufferData','bufferSubData','useProgram','drawArrays','drawElements','readPixels',
+     'pixelStorei','texParameteri','texImage2D','texSubImage2D','flush','finish','hint',
+     'vertexAttribPointer','enableVertexAttribArray','disableVertexAttribArray','uniform1i','uniform1f','uniform2f','uniform3f','uniform4f',
+     'uniformMatrix2fv','uniformMatrix3fv','uniformMatrix4fv','bindAttribLocation','linkProgram','validateProgram',
+     'attachShader','compileShader','shaderSource','bindFramebuffer','framebufferTexture2D','checkFramebufferStatus',
+     'createShader','createProgram','createTexture','createBuffer','createFramebuffer'].forEach(function(m){gl[m]=mf(m)});
+    // Parameter queries - return realistic values
+    gl.getParameter = function(p) {
+        var defaults = {
+            3410: 'WebGL 1.0', // VERSION
+            3411: 'WebGL GLSL ES 1.0', // SHADING_LANGUAGE_VERSION
+            7938: 'Mozilla', // VENDOR
+            7937: 'ANGLE (NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)', // RENDERER
+            35724: 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)',
+            33901: 4096, // MAX_TEXTURE_SIZE
+            3386: 1024, // MAX_VIEWPORT_DIMS
+            7939: 30, // MAX_VERTEX_ATTRIBS
+            34076: 16, // MAX_TEXTURE_IMAGE_UNITS
+            35661: 8, // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+            3415: 0, // MAX_SAMPLES (or 4)
+            34921: 8, // MAX_DRAW_BUFFERS
+            3387: 1024, // ALIASED_POINT_SIZE_RANGE
+            33902: [1024, 1024], // ALIASED_LINE_WIDTH_RANGE
+            36347: 32, // MAX_VARYING_VECTORS
+            36348: 128, // MAX_VERTEX_UNIFORM_VECTORS
+            36349: 64, // MAX_FRAGMENT_UNIFORM_VECTORS
+        };
+        return p in defaults ? defaults[p] : 0;
+    };
+    gl.getExtension = function(name) {
+        if (name === 'WEBGL_debug_renderer_info') return {UNMASKED_VENDOR_WEBGL: 7938, UNMASKED_RENDERER_WEBGL: 7937};
+        if (name === 'EXT_texture_filter_anisotropic') return {MAX_TEXTURE_MAX_ANISOTROPY_EXT: 34047, TEXTURE_MAX_ANISOTROPY_EXT: 16};
+        if (name === 'OES_texture_float') return {};
+        if (name === 'WEBGL_compressed_texture_s3tc') return {};
+        return null;
+    };
+    gl.getSupportedExtensions = function() {
+        return ['ANGLE_instanced_arrays','EXT_blend_minmax','EXT_color_buffer_half_float','EXT_disjoint_timer_query',
+                'EXT_float_blend','EXT_frag_depth','EXT_shader_texture_lod','EXT_texture_compression_bptc',
+                'EXT_texture_compression_rgtc','EXT_texture_filter_anisotropic','EXT_sRGB','KHR_parallel_shader_compile',
+                'OES_element_index_uint','OES_fbo_render_mipmap','OES_standard_derivatives','OES_texture_float',
+                'OES_texture_float_linear','OES_texture_half_float','OES_texture_half_float_linear','OES_vertex_array_object',
+                'WEBGL_color_buffer_float','WEBGL_compressed_texture_s3tc','WEBGL_compressed_texture_s3tc_srgb',
+                'WEBGL_debug_renderer_info','WEBGL_debug_shaders','WEBGL_depth_texture','WEBGL_draw_buffers',
+                'WEBGL_lose_context','WEBGL_multi_draw'];
+    };
+    gl.getShaderPrecisionFormat = function() {
+        return {rangeMin: 127, rangeMax: 127, precision: 23};
+    };
+    sn(gl.getParameter,'getParameter');
+    sn(gl.getExtension,'getExtension');
+    sn(gl.getSupportedExtensions,'getSupportedExtensions');
+    return gl;
+}
+
+// Hook canvas getContext to also support 'webgl'/'experimental-webgl'
+var origGetCtx = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function(type) {
+    if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
+        return makeWebGLContext();
+    }
+    return origGetCtx.call(this, type);
+};
+
 // ===== Anti-automation markers (must be undefined!) =====
 sandbox._phantom = undefined;
 sandbox.callphantom = undefined;
@@ -261,10 +343,22 @@ sandbox.__dirname = undefined;
 sandbox.__filename = undefined;
 sandbox.global = sandbox; // global === window in browser
 
-// ===== Execute =====
+// ===== Patch & Execute =====
+// Capture VMP's own catch-block errors
+sandbox.__vmp_errors = [];
+var patchedCode = code.replace(/catch\(([^)]*)\)\{\}/g, function(m, v) {
+    return 'catch(' + v + '){try{sandbox.__vmp_errors.push({msg:' + v + '&&' + v + '.message||String(' + v + ').substring(0,120)})}catch(_){}}';
+});
+
 var ctx = vm.createContext(sandbox);
 try {
-    new vm.Script(code).runInContext(ctx);
+    new vm.Script(patchedCode).runInContext(ctx);
+    if (sandbox.__vmp_errors.length > 0) {
+        process.stderr.write('[VMP errors during init] ' + sandbox.__vmp_errors.length + ' errors caught:\n');
+        sandbox.__vmp_errors.slice(0, 10).forEach(function(e, i) {
+            process.stderr.write('  [' + i + '] ' + e.msg + '\n');
+        });
+    }
     if (typeof sandbox.ABC !== 'undefined') {
         var seed = process.argv[4];
         var ts = parseInt(process.argv[5]);
