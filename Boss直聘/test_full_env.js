@@ -39,7 +39,30 @@ sandbox.navigator = {
 };
 sandbox.document = {
     cookie: 'ab_guid=test; __a=16364972.1782458175..1782458175.2.1.2.2; __c=1782458175; __g=-',
-    createElement: mf('createElement'), body: { appendChild: mf('appendChild') },
+    createElement: function(tag) {
+        if (tag === 'iframe') {
+            return { style: {}, setAttribute: mf('setAttribute'), getAttribute: function(){return null}, contentWindow: sandbox };
+        }
+        if (tag === 'canvas') {  // Canvas fingerprinting - VMP creates canvas 3 times
+            return {
+                style: {}, setAttribute: mf('setAttribute'),
+                getContext: function(type) {
+                    if (type === '2d') return {
+                        fillText: mf('fillText'), fillRect: mf('fillRect'), clearRect: mf('clearRect'),
+                        measureText: function(t) { return { width: t.length * 10 }; },
+                        getImageData: function(x,y,w,h) { return { data: new Uint8ClampedArray(w*h*4) }; },
+                        createLinearGradient: function() { return { addColorStop: mf('addColorStop') }; },
+                        toDataURL: function() { return 'data:image/png;base64,test'; },
+                    };
+                    return null;
+                },
+                toDataURL: function() { return 'data:image/png;base64,test'; },
+                width: 300, height: 150,
+            };
+        }
+        return { style: {}, setAttribute: mf('setAttribute'), getAttribute: function(){return null} };
+    },
+    body: { appendChild: mf('appendChild') },
     documentElement: { appendChild: mf('appendChild') },
     getElementsByTagName: function() { return { item: mf('item'), length: 0 }; },
     hidden: false, readyState: 'complete', referrer: '', title: 'BOSS直聘',
