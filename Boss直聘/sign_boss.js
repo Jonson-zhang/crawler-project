@@ -257,6 +257,7 @@ sandbox.print=mf('print');sandbox.open=mf('open');sandbox.close=mf('close');
 sandbox.focus=mf('focus');sandbox.blur=mf('blur');sandbox.stop=mf('stop');
 sandbox.scroll=mf('scroll');sandbox.scrollTo=mf('scrollTo');sandbox.scrollBy=mf('scrollBy');
 sandbox.alert=mf('alert');sandbox.confirm=mf('confirm');sandbox.prompt=mf('prompt');
+sandbox.performance.memory={}; // accessed by VMP
 
 // ===== WebGL context for canvas (fingerprinting) =====
 function makeWebGLContext() {
