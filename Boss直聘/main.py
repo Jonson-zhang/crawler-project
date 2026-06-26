@@ -7,12 +7,12 @@ from pathlib import Path
 import curl_cffi.requests as requests
 
 BASE = Path(__file__).parent
-TEST_E2E_JS = BASE / "test_e2e.js"
+SIGN_BOSS_JS = BASE / "sign_boss.js"
 
 def gen_token(__a, __c, seed, ts):
     """调用 Node.js vm 沙箱生成 __zp_stoken__"""
     r = subprocess.run(
-        ["node", str(TEST_E2E_JS), __a, __c, seed, str(ts)],
+        ["node", str(SIGN_BOSS_JS), __a, __c, seed, str(ts)],
         capture_output=True, text=True, cwd=str(BASE), timeout=15
     )
     if r.returncode != 0:
