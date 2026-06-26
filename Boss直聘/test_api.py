@@ -1,20 +1,17 @@
 """
-Boss直聘 API 端到端测试
-1. Node.js 生成 __zp_stoken__
-2. Python 发送 API 请求
+Boss直聘 joblist API 端到端测试
+流程: 获取Cookie → 请求API → 拿seed → 生成token → 重试
 """
-import subprocess, json, time, sys
-import urllib.request, urllib.parse
+import subprocess, json, time, sys, os, urllib.parse
 from pathlib import Path
+import curl_cffi.requests as requests
 
 BASE = Path(__file__).parent
 
-# 第一步：Node.js 生成 token
-def gen_token(seed, ts):
-    """调用 Node.js 生成 __zp_stoken__"""
-    code = f"""
-global.window = globalThis;
-global.self = globalThis;
+def _load_abc():
+    """加载 security JS 到 Node.js，返回 ABC.z(seed, ts) 函数的 Python 调用桥"""
+    js_wrapper = f"""
+global.window = globalThis; global.self = globalThis;
 global.document = {{
     createElement: function(t) {{ return {{ style: {{}}, setAttribute: function(){{}}, getAttribute: function(){{return null}}, contentWindow: globalThis }}; }},
     body: {{ appendChild: function(){{}} }},
@@ -29,68 +26,112 @@ global.location = {{
 var fs = require('fs');
 var code = fs.readFileSync('{BASE / "config" / "security-7c91433f.js"}', 'utf8');
 eval(code);
-var result = new ABC().z('{seed}', {ts});
-console.log(result);
+
+var seed = process.argv[2];
+var ts = parseInt(process.argv[3]);
+process.stdout.write(new ABC().z(seed, ts));
 """
-    r = subprocess.run(['node', '-e', code], capture_output=True, text=True, cwd=str(BASE), timeout=15)
-    if r.returncode != 0:
-        print(f"Node error: {r.stderr}")
-        return None
-    return r.stdout.strip()
+    # 缓存到临时文件减少 subprocess 开销
+    tmpfile = BASE / "config" / "_abc_runner.js"
+    tmpfile.write_text(js_wrapper, encoding='utf-8')
 
-# 第二步：用 Python 发送 API 请求
-def test_api(token, cookies=None):
-    """用生成的 token 测试 joblist API"""
-    import curl_cffi.requests as requests
+    def gen_token(seed: str, ts: int) -> str:
+        r = subprocess.run(
+            ['node', str(tmpfile), seed, str(ts)],
+            capture_output=True, text=True, cwd=str(BASE), timeout=10
+        )
+        if r.returncode != 0:
+            raise RuntimeError(f"Node error: {r.stderr}")
+        return r.stdout.strip()
 
-    url = "https://www.zhipin.com/wapi/zpgeek/search/joblist.json"
-    params = {
-        "city": "101010100",
-        "query": "python",
-        "page": "1",
-        "_": str(int(time.time() * 1000)),
-    }
+    return gen_token
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.zhipin.com/web/geek/jobs?city=101010100&query=python",
-        "X-Requested-With": "XMLHttpRequest",
-    }
+
+def test_joblist():
+    gen_token = _load_abc()
 
     session = requests.Session()
-    cookie_str = f"__zp_stoken__={urllib.parse.quote(token, safe='')}; "
-    if cookies:
-        cookie_str += cookies
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "X-Requested-With": "XMLHttpRequest",
+    })
 
-    resp = session.get(url, params=params, headers=headers, cookies={k:v for k,v in [c.split('=',1) for c in cookie_str.rstrip('; ').split('; ')]}, impersonate="chrome131")
-    return resp.json()
+    # Step 1: 首次访问获取基础 Cookie (ab_guid, __a, __c, __g, __l)
+    print("[1] Getting initial cookies...")
+    resp = session.get(
+        "https://www.zhipin.com/web/geek/jobs?city=101010100&query=python",
+        headers={"Accept": "text/html"},
+        impersonate="chrome131",
+    )
+    print(f"    Status: {resp.status_code}, cookies: {len(session.cookies)} keys")
+
+    # Step 2: 第一次 API 请求，预计 code=37，拿到 seed
+    print("[2] First API request (expect code=37 + seed)...")
+    params = {"city": "101010100", "query": "python", "page": "1", "_": str(int(time.time() * 1000))}
+    resp = session.get(
+        "https://www.zhipin.com/wapi/zpgeek/search/joblist.json",
+        params=params,
+        headers={"Referer": "https://www.zhipin.com/web/geek/jobs?city=101010100&query=python"},
+        impersonate="chrome131",
+    )
+    data = resp.json()
+    print(f"    code={data.get('code')}, message={data.get('message')}")
+
+    if data.get('code') == 0:
+        jobs = data.get('zpData', {}).get('jobList', [])
+        print(f"    SUCCESS! {len(jobs)} jobs returned (no token needed)")
+        return data
+
+    # Step 3: 用 code=37 返回的 seed 生成 token
+    zp = data.get('zpData', {})
+    seed = zp.get('seed')
+    ts = zp.get('ts')
+    name = zp.get('name')
+    print(f"[3] Got seed: {seed}, ts={ts}, name={name}")
+
+    if not seed or not ts:
+        print("    No seed in response, cannot proceed")
+        return data
+
+    token = gen_token(seed, ts)
+    print(f"    Generated token: {token[:50]}... (len={len(token)})")
+
+    # Step 4: 重试请求，带上 token
+    print("[4] Retry with __zp_stoken__ cookie...")
+    session.cookies.set('__zp_stoken__', token, domain='.zhipin.com', path='/')
+
+    params["_"] = str(int(time.time() * 1000))
+    resp = session.get(
+        "https://www.zhipin.com/wapi/zpgeek/search/joblist.json",
+        params=params,
+        headers={"Referer": "https://www.zhipin.com/web/geek/jobs?city=101010100&query=python"},
+        impersonate="chrome131",
+    )
+    data = resp.json()
+    print(f"    code={data.get('code')}, message={data.get('message')}")
+    zp = data.get('zpData', {})
+
+    if data.get('code') == 37:
+        # 还是 37？可能是重复 token 或需要新的 seed
+        print(f"    Still code=37. New seed: {zp.get('seed')}, ts={zp.get('ts')}")
+    elif data.get('code') == 0:
+        jobs = data.get('zpData', {}).get('jobList', [])
+        print(f"    SUCCESS! {len(jobs)} jobs found")
+        for j in jobs[:3]:
+            print(f"      - {j.get('jobName', '?')} @ {j.get('brandName', '?')}")
+    return data
+
 
 if __name__ == "__main__":
-    ts = int(time.time() * 1000)
-
-    # 用 __a 作为 seed（从浏览器获取）
-    seeds_to_try = [
-        "42486448.1782455432..1782455432.5.1.5.5",  # __a cookie
-    ]
-
-    for seed in seeds_to_try:
-        print(f"\n--- Testing seed: {seed[:40]}... ---")
-        token = gen_token(seed, ts)
-        if not token:
-            print("  Token generation failed!")
-            continue
-        print(f"  Token: {token[:60]}... (len={len(token)})")
-
-        # 用最基本的数据测试
-        print(f"  Testing API...")
-        result = test_api(token)
-        code = result.get('code')
-        zpData = result.get('zpData', {})
-        job_count = len(result.get('zpData', {}).get('jobList', []))
-        print(f"  Response: code={code}, jobs={job_count}, zpData={zpData}")
-        if code == 0 and job_count > 0:
-            print(f"  SUCCESS!")
-            break
-    else:
-        print("\nNo seed worked. Seed needs to come from server.")
+    for attempt in range(3):
+        print(f"\n{'='*60}")
+        print(f"Attempt {attempt + 1}")
+        print(f"{'='*60}")
+        try:
+            data = test_joblist()
+            if data.get('code') == 0:
+                break
+        except Exception as e:
+            print(f"    Error: {e}")
+        time.sleep(2)
