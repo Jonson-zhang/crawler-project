@@ -1,7 +1,7 @@
 // test_v8_global.js - Execute in V8 with browser globals set DIRECTLY on global
 // This is the closest approach to the real browser
-var fs = require('fs');
-var code = fs.readFileSync(__dirname + '/config/security-7c91433f.js', 'utf8');
+var _fs = require('fs');
+var code = _fs.readFileSync(__dirname + '/config/security-7c91433f.js', 'utf8');
 
 // Debug: ensure code loads
 console.log('Code size:', code.length);
