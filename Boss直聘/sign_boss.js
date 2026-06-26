@@ -200,7 +200,7 @@ loc.protocol='https:';loc.origin='https://www.zhipin.com';loc.port='';
 loc.search='?city=101010100&query=python';loc.hash='';
 
 var scr = new Screen();
-scr.width=2560;scr.height=1440;scr.availWidth=2560;scr.availHeight=1440;
+scr.width=1600;scr.height=900;scr.availWidth=1600;scr.availHeight=860;
 scr.colorDepth=24;scr.pixelDepth=24;
 
 var hist = new History();
