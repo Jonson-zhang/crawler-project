@@ -172,9 +172,13 @@ sandbox.Performance = Performance;
 // ===== Navigator =====
 var nav = new Navigator();
 nav.userAgent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
-nav.appVersion='5.0 (Windows)';nav.platform='Win32';nav.language='zh-CN';
-nav.languages=['zh-CN','zh'];nav.cookieEnabled=true;nav.webdriver=false;
-nav.hardwareConcurrency=8;nav.maxTouchPoints=0;
+nav.appVersion='5.0 (Windows)';nav.platform='Win32';
+nav.appCodeName='Mozilla';nav.appName='Netscape';nav.product='Gecko';
+nav.oscpu='Windows NT 10.0; Win64; x64';nav.buildID='20181001000000';
+nav.language='en-US';
+nav.languages=['en-US','en'];
+nav.cookieEnabled=true;nav.webdriver=false;
+nav.hardwareConcurrency=16;nav.maxTouchPoints=0;
 nav.vendor='';nav.vendorSub='';nav.productSub='20100101';
 nav.doNotTrack='1';nav.onLine=true;
 nav.deviceMemory=undefined;nav.webkitTemporaryStorage=undefined;
@@ -243,7 +247,7 @@ loc.protocol='https:';loc.origin='https://www.zhipin.com';loc.port='';
 loc.search='?city=101010100&query=python';loc.hash='';
 
 var scr = new Screen();
-scr.width=1600;scr.height=900;scr.availWidth=1600;scr.availHeight=860;
+scr.width=5120;scr.height=1440;scr.availWidth=5120;scr.availHeight=1392;
 scr.colorDepth=24;scr.pixelDepth=24;
 
 var hist = new History();
