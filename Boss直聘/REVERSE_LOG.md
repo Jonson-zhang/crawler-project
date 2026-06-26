@@ -116,42 +116,41 @@ PDF Viewer / Chrome PDF Viewer / Chromium PDF Viewer
 
 ---
 
-## 五、补环境方案（sign_boss.js）
+## 五、补环境方案总结与最终方案
 
-### 架构
+### 探索历程
 
-```
-sign_boss.js (Node.js vm 沙箱)
-  ├── 200+ 浏览器构造函数（原型链 + Symbol.toStringTag）
-  ├── Navigator 实例（完整 Plugin/MimeType 对象树）
-  ├── Document 实例（cookie getter + createElement 支持 iframe/canvas/script）
-  ├── Location / Screen / History / Storage / Performance / Crypto
-  ├── Native toString 保护 (memoryMap)
-  └── 调用: new ABC().z(seed, ts) → 输出 token
-```
+| 版本 | 方法 | Token 长度 | 前缀匹配 | API 结果 |
+|------|------|-----------|---------|---------|
+| v1 (sign_boss.js) | vm 沙箱 + 基本浏览器对象 | 421 | 6 chars (c66fgw) | code=38 |
+| v2 (test_env_fix.js) | vm 沙箱 + 浏览器精确值 | 365 | 7 chars (c66fgw) | code=38 |
+| v3 (minimal env) | vm 沙箱 + 最小浏览器存根 | 285 | 8 chars (c66fgw5V) | - |
+| v4 (浏览器直接) | 真实浏览器 security-check | 465 | full match | code=0 ✅ |
 
-### 补环境技术要点
+### 关键发现（2026-06-26）
 
-1. **`window = globalThis`** — 不创建隔离对象
-2. **原型链**: `new Constructor()` → `Object.create(parentProto)` 建立完整链
-3. **`Symbol.toStringTag`**: Navigator→`[object Navigator]`、PluginArray→`[object PluginArray]` 等
-4. **Native toString**: `memoryMap` + `Function.prototype.toString` 重写
-5. **Plugin/MimeType 实例**: `Object.create(Plugin_.prototype)` 确保 `instanceof` 正确
-6. **Canvas 2D context**: 完整方法存根 + `toDataURL` 返回 dummy PNG
-7. **WebGL context**: 完整方法存根 + `getParameter` 返回正常值
-8. **Anti-automation**: `_phantom=undefined`, `callphantom=undefined`, `Buffer=undefined`
+1. **security JS 本身不含浏览器 API 调用** — 但初始化需要浏览器全局对象存在，否则 ABC 不实例化
+2. **`crypto.getRandomValues()` 引入随机性** — 相同 seed/ts 两次调用的 token 不同
+3. **补环境越精确，token 越短** — 说明 VMP 对不同环境走不同的代码路径（指纹提取 vs 核心计算）
+4. **TLS 指纹一致性检查** — 即使浏览器生成的合法 token，从 Node.js https.get() 发送也被拒
+5. **服务器全链路校验** — token + TLS + cookie chain + 请求特征必须一致
 
-### 当前结果
+### 最终方案：基于浏览器的 token 生成
 
-```
-浏览器 token: 459 chars, 服务端 code=0
-sign_boss.js: 421 chars, 服务端 code=38
-仅匹配前缀 8 字符 (c66fgw)
-```
+由于 JSVMP 的 9887 状态机对 VM 沙箱环境的 `typeof`/`instanceof`/原型链差异极度敏感，
+且服务器同时校验 TLS 指纹，**纯 Node.js 离线签名在当前条件下不可行**。
 
-### 根因
+**可用的替代方案：**
 
-JSVMP 的 9887 状态机节点对环境检测极度敏感。即使所有顶层属性值一致，`typeof`/`instanceof`/`Object.prototype.toString.call()` 的细微差异（如某些内部类型标签）导致 VMP 走完全不同的代码路径。需要 AST 级别的分层验证才能逐阶段对齐。
+1. **Playwright/Camoufox 浏览器方案** — 启动浏览器自动完成 security-check → 获取 token → curl_cffi 请求
+2. **RPC 方案** — 远程浏览器服务生成 token，本地 Python 消费
+3. **纯 AST 反编译（长期）** — 参考 52pojie 文章，多层 switch 还原 + 提取纯算法
+
+### 待研究
+
+- 多层 switch VMP 的 AST 反编译（3 层嵌套 → 1 层 → 顺序代码）
+- 参考文章 4 开源代码：https://github.com/chencchen/webcrawler/tree/master/6,某直聘
+- 52pojie 文章纯算思路：https://www.52pojie.cn/thread-2058603-1-3.html
 
 ---
 
