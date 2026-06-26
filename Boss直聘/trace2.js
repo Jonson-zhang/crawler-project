@@ -42,7 +42,12 @@ sandbox.navigator=makeTraced('navigator',sandbox._nav);
 
 sandbox._doc={
     cookie:'ab_guid=test;__a=16364972.1782458175..1782458175.2.1.2.2;__c=1782458175;__g=-',
-    createElement:mf('createElement'),body:{appendChild:mf('appendChild')},
+    createElement:function(tag){
+        trace.push({path:'document',branch:'createElement('+tag+')',type:'call',t:'call'});
+        if(tag==='iframe')return{style:{},contentWindow:sandbox};
+        return{style:{}};
+    },
+    body:{appendChild:mf('appendChild')},
     documentElement:{appendChild:mf('appendChild')},
     getElementsByTagName:function(){return{item:mf('item'),length:0}},
     hidden:false,readyState:'complete'
