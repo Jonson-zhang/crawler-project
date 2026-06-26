@@ -109,7 +109,15 @@ sandbox.history = env.hist;
 sandbox.localStorage = env.makeStorage();
 sandbox.sessionStorage = env.makeStorage();
 sandbox.performance = env.perf;
-sandbox.crypto = env.cryptoObj;
+sandbox.crypto = {
+    getRandomValues: function(arr) {
+        var b = require('crypto').randomBytes(arr.length);
+        for (var i = 0; i < arr.length; i++) arr[i] = b[i];
+        return arr;
+    },
+    subtle: null
+};
+env.sn(sandbox.crypto.getRandomValues, 'getRandomValues');
 
 sandbox.btoa = function(s) { return Buffer.from(s).toString('base64'); }; env.sn(sandbox.btoa, 'btoa');
 sandbox.atob = function(s) { return Buffer.from(s, 'base64').toString(); }; env.sn(sandbox.atob, 'atob');
