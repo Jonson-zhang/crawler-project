@@ -118,14 +118,14 @@ global.requestAnimationFrame=mf('requestAnimationFrame');
 global.name='';global.length=0;global.opener=null;global.closed=false;
 global.scrollX=0;global.scrollY=0;global.screenX=0;global.screenY=0;
 
-// ===== Step 5: Delete Node.js globals =====
-delete global.process;
+// ===== Step 5: Hide Node.js globals =====
+// Can't delete - Node.js internals crash. Replace with empty stub.
+global.process_saved = global.process;
+global.require_saved = global.require;
+global.process = { env: {}, argv: [], version: '', platform: '', pid: 0, title: '', arch: '' };
 delete global.require;
 delete global.module;
 delete global.exports;
-delete global.__dirname;
-delete global.__filename;
-// Keep Buffer (needed by btoa/atob)
 
 // ===== Step 6: Execute security JS =====
 console.log('[1] Loading security JS...');
