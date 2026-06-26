@@ -84,15 +84,16 @@ nav.hardwareConcurrency=8;nav.maxTouchPoints=0;
 nav.vendor='';nav.vendorSub='';nav.productSub='20100101';
 nav.doNotTrack='1';nav.onLine=true;
 nav.deviceMemory=undefined;nav.webkitTemporaryStorage=undefined;
-// plugins
-var pls={length:3,refresh:mf('PluginArray.refresh')};
+// plugins — 5 real PDF viewer plugins (Firefox on Camoufox)
+var pluginNames=['PDF Viewer','Chrome PDF Viewer','Chromium PDF Viewer','Microsoft Edge PDF Viewer','WebKit built-in PDF'];
+var pls={length:5,refresh:mf('PluginArray.refresh')};
 pls.item=mf('PluginArray.item');pls.namedItem=mf('PluginArray.namedItem');
-for(var i=0;i<3;i++){pls[i]={name:'Plugin'+i,filename:'plugin'+i+'.dll',description:'',length:1};pls[i][0]={type:'application/pdf',suffixes:'pdf',description:''}}
+for(var i=0;i<5;i++){pls[i]={name:pluginNames[i],filename:'internal-pdf-viewer',description:'Portable Document Format',length:2};pls[i][0]={type:'application/pdf',suffixes:'pdf',description:'Portable Document Format'};pls[i][1]={type:'text/pdf',suffixes:'pdf',description:'Portable Document Format'}}
 nav.plugins=pls;
-// mimeTypes
+// mimeTypes — 2 entries
 var mts={length:2};mts.item=mf('MimeTypeArray.item');mts.namedItem=mf('MimeTypeArray.namedItem');
-mts[0]={type:'application/pdf',suffixes:'pdf',description:'',enabledPlugin:pls[0]};
-mts[1]={type:'text/pdf',suffixes:'pdf',description:'',enabledPlugin:pls[0]};
+mts[0]={type:'application/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:pls[0]};
+mts[1]={type:'text/pdf',suffixes:'pdf',description:'Portable Document Format',enabledPlugin:pls[0]};
 nav.mimeTypes=mts;
 
 // ===== Document =====
@@ -133,9 +134,9 @@ loc.hostname='www.zhipin.com';loc.host='www.zhipin.com';loc.pathname='/web/geek/
 loc.protocol='https:';loc.origin='https://www.zhipin.com';loc.port='';
 loc.search='?city=101010100&query=python';loc.hash='';
 
-// ===== Screen =====
+// ===== Screen (真实值 2560x1440) =====
 var scr = new Screen();
-scr.width=1920;scr.height=1080;scr.availWidth=1920;scr.availHeight=1040;
+scr.width=2560;scr.height=1440;scr.availWidth=2560;scr.availHeight=1440;
 scr.colorDepth=24;scr.pixelDepth=24;
 
 // ===== History =====
