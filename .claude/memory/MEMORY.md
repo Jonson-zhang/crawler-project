@@ -21,7 +21,6 @@
 - [env.js / sign.js 分离架构](env-sign-separation.md) — 补环境与签名逻辑分离的目录结构规范
 - [Crawler 项目约定](crawler-conventions.md) — 工具链、代码组织、输出方式的默认约定
 - [WAF/TLS 指纹识别与应对](waf-tls-fingerprint.md) — requests 返回 WAF HTML 的诊断 + 浏览器桥接方案 + Cookie 保鲜
-- [补环境通用模板](env-core-template.md) — 经小红书实战验证的通用补环境核心（toString保护/setNative/watch），可复用于任何 JS 逆向
 - [线上资源保持原始完整](online-resources-keep-raw.md) — 从线上获取的 JS 源码/字节码必须和原始文件一模一样，禁止截断/格式化
 - [WAF 浏览器引擎检测](waf-browser-engine.md) — **新**：阿里云 WAF 对 Firefox/Gecko 全线拦截，Chromium/Blink 天然通过
 - [WAF 风控升级机制](waf-rate-limiting.md) — **新**：三级升级（JS 挑战→滑块→405 封杀）+ IP 冷却恢复
@@ -30,6 +29,7 @@
 - [Camoufox 版本兼容问题](camoufox-version-issue.md) — `cloakbrowser`→`camoufox` 改名导致 ModuleNotFoundError
 - [Emscripten wasm2js 模式](emscripten-wasm2js-pattern.md) — 与 wasm-bindgen 完全不同，不需要 stub 生成
 - [小红书 XYW_ / x-rap-param 缺口](xhs-xyw-xrap-gap.md) — 何时需要实现 XYW_ 签名和 x-rap-param（homefeed 不需要，暂不实现）
-- [小红书离线 VM 签名方案](xhs-offline-vm.md) — **当前项目**：VMP 逆向进度、env.dom.js 原型链、阻塞点（2026-06-24）
+- [小红书离线 VM 签名方案](xhs-offline-vm.md) — **已攻克 (2026-06-26)**：env.js + eval 抠 DS + setter 拦截 → mns0301 ✓（实现见 `小红书/v2.0/`）
+- [VMP env slot 预填充](xhs-setter-intercept.md) — 可复用的 VMP 通用技巧：setter 拦截 + env 数组预填 200 个构造槽位
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
 - [安装新工具时间步更新脚本](install-script-sync.md) — 装 MCP/Skill 必须同步更新 install-mcp.sh + .gitignore

@@ -12,6 +12,9 @@ wheels/
 # MCP 服务器配置 — 机器相关，install-mcp.sh 生成
 .mcp.json
 
+# Node.js 安装产物
+node_modules/
+
 # MCP — 只排除安装产物，保留声明文件 (package.json / pyproject.toml)
 .claude/mcp-servers/**/node_modules/
 .claude/mcp-servers/**/.venv/

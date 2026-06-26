@@ -36,7 +36,7 @@ from Crypto.Cipher import ARC4, DES
 from curl_cffi import requests
 
 # ===== 配置 =====
-PAGES = 3                 # 默认抓取页数
+PAGES = 1                 # 默认抓取页数
 SHOW_DETAIL = False       # 是否显示每条笔记的正文详情（走 SSR 页面提取，较慢）
 INTERVAL = 1.5            # 翻页间隔（秒），降低请求频率，减少触发风控的风险
 

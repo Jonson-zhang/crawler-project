@@ -1,64 +1,50 @@
 ---
 name: xhs-offline-vm
-description: 小红书离线 VM 签名 — 线上 DS 脚本 + 原型链补环境方案
+description: 小红书 VMP 签名方案 — 融合 jsr-reverse 阶段路由 + web-reverse-env 诊断驱动 + XHS 特定技巧
 metadata:
   type: project
 ---
 
-# 小红书离线 VM 签名 — 线上 DS 脚本 + 原型链补环境
+# 小红书离线 VMP 签名 — 已攻克 (2026-06-26)
 
-> 核心目标：纯离线 Node.js/Python 产出 XYS_ 签名。
+## 方法论融合
 
-## 当前方案：env.js + 3 个线上 DS 脚本
-
-| 文件 | 大小 | 来源 | 用途 |
-|------|------|------|------|
-| env.js | 自研 | 原型链补环境 | 模拟浏览器全局对象 |
-| ds_loader.js | ~151KB | 线上提取 | VMP 解释器基础 |
-| ds_api.js | ~60KB | 线上提取 | `_BHjFmfUMEtxhI(__$c, env)` → __bc + mns0201 |
-| ds_v2.js | ~62KB | 线上提取 | `_AUuXfEG27Xa3x(__$c, env)` → mns0301 |
-| sign.js | 自研 | 编码链 | 入口：MD5×2 + mnsv2 + b64Encode + UTF8 |
-
-## 签名链
+基于三个 skill 的整合：
 
 ```
-node sign.js '<json_body>'
-  → env.js → ds_loader.js → ds_api.js → ds_v2.js
-  → window.mnsv2(u, m, w) → "mns0301_xxx" (200 chars)
-  → {x0..x4} → JSON → UTF8 → CustomB64 → "XYS_" + result
+jsr-reverse        → 阶段路由（locate→recover→runtime→validation）
+web-reverse-env    → 诊断驱动补环境（protect-native + observe-runtime）
+xhs-reverse        → XHS 特定知识（eval 抠法 + setter 拦截 + x-s-common + Cookie 引导）
 ```
 
-## VMP 关键标识符
+## 关键突破
 
-| 标识符 | 作用 | 创建者 |
-|--------|------|--------|
-| `_BHjFmfUMEtxhI` | VMP 解释器 A（创建 mns0201） | ds_loader.js 中的混淆代码 |
-| `_AUuXfEG27Xa3x` | VMP 解释器 B（升级到 mns0301） | ds_loader.js 中的混淆代码 |
-| `__$c` | VMP 字节码字符串 | ds_api.js / ds_v2.js 本地变量 |
-| `__bc` | VMP 内部字节码 | ds_api.js 执行后创建 |
-| `getdss` | 时间戳函数（VMP 调用） | ds_api.js 顶部定义 |
+### 1. eval 抠 DS 脚本（locate→recover）
 
-## 编码链常量
+浏览器 4 个 eval 调用分发 DS 模块。
+**Network 中的独立文件不是真正执行版本** — 必须从 eval 抠合并后的 ~430KB ds_script.js。
 
-- Base64: `ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5`
-- Payload: `{x0:"4.3.5", x1:"xhs-pc-web", x2:"Windows", x3:hash, x4:dataType}`
-- XYS_ 总长度: ~364 字符
-- mnsv2 输出前缀: `mns0301_` (200 字符)
+### 2. _AUuXfEG27Xa3x setter 拦截（runtime）
 
-## API 测试标准
+ds_v2 的 VMP 字节码升级时，env 数组有空 slot → `undefined is not a constructor`。
+解决：拦截 setter，在 VMP 升级前预填充 200 个 env slot 为可构造的空函数。
+详见 [[xhs-setter-intercept]]。
 
-- HTTP 200 ✅
-- x-s 解码后 x3 前缀 = `mns0301_` ✅
-- homefeed 返回 code=0 + items>0 ✅
+### 3. 原型链不用 jsdom（runtime）
 
-## 依赖
+`window = globalThis` + `new HTMLElement()` 建立原型链。
+jsdom 的严格构造函数 throw "Illegal constructor"，无法用于 VMP。
 
-```bash
-npm install crypto-js   # sign.js 需要（MD5）
-```
+### 4. Cookie 引导每步都要签名（validation）
+
+shield/webprofile 和 activate 若不带完整签名，服务端静默降级 → items=0。
+
+## 实现
+
+`小红书/v2.0/` — 完整离线方案：env.js + sign.js(daemon) + main.py。
 
 ## 相关 memory
 
-- [[xhs-retrospective]] — 逆向过程复盘
-- [[xhs-xyw-xrap-gap]] — XYW_ / x-rap-param 能力缺口
-- [[crawler-conventions]] — 项目约定
+- [[xhs-setter-intercept]] — setter 拦截技术详解
+- [[env-sign-separation]] — env.js / sign.js 分离架构
+- [[online-resources-keep-raw]] — 线上资源禁止截断
