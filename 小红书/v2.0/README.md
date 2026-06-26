@@ -39,6 +39,35 @@ python main.py
 | x-b3-traceid | main.py | Python `random.hex(16)` |
 | x-xray-traceid | main.py | Python `(ts<<23)|random` |
 
+## Cookie 引导流程（web_session 获取）
+
+`web_session` **不是本地生成的**，而是小红书服务端在最终接口通过 `Set-Cookie` 下发的。获取需要 4 步链式引导，层层递进：
+
+```
+Step 1: 本地生成 a1 + webId           → 伪造匿名设备身份
+Step 2: /sec/v1/scripting             → 解密 JSVMP 获取 websectiga
+Step 3: /sec/v1/shield/webprofile     → DES ECB + 签名头 → 获取 gid
+Step 4: /login/activate               → 服务端验证链 → Set-Cookie 下发 web_session
+```
+
+### Step 1 — 伪造客户端身份
+
+本地生成 `a1`（52 位：时间戳 hex + 30 位随机字符 + CRC32 校验）和 `webId`（a1 的 MD5），作为匿名设备标识写入 Cookie。
+
+### Step 2 — 解密 websectiga
+
+向 `/api/sec/v1/scripting` 请求 JSVMP 加密的 JS 代码，逆向解密提取 `websectiga`（小红书安全令牌）。需要还原 JSVMP 虚拟机的 "b" 字段 Base64 解码 + "d" 字段索引交叉取字节逻辑。
+
+### Step 3 — 获取 gid
+
+向 `/api/sec/v1/shield/webprofile` 发送请求（DES ECB 加密 + 全套自研签名头 `x-s`/`x-s-common`/`x-t`/`x-b3`/`x-xray`），服务端返回 `gid` 和 `acw_tc`。
+
+### Step 4 — 激活会话（关键）
+
+向 `/login/activate` 发 POST（同样需要全套签名头），服务端验证前面三步积累的 Cookie 链条（`a1` → `websectiga` → `gid` → 签名）**全部合法**后，在响应头中 `Set-Cookie: web_session=...` 下发。
+
+**本质**：`web_session` 是小红书服务端对"你是一个合法浏览器"的最终背书。前面三步任何一个环节签名或指纹不对，Step 4 就拿不到它。
+
 ## 关键技巧
 
 **`_AUuXfEG27Xa3x` setter 拦截** — 这解决了 VMP 字节码升级时 `undefined is not a constructor` 的问题：
