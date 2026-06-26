@@ -134,8 +134,6 @@ var sandbox = {
     localStorage: mkStor(), sessionStorage: mkStor(), performance: _fakePerf,
 };
 sn(sandbox.crypto.getRandomValues,'getRandomValues');sn(sandbox.btoa,'btoa');sn(sandbox.atob,'atob');
-
-sandbox.window=sandbox;sandbox.self=sandbox;sandbox.top=sandbox;sandbox.parent=sandbox;sandbox.globalThis=sandbox;
 sandbox.innerWidth=1884;sandbox.innerHeight=1332;sandbox.outerWidth=1884;sandbox.outerHeight=1392;
 sandbox.devicePixelRatio=1;sandbox.name='';sandbox.closed=false;sandbox.length=0;sandbox.opener=null;
 sandbox.origin='https://www.zhipin.com';sandbox.isSecureContext=true;
@@ -160,14 +158,10 @@ new vm.Script(code).runInContext(ctx);
 var seed = 'VsbTBCOID71h+OzSxBLPKa6ThkqrBFYaqfGa+QWt9qQ=';
 var ts = 1782478485106;
 
-_randIdx = 0;
-_perfNow = 0;
-_fixedSeed = 42;
+resetState();
 var token1 = new sandbox.ABC().z(seed, ts);
 
-_randIdx = 0;
-_perfNow = 0;
-_fixedSeed = 42;
+resetState();
 var token2 = new sandbox.ABC().z(seed, ts);
 
 process.stdout.write('RUN1: ' + token1 + '\n');
