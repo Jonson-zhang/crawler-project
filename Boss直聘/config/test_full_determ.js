@@ -5,38 +5,50 @@ var vm = require('vm');
 var fs = require('fs');
 var code = fs.readFileSync(__dirname + '/security-7c91433f.js', 'utf8');
 
+// ALL random state lives inside sandbox to avoid vm context closure issues
+var _state = { cryptoIdx: 0, perfNow: 0, mathSeed: 42 };
 var _fixedNow = 1782478485106;
-var _fixedSeed = 42;
 var _accessLog = [];
+
+function resetState() { _state.cryptoIdx = 0; _state.perfNow = 0; _state.mathSeed = 42; }
 
 // Fixed Math.random
 var _FixedMath = Object.create(Math);
 _FixedMath.random = function() {
-    _accessLog.push('Math.random()');
-    _fixedSeed = (_fixedSeed * 16807 + 0) % 2147483647;
-    return (_fixedSeed - 1) / 2147483646;
+    _state.mathSeed = (_state.mathSeed * 16807 + 0) % 2147483647;
+    return (_state.mathSeed - 1) / 2147483646;
 };
 
 // Fixed Date
 var _FakeDate = function() {
     var a = arguments;
     if (a.length > 0) return new (Function.prototype.bind.apply(Date, [null].concat(Array.prototype.slice.call(a))))();
-    _accessLog.push('new Date()');
     return new Date(_fixedNow);
 };
-_FakeDate.now = function() { _accessLog.push('Date.now()'); return _fixedNow; };
+_FakeDate.now = function() { return _fixedNow; };
 _FakeDate.parse = Date.parse;
 _FakeDate.UTC = Date.UTC;
 _FakeDate.prototype = Date.prototype;
 
 // Fixed crypto
-var _randIdx = 0;
 var _randSeed = Buffer.alloc(256);
 for (var i = 0; i < 256; i++) _randSeed[i] = (i * 37 + 53) & 0xFF;
 
+var _fixedCrypto = {
+    getRandomValues: function(arr) {
+        for (var i = 0; i < arr.length; i++) {
+            arr[i] = _randSeed[_state.cryptoIdx % 256];
+            _state.cryptoIdx++;
+        }
+        return arr;
+    }
+};
+
 // Fixed performance
-var _fixedPerfNow = 0;
-var _fakePerf = { now: function() { _fixedPerfNow += 1; return _fixedPerfNow; }, memory: {} };
+var _fakePerf = {
+    now: function() { _state.perfNow += 1; return _state.perfNow; },
+    memory: {}
+};
 
 // ===== Environment =====
 var mm = new Map();
@@ -114,7 +126,7 @@ var sandbox = {
     Int8Array, Int16Array, Int32Array, Float32Array, Float64Array, Uint8ClampedArray,
     BigInt, NaN, Infinity, undefined, Proxy, Reflect,
     setTimeout, setInterval, clearTimeout, clearInterval,
-    crypto: { getRandomValues: function(arr) { for(var i=0;i<arr.length;i++){arr[i]=_randSeed[_randIdx%256];_randIdx++}return arr; } },
+    crypto: _fixedCrypto,
     btoa: function(s){return Buffer.from(s).toString('base64')},
     atob: function(s){return Buffer.from(s,'base64').toString()},
     console: {log:function(){},error:function(){},warn:function(){},info:function(){}},
