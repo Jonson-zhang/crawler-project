@@ -1,6 +1,12 @@
 /**
- * Boss直聘 __zp_stoken__ 离线签名 (v2.0)
+ * Boss直聘 __zp_stoken__ 离线签名 (v3.0)
  * 用法: node sign_boss.js <__a> <__c> <seed> <ts>
+ *
+ * v3.0 改进:
+ *   - FakeDate: 模拟浏览器执行时序（incremental Date.now()）
+ *   - FixedMath: 固定 Math.random()（确定性）
+ *   - PerfTimer: 递增 performance.now()
+ *   - 浏览器精确的 navigator/screen 值
  *
  * 注意: JS 文件 (7c91433f.js) 每天凌晨可能更换，需配合主流程动态下载。
  * 文件名由 API code=37 响应中的 zpData.name 字段指定。
@@ -8,6 +14,43 @@
 var vm = require('vm');
 var fs = require('fs');
 var code = fs.readFileSync(__dirname + '/config/security-7c91433f.js', 'utf8');
+
+// ===== FakeDate: 模拟浏览器 JS 执行时序 =====
+// VMP 在 ABC.z() 期间调用 Date.now() ~2720 次用于计时检测
+// 浏览器中 JS 执行很快（~100ms），需要模拟合理的时序
+var _dateBase = 1782478485106;
+var _dateCount = 0;
+function FakeDate() {
+    if (arguments.length > 0) {
+        // 带参数的 new Date(xxx) — 创建指定时间的真实 Date 对象
+        var args = [null].concat(Array.prototype.slice.call(arguments));
+        return new (Function.prototype.bind.apply(Date, args))();
+    }
+    return new Date(_dateBase + Math.floor(_dateCount / 30));
+}
+FakeDate.now = function() {
+    _dateCount++;
+    // 模拟: 每次调用间隔 ~0.03ms，总共 ~90ms 执行时间
+    return _dateBase + Math.floor(_dateCount / 30);
+};
+FakeDate.parse = Date.parse;
+FakeDate.UTC = Date.UTC;
+FakeDate.prototype = Date.prototype;
+
+// ===== FixedMath: 确定性 random() =====
+var _mathSeed = 42;
+var FixedMath = Object.create(Math);
+FixedMath.random = function() {
+    _mathSeed = (_mathSeed * 16807 + 0) % 2147483647;
+    return (_mathSeed - 1) / 2147483646;
+};
+
+// ===== PerfTimer: 递增 performance.now() =====
+var _perfCounter = 0;
+var FakePerf = {
+    now: function() { _perfCounter++; return _perfCounter; },
+    memory: {}
+};
 
 // ===== Native toString protection =====
 var mm = new Map();
@@ -62,7 +105,7 @@ var brCls = [
 
 // ===== Built sandbox with proper prototype chain =====
 var sandbox = {
-    Object, Array, Function, String, Number, Boolean, Date, Math,
+    Object, Array, Function, String, Number, Boolean, Date: FakeDate, Math: FixedMath,
     RegExp, Error, TypeError, SyntaxError, ReferenceError, RangeError,
     parseInt, parseFloat, isNaN, isFinite,
     encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
