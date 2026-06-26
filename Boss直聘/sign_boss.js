@@ -412,6 +412,11 @@ try {
         });
     }
     if (typeof sandbox.ABC !== 'undefined') {
+        // Reset all timing/random state before token generation
+        _dateCount = 0;
+        _mathSeed = 42;
+        _perfCounter = 0;
+
         var seed = process.argv[4];
         var ts = parseInt(process.argv[5]);
         process.stdout.write(new sandbox.ABC().z(seed, ts));
