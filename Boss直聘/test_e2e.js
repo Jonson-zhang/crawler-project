@@ -26,10 +26,10 @@ sandbox.console = { log: function(){}, error: function(){}, warn: function(){} }
 sandbox.navigator = {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
     platform: 'Win32', language: 'zh-CN', languages: ['zh-CN', 'zh'],
-    cookieEnabled: true, webdriver: false, hardwareConcurrency: 2, maxTouchPoints: 1,
+    cookieEnabled: true, webdriver: false, hardwareConcurrency: 8, maxTouchPoints: 0,
     vendor: '', vendorSub: '', productSub: '20100101', doNotTrack: '1', onLine: true,
     plugins: { length: 5, item: function(){return null}, namedItem: function(){return null}, refresh: function(){} },
-    appVersion: '5.0 (Windows)', mimeTypes: { length: 4, item: function(){return null}, namedItem: function(){return null} }
+    appVersion: '5.0 (Windows)', mimeTypes: { length: 2, item: function(){return null}, namedItem: function(){return null} }
 };
 sandbox.document = {
     cookie: 'ab_guid=test; __a=' + (process.argv[2] || '0') + '; __c=' + (process.argv[3] || '0') + '; __g=-',
