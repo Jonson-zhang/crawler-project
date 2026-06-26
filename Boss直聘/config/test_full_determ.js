@@ -134,6 +134,8 @@ var sandbox = {
     localStorage: mkStor(), sessionStorage: mkStor(), performance: _fakePerf,
 };
 sn(sandbox.crypto.getRandomValues,'getRandomValues');sn(sandbox.btoa,'btoa');sn(sandbox.atob,'atob');
+
+sandbox.window=sandbox;sandbox.self=sandbox;sandbox.top=sandbox;sandbox.parent=sandbox;sandbox.globalThis=sandbox;
 sandbox.innerWidth=1884;sandbox.innerHeight=1332;sandbox.outerWidth=1884;sandbox.outerHeight=1392;
 sandbox.devicePixelRatio=1;sandbox.name='';sandbox.closed=false;sandbox.length=0;sandbox.opener=null;
 sandbox.origin='https://www.zhipin.com';sandbox.isSecureContext=true;
