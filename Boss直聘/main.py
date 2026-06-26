@@ -7,7 +7,7 @@ from pathlib import Path
 import curl_cffi.requests as requests
 
 BASE = Path(__file__).parent
-SIGN_BOSS_JS = BASE / "sign_boss.js"
+SIGN_BOSS_JS = BASE / "sign_boss_v15.js"
 
 def gen_token(__a, __c, seed, ts):
     """调用 Node.js vm 沙箱生成 __zp_stoken__"""
@@ -22,11 +22,13 @@ def gen_token(__a, __c, seed, ts):
 def get_jobs(city="101010100", query="python", page=1):
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
         "X-Requested-With": "XMLHttpRequest",
         "Referer": f"https://www.zhipin.com/web/geek/jobs?city={city}&query={query}",
-        "traceId": str(int(time.time()*1000000))[:20],
+        "Origin": "https://www.zhipin.com",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "traceId": "F-" + str(int(time.time()*1000000))[:16],
     })
 
     # 设置基础 Cookie
@@ -40,22 +42,17 @@ def get_jobs(city="101010100", query="python", page=1):
     session.cookies.set("__g", "-", domain=".zhipin.com", path="/")
     session.cookies.set("ab_guid", str(int(time.time()*1000))[:12] + "-test", domain="www.zhipin.com", path="/")
 
-    # 先调 zpToken 预热
+    # Step 0: Visit the geek page first (triggers security check, gets initial __zp_stoken__)
+    page_url = f"https://www.zhipin.com/web/geek/jobs?city={city}&query={query}"
     try:
-        session.post("https://www.zhipin.com/wapi/zppassport/set/zpToken", json={},
-                     headers={"Content-Type": "application/json"}, impersonate="chrome131")
+        session.get(page_url, impersonate="chrome131", timeout=15)
     except: pass
-
-    # 设置完整 Cookie 链
-    session.cookies.set("__l", f"l=%2Fwww.zhipin.com%2Fweb%2Fgeek%2Fjobs%3Fcity%3D{urllib.parse.quote(city)}%26query%3D{urllib.parse.quote(query)}&r=&g=&s=3&friend_source=0",
-                        domain=".zhipin.com", path="/")
 
     # 第一步：请求 API（预计 code=37，返回 seed）
     ts_req = int(time.time() * 1000)
     url = "https://www.zhipin.com/wapi/zpgeek/search/joblist.json"
-    params = {"city": city, "query": query, "page": str(page), "_": str(ts_req)}
 
-    resp = session.get(url, params=params, impersonate="chrome131")
+    resp = session.get(url, params={"city": city, "query": query, "page": str(page), "_": str(ts_req)}, impersonate="chrome131")
     data = resp.json()
 
     if data.get("code") == 0:
@@ -77,8 +74,7 @@ def get_jobs(city="101010100", query="python", page=1):
 
     # 第三步：用 token 重试
     ts_req2 = int(time.time() * 1000)
-    params["_"] = str(ts_req2)
-    resp = session.get(url, params=params, impersonate="chrome131")
+    resp = session.get(url, params={"city": city, "query": query, "page": str(page), "_": str(ts_req2)}, impersonate="chrome131")
     data = resp.json()
 
     if data.get("code") == 0:

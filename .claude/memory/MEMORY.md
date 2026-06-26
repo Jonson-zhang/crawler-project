@@ -33,4 +33,4 @@
 - [小红书离线 VM 签名方案](xhs-offline-vm.md) — **已攻克 (2026-06-26)**：env.js + eval 抠 DS + setter 拦截 → mns0301 ✓（实现见 `小红书/v2.0/`）
 - [VMP env slot 预填充](xhs-setter-intercept.md) — 可复用的 VMP 通用技巧：setter 拦截 + env 数组预填 200 个构造槽位
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
-- [安装新工具时间步更新脚本](install-script-sync.md) — 装 MCP/Skill 必须同步更新 install-mcp.sh + .gitignore
+- [Boss直聘逆向进度](boss-zhipin-reverse.md) — **2026-06-26**: VMP 9912状态map + 1318步trace, 补环境13轮(code 38→37), 明天转纯算

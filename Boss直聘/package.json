@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "isolated-vm": "^6.1.2",
+    "jsdom": "^29.1.1"
+  }
+}

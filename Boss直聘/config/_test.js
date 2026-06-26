@@ -1,0 +1,1 @@
+for(var p=21867;p!==void 0;){ {switch(p){case 21867:p=3714;break;case 3714:var1=test,p=9766;break;default:p=void 0;break;}} }catch(ignore){}
