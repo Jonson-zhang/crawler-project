@@ -148,6 +148,7 @@ try {
 }
 
 // ===== Step 7: Restore Node.js globals =====
-Object.keys(saved).forEach(function(k) {
-    if (saved[k] !== undefined) global[k] = saved[k];
-});
+if (global._zp_savedProcess) global.process = global._zp_savedProcess;
+if (global._zp_savedRequire) global.require = global._zp_savedRequire;
+global.module = saved.module || undefined;
+global.exports = saved.exports || undefined;
