@@ -10,6 +10,7 @@ BASE = Path(__file__).parent
 
 def _load_abc():
     """加载 security JS 到 Node.js，返回 ABC.z(seed, ts) 函数的 Python 调用桥"""
+    js_path = str(BASE / "config" / "security-7c91433f.js").replace("\\", "/")
     js_wrapper = f"""
 global.window = globalThis; global.self = globalThis;
 global.document = {{
@@ -24,7 +25,7 @@ global.location = {{
     host: 'www.zhipin.com', pathname: '/web/geek/jobs',
 }};
 var fs = require('fs');
-var code = fs.readFileSync('{BASE / "config" / "security-7c91433f.js"}', 'utf8');
+var code = fs.readFileSync('{js_path}', 'utf8');
 eval(code);
 
 var seed = process.argv[2];
