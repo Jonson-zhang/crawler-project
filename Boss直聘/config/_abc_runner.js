@@ -12,7 +12,7 @@ global.location = {
     host: 'www.zhipin.com', pathname: '/web/geek/jobs',
 };
 var fs = require('fs');
-var code = fs.readFileSync('E:\crawler-project\Boss直聘\config\security-7c91433f.js', 'utf8');
+var code = fs.readFileSync('E:/crawler-project/Boss直聘/config/security-7c91433f.js', 'utf8');
 eval(code);
 
 var seed = process.argv[2];
