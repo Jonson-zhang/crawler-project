@@ -97,45 +97,58 @@ MutationObserver, Image, WebSocket, Worker, Event, CustomEvent,
 XMLHttpRequest, HTMLElement, HTMLCanvasElement, CanvasRenderingContext2D
 ```
 
-## 🔑 关键技巧：`_AUuXfEG27Xa3x` setter 拦截
+## 🔑 关键技巧：动态发现 VMP 解释器 + setter 拦截
 
-**这是 VMP 字节码升级成功的关键。** ds_v2.js 使用 `_AUuXfEG27Xa3x` 函数
-执行 VMP 字节码，将 mns0201 升级为 mns0301。VMP 解释器在执行过程中会
-`new env[i]()` 构造 env 数组中的对象——如果数组中有空 slot (undefined)，就会报 `undefined is not a constructor`。
+**这是 VMP 字节码升级成功的关键。** ds_v2.js 会覆盖全局 VMP 解释器函数来将 mns0201 升 级为 mns0301。VMP 解释器在执行过程中会 `new env[i]()` 构造 env 数组中的对象——如果数组中有空 slot (undefined)，就会报 `undefined is not a constructor`。
 
-**解决**：在加载 ds_v2.js **之前**，用 `Object.defineProperty` 拦截 `_AUuXfEG27Xa3x` 的 setter：
+**解决**：加载 ds_v2.js **之前**，**不硬编码变量名**（混淆器每次生成不同标识符，如 `_AUuXfEG27Xa3x` 只是某个版本的值），而是扫描 global 上所有 `toString().length > 100K` 的函数（VMP 解释器因内嵌字节码而体积极大），批量设 setter 拦截：
 
 ```javascript
-var _ra, _oa = global._AUuXfEG27Xa3x;
-Object.defineProperty(global, "_AUuXfEG27Xa3x", {
-  get: function () { return _ra || _oa; },
-  set: function (fn) {
-    // 通过 toString 长度识别 VMP 升级函数（>100K 的混淆函数）
-    if (typeof fn === "function" && fn.toString().length > 100000) {
-      _ra = function (bc, env) {
-        // 🔑 预填充 200 个 env slot 为空构造器
-        for (var i = 0; i < 200; i++) {
-          if (env[i] === undefined) {
-            var s = function () {};
-            s.prototype = {};
-            env[i] = s;
-          }
-        }
-        return fn.call(window, bc, env);
-      };
-    }
-  },
-  configurable: true, enumerable: true,
-});
+// 动态发现所有 VMP 解释器候选（toString().length > 100K）→ 设 setter 拦截
+(function () {
+  var _vmpFound = 0;
+  Object.getOwnPropertyNames(global).forEach(function (name) {
+    try {
+      var val = global[name];
+      if (typeof val !== "function" || val.toString().length <= 100000) return;
+      _vmpFound++;
+      var _ra, _oa = val;
+      Object.defineProperty(global, name, {
+        get: function () { return _ra || _oa; },
+        set: function (fn) {
+          // 通过 toString 长度识别 VMP 升级函数（>100K 的混淆函数）
+          if (typeof fn === "function" && fn.toString().length > 100000) {
+            _ra = function (bc, env) {
+              // 🔑 预填充 200 个 env slot 为空构造器
+              for (var i = 0; i < 200; i++) {
+                if (env[i] === undefined) {
+                  var s = function () {};
+                  s.prototype = {};
+                  env[i] = s;
+                }
+              }
+              return fn.call(window, bc, env);
+            };
+          } else { _oa = fn; }
+        },
+        configurable: true, enumerable: true,
+      });
+    } catch (e) {}
+  });
+  if (_vmpFound === 0) console.error("未发现 VMP 解释器候选，setter 拦截未生效");
+})();
 eval(fs.readFileSync("data/ds_v2.js", "utf8"));
 // 此时 window.mnsv2 已被升级为 mns0301
 ```
 
 **原理**：
-1. ds_v2.js 加载时，内部代码设置 `global._AUuXfEG27Xa3x = some_vmp_function`
-2. 我们的 setter 拦截这个赋值，用 `fn.toString().length > 100000` 识别 VMP 升级函数
-3. 包装一层：在 VMP 字节码执行前，遍历 env 数组填充所有空 slot
-4. VMP 升级完成后，`window.mnsv2` 变成了 mns0301 版本
+1. ds_script.js 加载后，VMP 解释器已暴露在 global 上（混淆器生成的随机变量名）
+2. 利用 `toString().length > 100000` 作为指纹（VMP 内嵌字节码远超其他混淆函数），自动发现目标
+3. 对每个候选设 defineProperty 拦截 setter
+4. ds_v2.js 加载时，内部赋值触发 setter，识别并包装为 env slot 预填充版本
+5. VMP 升级完成，`window.mnsv2` 变成 mns0301
+
+**优势**：混淆器换变量名时无需改代码，重新扫描即可。比硬编码 `_AUuXfEG27Xa3x` 更跨版本稳定。
 
 ## 加载顺序
 
