@@ -7,6 +7,17 @@ var fs = require('fs');
 var _crypto = require('crypto');
 var code = fs.readFileSync(__dirname + '/security-7c91433f.js', 'utf8');
 
+// ===== FIX ALL sources of randomness/non-determinism =====
+var _fixedNow = 1782478485106; // Fixed timestamp
+var _FakeDate = function() {
+    if (arguments.length > 0) return new (Function.prototype.bind.apply(Date, [null].concat(Array.prototype.slice.call(arguments))))();
+    return new Date(_fixedNow);
+};
+_FakeDate.now = function() { return _fixedNow; };
+_FakeDate.parse = Date.parse;
+_FakeDate.UTC = Date.UTC;
+_FakeDate.prototype = Date.prototype;
+
 // Generate a fixed random seed ONCE
 var _randSeed = Buffer.alloc(256);
 for (var i = 0; i < 256; i++) _randSeed[i] = i * 7 + 13;
@@ -102,7 +113,7 @@ function mkStor(){var s=new Stor_();s.getItem=mf('getItem');s.setItem=mf('setIte
 var perf=new Perf_();perf.now=function(){return 1000000};sn(perf.now,'now');perf.memory={};
 
 var sandbox = {
-    Object, Array, Function, String, Number, Boolean, Date, Math,
+    Object, Array, Function, String, Number, Boolean, Date: _FakeDate, Math,
     RegExp, Error, TypeError, SyntaxError, ReferenceError, RangeError,
     parseInt, parseFloat, isNaN, isFinite,
     encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
