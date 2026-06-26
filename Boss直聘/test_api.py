@@ -58,14 +58,15 @@ def test_joblist():
         "X-Requested-With": "XMLHttpRequest",
     })
 
-    # Step 1: 首次访问获取基础 Cookie (ab_guid, __a, __c, __g, __l)
-    print("[1] Getting initial cookies...")
-    resp = session.get(
-        "https://www.zhipin.com/web/geek/jobs?city=101010100&query=python",
-        headers={"Accept": "text/html"},
-        impersonate="chrome131",
-    )
-    print(f"    Status: {resp.status_code}, cookies: {len(session.cookies)} keys")
+    # Step 1: 手动设置基础 Cookie（浏览器通过 JS 自动生成，curl 需要手动注入）
+    ts_sec = int(time.time())
+    session_id = str(ts_sec)[-8:] + str(int(time.time() * 1000) % 100000000).zfill(8)
+    __a = f"{session_id}.{ts_sec}..{ts_sec}.1.1.1.1"
+    session.cookies.set("__a", __a, domain=".zhipin.com", path="/")
+    session.cookies.set("__c", str(ts_sec), domain=".zhipin.com", path="/")
+    session.cookies.set("__g", "-", domain=".zhipin.com", path="/")
+    session.cookies.set("__l", f"l=%2Fwww.zhipin.com%2Fweb%2Fgeek%2Fjobs&r=&g=&s=3&friend_source=0", domain=".zhipin.com", path="/")
+    print(f"[1] Cookies set: __a={__a}, __c={ts_sec}",)
 
     # Step 2: 第一次 API 请求，预计 code=37，拿到 seed
     print("[2] First API request (expect code=37 + seed)...")
