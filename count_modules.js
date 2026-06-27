@@ -48,15 +48,15 @@ if (depthParts.length >= 2) {
   if (modArr[0] === '[') modArr = modArr.substring(1);
   if (modArr[modArr.length - 1] === ']') modArr = modArr.substring(0, modArr.length - 1);
 
-  // Count entries
+  // Count entries at depth 0 (track all bracket types: [] {} ())
   var md = 0, ms3 = false;
   var cpos = [];
   for (var k = 0; k < modArr.length; k++) {
     var c2 = modArr[k];
     if (c2 === '"' && modArr[k-1] !== '\\') ms3 = !ms3;
     if (!ms3) {
-      if (c2 === '[' || c2 === '{') md++;
-      if (c2 === ']' || c2 === '}') md--;
+      if (c2 === '[' || c2 === '{' || c2 === '(') md++;
+      if (c2 === ']' || c2 === '}' || c2 === ')') md--;
       if (c2 === ',' && md === 0) cpos.push(k);
     }
   }
