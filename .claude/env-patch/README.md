@@ -1,57 +1,80 @@
-# env-patch — 通用浏览器环境补丁（Object.create 原型链方案）
+# env-patch — 通用浏览器环境补丁框架
 
 手工构建"看起来和真浏览器一样"的 Node.js 全局环境，不依赖 JSDOM。
 
-## 核心原理
+## 目录
 
 ```
-Object.create(ParentProto)  →  正确原型链
-Symbol.toStringTag          →  Object.prototype.toString.call() 返回正确值
-sn() / mf() / mc()          →  Function.prototype.toString() 返回 [native code]
-Object.defineProperty       →  getter 属性（navigator、screen 等）
-_setGlobal()                →  绕过 Node.js 21+ getter 保护
+.claude/env-patch/
+├── env_patch.js           # 通用框架（不要改）
+├── env_site_template.js   # 新站点从这里复制改名
+└── README.md
 ```
 
-## 快速开始
+## 每个站点的标准用法
+
+```
+你的站点/
+├── env_site.js            # 站点环境配置（从模板复制，只写差异）
+├── sign.js                # 签名/业务逻辑
+└── ...
+```
+
+`env_site.js` 只有 30-60 行，写两件事：
 
 ```js
-const { setupEnv } = require('../.claude/env-patch/env_patch.js');
+// 1. 配置
+setupEnv({ url: "...", userAgent: "...", ... });
 
-setupEnv({
-  url: 'https://target-site.com/',
-  userAgent: 'Mozilla/5.0 ... Chrome/148 ...',
-});
+// 2. 覆盖（本站点特有的属性值/方法）
+global.xxx = ...;
+```
 
-// 现在 global.window / document / navigator 等全部就绪
-// 直接 eval 你的目标 JS 即可
+### 三步接入
+
+1. 复制 `.claude/env-patch/env_site_template.js` → `你的站点/env_site.js`
+2. 修改 `url` / `userAgent` / `windowToGlobal` 等参数
+3. 在代码中 `require("./env_site")` 即可
+
+### 需要调试时
+
+如果站点 JS 报错或签名结果不对，在 `env_site.js` 尾部追加覆盖即可，**不要改 `env_patch.js`**：
+
+```js
+// 覆盖某个属性
+navigator.hardwareConcurrency = 8;
+
+// 补 document.cookie
+Object.defineProperty(document.constructor.prototype, "cookie", { ... });
+
+// 如果 VMP 要求 window === global（默认 false）
+// 在 setupEnv 参数中设 windowToGlobal: true
 ```
 
 ## 配置项
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `url` | string | `'https://www.example.com/'` | 页面 URL |
-| `userAgent` | string | Chrome 148 UA | UA 字符串 |
-| `platform` | string | `'Win32'` | navigator.platform |
-| `screenWidth/Height` | number | 1920/1080 | 屏幕尺寸 |
-| `canvas` | boolean | true | Canvas 2D stub |
-| `webgl` | boolean | false | WebGL stub |
-| `plugins` | boolean | true | plugins/mimeTypes |
-| `storage` | boolean | true | localStorage/sessionStorage |
-| `extraConstructors` | boolean | true | 200+ 浏览器构造函数 |
-| `crypto` | boolean | true | Node.js crypto → Web Crypto |
-| `windowToGlobal` | boolean | true | window === global |
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `url` | `"https://www.example.com/"` | 页面 URL |
+| `userAgent` | Chrome 148 UA | UA 字符串 |
+| `platform` | `"Win32"` | navigator.platform |
+| `windowToGlobal` | `false` | window === global ?（设 true 时字节码 VM 可能静默失败） |
+| `canvas` | `true` | Canvas 2D stub |
+| `webgl` | `false` | WebGL stub |
+| `plugins` | `true` | plugins/mimeTypes |
+| `storage` | `true` | localStorage/sessionStorage |
+| `extraConstructors` | `true` | 200+ 浏览器构造函数 |
+| `crypto` | `true` | Node.js crypto → Web Crypto |
+| `screenWidth/Height` | 1920/1080 | 屏幕尺寸 |
 
-## 关键功能
+## 技术原理
 
-- **Anchor URL 解析**：`document.createElement('a')` 支持 `href` setter 触发 URL 解析
-- **HTMLCollection 索引**：`getElementsByTagName('head')[0]` 返回正确元素
-- **Node.js getter 覆盖**：自动处理 `navigator`/`crypto`/`performance` 的只读 getter
-
-## 文件
-
-```
-.claude/env-patch/
-├── env_patch.js   # 主模块
-└── README.md      # 本文件
-```
+| 组件 | 实现 |
+|------|------|
+| 原型链 | `Object.create(ParentProto)` |
+| toString 保护 | `sn()` Map → `[native code]` |
+| 类型标签 | `Symbol.toStringTag` |
+| 属性定义 | `Object.defineProperty` getter |
+| Node.js getter 绕过 | `_setGlobal()` 统一用 defineProperty（Node.js ≥21 的 navigator/crypto/performance 是只读 getter） |
+| Anchor URL 解析 | `document.createElement("a")` + `href` setter |
+| HTMLCollection 索引 | Proxy 支持 `[0]` |

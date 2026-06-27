@@ -25,6 +25,7 @@
 - [WAF 浏览器引擎检测](waf-browser-engine.md) — **新**：阿里云 WAF 对 Firefox/Gecko 全线拦截，Chromium/Blink 天然通过
 - [WAF 风控升级机制](waf-rate-limiting.md) — **新**：三级升级（JS 挑战→滑块→405 封杀）+ IP 冷却恢复
 - [DrissionPage 踩坑汇总](drissionpage-practice.md) — **新**：API 陷阱、进程管理、headless 配置
+- [env-patch 使用规范](env-patch-usage.md) — **核心框架**：env_patch.js 是通用底座不可改，每个站点写 env_site.js 层叠差异
 - [最终方案禁用自动化工具](no-automation-in-final-solution.md) — **核心原则**：调试期可用 MCP/浏览器，最终交付代码只能用纯算或补环境
 - [默认使用 cloakbrowser](default-cloakbrowser.md) — 自动化浏览器默认 `from cloakbrowser import launch`
 - [Camoufox 版本兼容问题](camoufox-version-issue.md) — `cloakbrowser`→`camoufox` 改名导致 ModuleNotFoundError
