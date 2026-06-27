@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<div id="out"></div>
+<script>
+// ===== Deep Proxy — wraps ALL browser globals to log property access =====
+var __accessLog = [];
+var __valueLog = {};  // property path → {value, type}
+var __callLog = [];   // function calls
+
+function _deepProxy(obj, path) {
+    if (!obj || typeof obj !== 'object' && typeof obj !== 'function') return obj;
+    if (obj.___proxied) return obj;
+
+    var handler = {
+        get: function(target, prop) {
+            var fullPath = path + '.' + String(prop);
+            if (typeof prop === 'string' && prop !== '___proxied' && prop !== 'constructor') {
+                __accessLog.push({path: fullPath, type: 'get', ts: Date.now()});
+                // Record value on first access
+                if (!(fullPath in __valueLog)) {
+                    try {
+                        var val = target[prop];
+                        __valueLog[fullPath] = {value: String(val).substring(0, 200), type: typeof val};
+                    } catch(e) {
+                        __valueLog[fullPath] = {value: 'ERROR: '+e.message, type: 'error'};
+                    }
+                }
+            }
+            var result = target[prop];
+            if (result && (typeof result === 'object' || typeof result === 'function') && !result.___proxied) {
+                return _deepProxy(result, fullPath);
+            }
+            return result;
+        },
+        apply: function(target, thisArg, args) {
+            __callLog.push({path: path, args: (args||[]).map(function(a){return String(a).substring(0,50)})});
+            return Reflect.apply(target, thisArg, args);
+        }
+    };
+    var proxy = new Proxy(obj, handler);
+    Object.defineProperty(proxy, '___proxied', {value: true});
+    return proxy;
+}
+
+// Proxy key globals
+window = _deepProxy(window, 'window');
+navigator = _deepProxy(navigator, 'navigator');
+screen = _deepProxy(screen, 'screen');
+document = _deepProxy(document, 'document');
+if (typeof performance !== 'undefined') performance = _deepProxy(performance, 'performance');
+
+// ===== Also wrap console to suppress noise =====
+var _origConsole = console;
+console = {
+    log: function(){}, error: function(){}, warn: function(){}, info: function(){}, debug: function(){}
+};
+
+// Get seed from URL
+var params = new URLSearchParams(location.search);
+var seed = params.get('seed') || 'scanEnv';
+var ts = parseInt(params.get('ts') || '1700000000000');
+
+// Load security JS
+var s = document.createElement('script');
+s.src = 'security-11f5a2fc.js';
+s.onload = function() {
+    // Wait for ABC
+    if (typeof ABC === 'undefined') {
+        document.getElementById('out').textContent = 'ABC not defined';
+        return;
+    }
+    var token = new ABC().z(seed, ts);
+    document.getElementById('out').innerHTML =
+        'TOKEN:' + token + '\n' +
+        'ACCESSES:' + __accessLog.length + '\n' +
+        'VALUES:' + Object.keys(__valueLog).length + '\n' +
+        'CALLS:' + __callLog.length;
+    window.__envData = {
+        accesses: __accessLog,
+        values: __valueLog,
+        calls: __callLog,
+        token: token
+    };
+    window.__done = true;
+};
+s.onerror = function() { document.getElementById('out').textContent = 'Load failed'; };
+document.body.appendChild(s);
+</script>
+</body></html>

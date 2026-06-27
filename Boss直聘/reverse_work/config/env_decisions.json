@@ -1,0 +1,1174 @@
+{
+  "decisions": [
+    {
+      "p": 21796,
+      "cer": "4_9_21",
+      "var": "L",
+      "choice": "other:4555",
+      "value": "unknown"
+    },
+    {
+      "p": 15468,
+      "cer": "12_3_15",
+      "var": "r",
+      "choice": "other:6514",
+      "value": "unknown"
+    },
+    {
+      "p": 16786,
+      "cer": "18_12_16",
+      "var": "N",
+      "choice": "other:6820",
+      "value": "unknown"
+    },
+    {
+      "p": 8273,
+      "cer": "17_2_8",
+      "var": "y",
+      "choice": "other:8263",
+      "value": "unknown"
+    },
+    {
+      "p": 2403,
+      "cer": "3_11_2",
+      "var": "W",
+      "choice": "other:4206",
+      "value": "unknown"
+    },
+    {
+      "p": 13320,
+      "cer": "8_0_13",
+      "var": "E",
+      "choice": "other:4421",
+      "value": "unknown"
+    },
+    {
+      "p": 4432,
+      "cer": "16_10_4",
+      "var": "N",
+      "choice": "other:12690",
+      "value": "unknown"
+    },
+    {
+      "p": 3494,
+      "cer": "6_13_3",
+      "var": "b",
+      "choice": "other:1220",
+      "value": "unknown"
+    },
+    {
+      "p": 3556,
+      "cer": "4_15_3",
+      "var": "U",
+      "choice": "other:9734",
+      "value": "unknown"
+    },
+    {
+      "p": 14665,
+      "cer": "9_10_14",
+      "var": "Q",
+      "choice": "other:21737",
+      "value": "unknown"
+    },
+    {
+      "p": 7571,
+      "cer": "19_12_7",
+      "var": "G",
+      "choice": "other:269",
+      "value": "unknown"
+    },
+    {
+      "p": 15755,
+      "cer": "11_12_15",
+      "var": "O",
+      "choice": "other:1576",
+      "value": "unknown"
+    },
+    {
+      "p": 12833,
+      "cer": "1_17_12",
+      "var": "H",
+      "choice": "other:7556",
+      "value": "unknown"
+    },
+    {
+      "p": 2286,
+      "cer": "14_7_2",
+      "var": "r",
+      "choice": "other:11891",
+      "value": "unknown"
+    },
+    {
+      "p": 18469,
+      "cer": "5_1_18",
+      "var": "V",
+      "choice": "other:3104",
+      "value": "unknown"
+    },
+    {
+      "p": 15652,
+      "cer": "4_9_15",
+      "var": "Ra",
+      "choice": "other:690",
+      "value": "unknown"
+    },
+    {
+      "p": 5284,
+      "cer": "4_5_5",
+      "var": "Kv",
+      "choice": "other:1042",
+      "value": "unknown"
+    },
+    {
+      "p": 6341,
+      "cer": "5_6_6",
+      "var": "ir",
+      "choice": "other:9425",
+      "value": "unknown"
+    },
+    {
+      "p": 6466,
+      "cer": "2_10_6",
+      "var": "Xr",
+      "choice": "other:11571",
+      "value": "unknown"
+    },
+    {
+      "p": 17035,
+      "cer": "11_20_16",
+      "var": "fg",
+      "choice": "other:3372",
+      "value": "unknown"
+    },
+    {
+      "p": 17808,
+      "cer": "16_12_17",
+      "var": "Eg",
+      "choice": "other:14816",
+      "value": "unknown"
+    },
+    {
+      "p": 22087,
+      "cer": "7_18_21",
+      "var": "cf",
+      "choice": "other:7209",
+      "value": "unknown"
+    },
+    {
+      "p": 19017,
+      "cer": "9_18_18",
+      "var": "dj",
+      "choice": "other:20902",
+      "value": "unknown"
+    },
+    {
+      "p": 10496,
+      "cer": "0_8_10",
+      "var": "Vj",
+      "choice": "other:6824",
+      "value": "unknown"
+    },
+    {
+      "p": 21679,
+      "cer": "15_5_21",
+      "var": "hg",
+      "choice": "other:11758",
+      "value": "unknown"
+    },
+    {
+      "p": 496,
+      "cer": "16_15_0",
+      "var": "kg",
+      "choice": "other:10483",
+      "value": "unknown"
+    },
+    {
+      "p": 9860,
+      "cer": "4_20_9",
+      "var": "SS",
+      "choice": "other:6217",
+      "value": "unknown"
+    },
+    {
+      "p": 4173,
+      "cer": "13_2_4",
+      "var": "NS",
+      "choice": "other:552",
+      "value": "unknown"
+    },
+    {
+      "p": 2313,
+      "cer": "9_8_2",
+      "var": "jS",
+      "choice": "other:19755",
+      "value": "unknown"
+    },
+    {
+      "p": 18736,
+      "cer": "16_9_18",
+      "var": "jS",
+      "choice": "other:12979",
+      "value": "unknown"
+    },
+    {
+      "p": 7345,
+      "cer": "17_5_7",
+      "var": "Xb",
+      "choice": "other:13483",
+      "value": "unknown"
+    },
+    {
+      "p": 10259,
+      "cer": "19_0_10",
+      "var": "zF",
+      "choice": "other:20491",
+      "value": "unknown"
+    },
+    {
+      "p": 20809,
+      "cer": "9_10_20",
+      "var": "gz",
+      "choice": "other:10720",
+      "value": "unknown"
+    },
+    {
+      "p": 20690,
+      "cer": "18_6_20",
+      "var": "bH",
+      "choice": "other:17554",
+      "value": "unknown"
+    },
+    {
+      "p": 13803,
+      "cer": "11_15_13",
+      "var": "zH",
+      "choice": "other:12430",
+      "value": "unknown"
+    },
+    {
+      "p": 2061,
+      "cer": "13_0_2",
+      "var": "J",
+      "choice": "other:13550",
+      "value": "unknown"
+    },
+    {
+      "p": 7846,
+      "cer": "6_21_7",
+      "var": "Ca",
+      "choice": "other:3567",
+      "value": "unknown"
+    },
+    {
+      "p": 5760,
+      "cer": "0_20_5",
+      "var": "It",
+      "choice": "other:14895",
+      "value": "unknown"
+    },
+    {
+      "p": 22028,
+      "cer": "12_16_21",
+      "var": "cr",
+      "choice": "other:9487",
+      "value": "unknown"
+    },
+    {
+      "p": 354,
+      "cer": "2_11_0",
+      "var": "Vr",
+      "choice": "other:14658",
+      "value": "unknown"
+    },
+    {
+      "p": 7817,
+      "cer": "9_20_7",
+      "var": "yn",
+      "choice": "other:1504",
+      "value": "unknown"
+    },
+    {
+      "p": 1354,
+      "cer": "10_10_1",
+      "var": "pf",
+      "choice": "other:3469",
+      "value": "unknown"
+    },
+    {
+      "p": 1707,
+      "cer": "11_21_1",
+      "var": "Rf",
+      "choice": "other:20014",
+      "value": "unknown"
+    },
+    {
+      "p": 264,
+      "cer": "8_8_0",
+      "var": "Lf",
+      "choice": "other:13733",
+      "value": "unknown"
+    },
+    {
+      "p": 5698,
+      "cer": "2_18_5",
+      "var": "gS",
+      "choice": "other:15688",
+      "value": "unknown"
+    },
+    {
+      "p": 15783,
+      "cer": "7_13_15",
+      "var": "jS",
+      "choice": "other:3505",
+      "value": "unknown"
+    },
+    {
+      "p": 11748,
+      "cer": "4_15_11",
+      "var": "sb",
+      "choice": "other:52",
+      "value": "unknown"
+    },
+    {
+      "p": 17547,
+      "cer": "11_4_17",
+      "var": "hb",
+      "choice": "other:11535",
+      "value": "unknown"
+    },
+    {
+      "p": 16448,
+      "cer": "0_2_16",
+      "var": "aC",
+      "choice": "other:18854",
+      "value": "unknown"
+    },
+    {
+      "p": 11372,
+      "cer": "12_3_11",
+      "var": "vC",
+      "choice": "other:12291",
+      "value": "unknown"
+    },
+    {
+      "p": 20810,
+      "cer": "10_10_20",
+      "var": "CC",
+      "choice": "other:15882",
+      "value": "unknown"
+    },
+    {
+      "p": 682,
+      "cer": "10_21_0",
+      "var": "qC",
+      "choice": "other:1029",
+      "value": "unknown"
+    },
+    {
+      "p": 8779,
+      "cer": "11_18_8",
+      "var": "sE",
+      "choice": "other:20483",
+      "value": "unknown"
+    },
+    {
+      "p": 16389,
+      "cer": "5_0_16",
+      "var": "gT",
+      "choice": "other:15947",
+      "value": "unknown"
+    },
+    {
+      "p": 3592,
+      "cer": "8_16_3",
+      "var": "ET",
+      "choice": "other:455",
+      "value": "unknown"
+    },
+    {
+      "p": 237,
+      "cer": "13_7_0",
+      "var": "E",
+      "choice": "other:17836",
+      "value": "unknown"
+    },
+    {
+      "p": 8754,
+      "cer": "18_17_8",
+      "var": "yp",
+      "choice": "other:1233",
+      "value": "unknown"
+    },
+    {
+      "p": 3139,
+      "cer": "3_2_3",
+      "var": "na",
+      "choice": "other:11266",
+      "value": "unknown"
+    },
+    {
+      "p": 9839,
+      "cer": "15_19_9",
+      "var": "qv",
+      "choice": "other:4658",
+      "value": "unknown"
+    },
+    {
+      "p": 2337,
+      "cer": "1_9_2",
+      "var": "Ir",
+      "choice": "other:14634",
+      "value": "unknown"
+    },
+    {
+      "p": 12931,
+      "cer": "3_20_12",
+      "var": "rg",
+      "choice": "other:16465",
+      "value": "unknown"
+    },
+    {
+      "p": 21520,
+      "cer": "16_0_21",
+      "var": "Tg",
+      "choice": "other:6275",
+      "value": "unknown"
+    },
+    {
+      "p": 5574,
+      "cer": "6_14_5",
+      "var": "Wg",
+      "choice": "other:14914",
+      "value": "unknown"
+    },
+    {
+      "p": 5200,
+      "cer": "16_2_5",
+      "var": "Zg",
+      "choice": "other:556",
+      "value": "unknown"
+    },
+    {
+      "p": 11404,
+      "cer": "12_4_11",
+      "var": "cf",
+      "choice": "other:3439",
+      "value": "unknown"
+    },
+    {
+      "p": 5472,
+      "cer": "0_11_5",
+      "var": "df",
+      "choice": "other:16499",
+      "value": "unknown"
+    },
+    {
+      "p": 7251,
+      "cer": "19_2_7",
+      "var": "Ef",
+      "choice": "other:7186",
+      "value": "unknown"
+    },
+    {
+      "p": 17741,
+      "cer": "13_10_17",
+      "var": "Gf",
+      "choice": "other:17890",
+      "value": "unknown"
+    },
+    {
+      "p": 1480,
+      "cer": "8_14_1",
+      "var": "Cv",
+      "choice": "other:20529",
+      "value": "unknown"
+    },
+    {
+      "p": 5451,
+      "cer": "11_10_5",
+      "var": "tr",
+      "choice": "other:18735",
+      "value": "unknown"
+    },
+    {
+      "p": 21505,
+      "cer": "1_0_21",
+      "var": "hr",
+      "choice": "other:2464",
+      "value": "unknown"
+    },
+    {
+      "p": 20659,
+      "cer": "19_5_20",
+      "var": "yS",
+      "choice": "other:5196",
+      "value": "unknown"
+    },
+    {
+      "p": 14,
+      "cer": "14_0_0",
+      "var": "ta",
+      "choice": "other:12427",
+      "value": "unknown"
+    },
+    {
+      "p": 3271,
+      "cer": "7_6_3",
+      "var": "T",
+      "choice": "other:12496",
+      "value": "unknown"
+    },
+    {
+      "p": 10831,
+      "cer": "15_18_10",
+      "var": "Z",
+      "choice": "other:9634",
+      "value": "unknown"
+    },
+    {
+      "p": 10887,
+      "cer": "7_20_10",
+      "var": "Xv",
+      "choice": "other:6323",
+      "value": "unknown"
+    },
+    {
+      "p": 14410,
+      "cer": "10_2_14",
+      "var": "M",
+      "choice": "other:19650",
+      "value": "unknown"
+    },
+    {
+      "p": 2187,
+      "cer": "11_4_2",
+      "var": "i",
+      "choice": "other:16706",
+      "value": "unknown"
+    },
+    {
+      "p": 1546,
+      "cer": "10_16_1",
+      "var": "U",
+      "choice": "other:7309",
+      "value": "unknown"
+    },
+    {
+      "p": 2479,
+      "cer": "15_13_2",
+      "var": "C",
+      "choice": "other:4513",
+      "value": "unknown"
+    },
+    {
+      "p": 9423,
+      "cer": "15_6_9",
+      "var": "Z",
+      "choice": "other:5389",
+      "value": "unknown"
+    },
+    {
+      "p": 21125,
+      "cer": "5_20_20",
+      "var": "qr",
+      "choice": "other:13833",
+      "value": "unknown"
+    },
+    {
+      "p": 15885,
+      "cer": "13_16_15",
+      "var": "Fg",
+      "choice": "other:16715",
+      "value": "unknown"
+    },
+    {
+      "p": 17545,
+      "cer": "9_4_17",
+      "var": "wf",
+      "choice": "other:13741",
+      "value": "unknown"
+    },
+    {
+      "p": 6208,
+      "cer": "0_2_6",
+      "var": "qf",
+      "choice": "other:11426",
+      "value": "unknown"
+    },
+    {
+      "p": 19815,
+      "cer": "7_11_19",
+      "var": "TS",
+      "choice": "other:7535",
+      "value": "unknown"
+    },
+    {
+      "p": 14961,
+      "cer": "17_19_14",
+      "var": "NS",
+      "choice": "other:4335",
+      "value": "unknown"
+    },
+    {
+      "p": 4457,
+      "cer": "9_11_4",
+      "var": "qS",
+      "choice": "other:5253",
+      "value": "unknown"
+    },
+    {
+      "p": 6788,
+      "cer": "4_20_6",
+      "var": "V",
+      "choice": "other:4232",
+      "value": "unknown"
+    },
+    {
+      "p": 1677,
+      "cer": "13_20_1",
+      "var": "K",
+      "choice": "other:4456",
+      "value": "unknown"
+    },
+    {
+      "p": 1703,
+      "cer": "7_21_1",
+      "var": "ia",
+      "choice": "other:18595",
+      "value": "unknown"
+    },
+    {
+      "p": 4209,
+      "cer": "17_3_4",
+      "var": "Cv",
+      "choice": "other:1267",
+      "value": "unknown"
+    },
+    {
+      "p": 18024,
+      "cer": "8_19_17",
+      "var": "Sr",
+      "choice": "other:9827",
+      "value": "unknown"
+    },
+    {
+      "p": 19985,
+      "cer": "17_16_19",
+      "var": "lg",
+      "choice": "other:18534",
+      "value": "unknown"
+    },
+    {
+      "p": 22049,
+      "cer": "1_17_21",
+      "var": "sg",
+      "choice": "other:13490",
+      "value": "unknown"
+    },
+    {
+      "p": 15565,
+      "cer": "13_6_15",
+      "var": "af",
+      "choice": "other:12673",
+      "value": "unknown"
+    },
+    {
+      "p": 6274,
+      "cer": "2_4_6",
+      "var": "Mf",
+      "choice": "other:14465",
+      "value": "unknown"
+    },
+    {
+      "p": 13547,
+      "cer": "11_7_13",
+      "var": "Of",
+      "choice": "other:18001",
+      "value": "unknown"
+    },
+    {
+      "p": 4531,
+      "cer": "19_13_4",
+      "var": "LS",
+      "choice": "other:6409",
+      "value": "unknown"
+    },
+    {
+      "p": 14641,
+      "cer": "17_9_14",
+      "var": "JS",
+      "choice": "other:16935",
+      "value": "unknown"
+    },
+    {
+      "p": 8806,
+      "cer": "6_19_8",
+      "var": "sT",
+      "choice": "other:3566",
+      "value": "unknown"
+    },
+    {
+      "p": 20485,
+      "cer": "5_0_20",
+      "var": "A",
+      "choice": "other:15695",
+      "value": "unknown"
+    },
+    {
+      "p": 21736,
+      "cer": "8_7_21",
+      "var": "O",
+      "choice": "other:17953",
+      "value": "unknown"
+    },
+    {
+      "p": 17516,
+      "cer": "12_3_17",
+      "var": "va",
+      "choice": "other:13993",
+      "value": "unknown"
+    },
+    {
+      "p": 9898,
+      "cer": "10_21_9",
+      "var": "yr",
+      "choice": "other:16011",
+      "value": "unknown"
+    },
+    {
+      "p": 4498,
+      "cer": "18_12_4",
+      "var": "ir",
+      "choice": "other:19053",
+      "value": "unknown"
+    },
+    {
+      "p": 6610,
+      "cer": "18_14_6",
+      "var": "U",
+      "choice": "other:21032",
+      "value": "unknown"
+    },
+    {
+      "p": 14720,
+      "cer": "0_12_14",
+      "var": "K",
+      "choice": "other:15753",
+      "value": "unknown"
+    },
+    {
+      "p": 1283,
+      "cer": "3_8_1",
+      "var": "ap",
+      "choice": "other:6728",
+      "value": "unknown"
+    },
+    {
+      "p": 7532,
+      "cer": "12_11_7",
+      "var": "va",
+      "choice": "other:12883",
+      "value": "unknown"
+    },
+    {
+      "p": 9641,
+      "cer": "9_13_9",
+      "var": "ia",
+      "choice": "other:11378",
+      "value": "unknown"
+    },
+    {
+      "p": 13955,
+      "cer": "3_20_13",
+      "var": "jt",
+      "choice": "other:3080",
+      "value": "unknown"
+    },
+    {
+      "p": 7346,
+      "cer": "18_5_7",
+      "var": "Sr",
+      "choice": "other:11265",
+      "value": "unknown"
+    },
+    {
+      "p": 20877,
+      "cer": "13_12_20",
+      "var": "O",
+      "choice": "other:8881",
+      "value": "unknown"
+    },
+    {
+      "p": 8367,
+      "cer": "15_5_8",
+      "var": "ra",
+      "choice": "other:5794",
+      "value": "unknown"
+    },
+    {
+      "p": 5665,
+      "cer": "1_17_5",
+      "var": "M",
+      "choice": "other:6631",
+      "value": "unknown"
+    },
+    {
+      "p": 5445,
+      "cer": "5_10_5",
+      "var": "el",
+      "choice": "other:1154",
+      "value": "unknown"
+    },
+    {
+      "p": 19858,
+      "cer": "18_12_19",
+      "var": "Ra",
+      "choice": "other:6669",
+      "value": "unknown"
+    },
+    {
+      "p": 15982,
+      "cer": "14_19_15",
+      "var": "YC",
+      "choice": "other:5459",
+      "value": "unknown"
+    },
+    {
+      "p": 18956,
+      "cer": "12_16_18",
+      "var": "sE",
+      "choice": "other:20577",
+      "value": "unknown"
+    },
+    {
+      "p": 17475,
+      "cer": "3_2_17",
+      "var": "gT",
+      "choice": "other:20587",
+      "value": "unknown"
+    },
+    {
+      "p": 4614,
+      "cer": "6_16_4",
+      "var": "jT",
+      "choice": "other:5158",
+      "value": "unknown"
+    },
+    {
+      "p": 19662,
+      "cer": "14_6_19",
+      "var": "yA",
+      "choice": "other:17900",
+      "value": "unknown"
+    },
+    {
+      "p": 15466,
+      "cer": "10_3_15",
+      "var": "DA",
+      "choice": "other:6545",
+      "value": "unknown"
+    },
+    {
+      "p": 19500,
+      "cer": "12_1_19",
+      "var": "aM",
+      "choice": "other:21986",
+      "value": "unknown"
+    },
+    {
+      "p": 2631,
+      "cer": "7_18_2",
+      "var": "rM",
+      "choice": "other:11776",
+      "value": "unknown"
+    },
+    {
+      "p": 13989,
+      "cer": "5_21_13",
+      "var": "bM",
+      "choice": "other:4587",
+      "value": "unknown"
+    },
+    {
+      "p": 14375,
+      "cer": "7_1_14",
+      "var": "LM",
+      "choice": "other:263",
+      "value": "unknown"
+    },
+    {
+      "p": 19626,
+      "cer": "10_5_19",
+      "var": "JM",
+      "choice": "other:1230",
+      "value": "unknown"
+    },
+    {
+      "p": 8322,
+      "cer": "2_4_8",
+      "var": "iD",
+      "choice": "other:4199",
+      "value": "unknown"
+    },
+    {
+      "p": 4229,
+      "cer": "5_4_4",
+      "var": "zD",
+      "choice": "other:2129",
+      "value": "unknown"
+    },
+    {
+      "p": 20740,
+      "cer": "4_8_20",
+      "var": "oL",
+      "choice": "other:21800",
+      "value": "unknown"
+    },
+    {
+      "p": 10408,
+      "cer": "8_5_10",
+      "var": "PL",
+      "choice": "other:4336",
+      "value": "unknown"
+    },
+    {
+      "p": 9645,
+      "cer": "13_13_9",
+      "var": "qL",
+      "choice": "other:17668",
+      "value": "unknown"
+    },
+    {
+      "p": 17704,
+      "cer": "8_9_17",
+      "var": "fG",
+      "choice": "other:17449",
+      "value": "unknown"
+    },
+    {
+      "p": 9742,
+      "cer": "14_16_9",
+      "var": "n",
+      "choice": "other:10405",
+      "value": "unknown"
+    },
+    {
+      "p": 5327,
+      "cer": "15_6_5",
+      "var": "g",
+      "choice": "other:7621",
+      "value": "unknown"
+    },
+    {
+      "p": 74,
+      "cer": "10_2_0",
+      "var": "C",
+      "choice": "other:6193",
+      "value": "unknown"
+    },
+    {
+      "p": 19556,
+      "cer": "4_3_19",
+      "var": "L",
+      "choice": "other:14983",
+      "value": "unknown"
+    },
+    {
+      "p": 16966,
+      "cer": "6_18_16",
+      "var": "lp",
+      "choice": "other:5298",
+      "value": "unknown"
+    },
+    {
+      "p": 19972,
+      "cer": "4_16_19",
+      "var": "ia",
+      "choice": "other:1605",
+      "value": "unknown"
+    },
+    {
+      "p": 9672,
+      "cer": "8_14_9",
+      "var": "Tv",
+      "choice": "other:10926",
+      "value": "unknown"
+    },
+    {
+      "p": 7761,
+      "cer": "17_18_7",
+      "var": "ig",
+      "choice": "other:3501",
+      "value": "unknown"
+    },
+    {
+      "p": 14822,
+      "cer": "6_15_14",
+      "var": "Cg",
+      "choice": "other:6432",
+      "value": "unknown"
+    },
+    {
+      "p": 11621,
+      "cer": "5_11_11",
+      "var": "Dg",
+      "choice": "other:6691",
+      "value": "unknown"
+    },
+    {
+      "p": 2369,
+      "cer": "1_10_2",
+      "var": "n",
+      "choice": "other:11688",
+      "value": "unknown"
+    },
+    {
+      "p": 21555,
+      "cer": "19_1_21",
+      "var": "b",
+      "choice": "other:15854",
+      "value": "unknown"
+    },
+    {
+      "p": 5425,
+      "cer": "17_9_5",
+      "var": "V",
+      "choice": "other:13424",
+      "value": "unknown"
+    },
+    {
+      "p": 2471,
+      "cer": "7_13_2",
+      "var": "ra",
+      "choice": "other:7437",
+      "value": "unknown"
+    },
+    {
+      "p": 9472,
+      "cer": "0_8_9",
+      "var": "b",
+      "choice": "other:12359",
+      "value": "unknown"
+    },
+    {
+      "p": 3667,
+      "cer": "19_18_3",
+      "var": "T",
+      "choice": "other:1059",
+      "value": "unknown"
+    },
+    {
+      "p": 3314,
+      "cer": "18_7_3",
+      "var": "pl",
+      "choice": "other:1324",
+      "value": "unknown"
+    },
+    {
+      "p": 11505,
+      "cer": "17_7_11",
+      "var": "oa",
+      "choice": "other:7441",
+      "value": "unknown"
+    },
+    {
+      "p": 13928,
+      "cer": "8_19_13",
+      "var": "x",
+      "choice": "other:6451",
+      "value": "unknown"
+    },
+    {
+      "p": 4132,
+      "cer": "4_1_4",
+      "var": "I",
+      "choice": "other:10498",
+      "value": "unknown"
+    },
+    {
+      "p": 22124,
+      "cer": "12_19_21",
+      "var": "i",
+      "choice": "other:15723",
+      "value": "unknown"
+    },
+    {
+      "p": 10501,
+      "cer": "5_8_10",
+      "var": "r",
+      "choice": "other:391",
+      "value": "unknown"
+    },
+    {
+      "p": 2641,
+      "cer": "17_18_2",
+      "var": "T",
+      "choice": "other:11558",
+      "value": "unknown"
+    },
+    {
+      "p": 13700,
+      "cer": "4_12_13",
+      "var": "P",
+      "choice": "other:14350",
+      "value": "unknown"
+    },
+    {
+      "p": 17698,
+      "cer": "2_9_17",
+      "var": "j",
+      "choice": "other:19527",
+      "value": "unknown"
+    },
+    {
+      "p": 16687,
+      "cer": "15_9_16",
+      "var": "K",
+      "choice": "other:19693",
+      "value": "unknown"
+    },
+    {
+      "p": 15022,
+      "cer": "14_21_14",
+      "var": "b",
+      "choice": "other:5730",
+      "value": "unknown"
+    },
+    {
+      "p": 4226,
+      "cer": "2_4_4",
+      "var": "R",
+      "choice": "other:20867",
+      "value": "unknown"
+    },
+    {
+      "p": 20867,
+      "cer": "3_12_20",
+      "var": "Y",
+      "choice": "other:19505",
+      "value": "unknown"
+    },
+    {
+      "p": 18093,
+      "cer": "13_21_17",
+      "var": "bv",
+      "choice": "other:13825",
+      "value": "unknown"
+    },
+    {
+      "p": 17413,
+      "cer": "5_0_17",
+      "var": "hr",
+      "choice": "other:7525",
+      "value": "unknown"
+    },
+    {
+      "p": 8210,
+      "cer": "18_0_8",
+      "var": "Cr",
+      "choice": "other:19090",
+      "value": "unknown"
+    }
+  ],
+  "sources": {}
+}

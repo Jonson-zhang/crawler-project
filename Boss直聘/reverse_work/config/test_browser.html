@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<div id="status">Loading...</div>
+<script>
+window.__vmpTrace = [];
+window.__startTime = Date.now();
+
+// Override console.log to capture VMP traces
+console._origLog = console.log;
+console.log = function(msg) {
+    if (typeof msg === 'string' && msg.startsWith('VMP:')) {
+        window.__vmpTrace.push(msg);
+    }
+};
+
+// Load the security JS
+var seed = new URLSearchParams(location.search).get('seed') || 'testXYZ';
+var ts = parseInt(new URLSearchParams(location.search).get('ts') || '1700000000000');
+
+var s = document.createElement('script');
+s.src = 'security-11f5a2fc.js';
+s.onload = function() {
+    if (typeof ABC !== 'undefined') {
+        var t0 = Date.now();
+        var token = new ABC().z(seed, ts);
+        var t1 = Date.now();
+
+        document.getElementById('status').innerHTML =
+            'TOKEN_LEN:' + token.length + '\n' +
+            'TOKEN:' + token + '\n' +
+            'SEED:' + seed + '\n' +
+            'TS:' + ts + '\n' +
+            'TIME_MS:' + (t1 - t0);
+
+        window.__done = true;
+        window.__token = token;
+    } else {
+        document.getElementById('status').innerHTML = 'ABC not defined!';
+    }
+};
+s.onerror = function(e) {
+    document.getElementById('status').innerHTML = 'Failed to load security JS';
+};
+document.body.appendChild(s);
+</script>
+<div id="tracedata" style="display:none"></div>
+</body></html>

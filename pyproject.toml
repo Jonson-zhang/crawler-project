@@ -10,6 +10,7 @@ dependencies = [
     "curl-cffi>=0.15.0",
     "drissionpage>=4.1.0",
     "fastapi>=0.138.1",
+    "iv8>=0.1.3",
     "json5>=0.15.0",
     "playwright>=1.60.0",
     "pycryptodome>=3.23.0",

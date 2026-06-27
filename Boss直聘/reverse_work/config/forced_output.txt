@@ -1,0 +1,6 @@
+Preamble inserted at position: 14996
+Replaced 9643 p-assignments with __next()
+Trace length: 5629
+Output: 643499 bytes
+
+Testing with minimal env...

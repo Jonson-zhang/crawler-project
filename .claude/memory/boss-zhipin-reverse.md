@@ -100,9 +100,124 @@ for (; p !== void 0; ) { WSl=..., jSl=..., FSl=...; switch(WSl) { ... } }
 
 ## 明天计划（2026-06-28）
 
-**为 `11f5a2fc.js`（2026版）运行 7 步 AST 管线**：
-1. 提取新版 JS 的字符串表 → `2module_result_new.js`
-2. `0decrypt.js → step1-7` → 生成 `20210525_new.js`
-3. 纯算法验证：`ABC.z(seed, ts)` → 与浏览器对比
+~~**为 `11f5a2fc.js`（2026版）运行 7 步 AST 管线**~~ → **已完成 VMP 追踪路线深入分析**
 
-**备选**：如果 AST 管线遇到新 VMP 结构问题，用 MCP 浏览器 trace 获取新版 VMP 的状态表（9912 states），再走之前的老路。
+## 2026-06-27 最终状态
+
+### 核心结论
+
+**VMP replay 方案有根本性限制**：条件分支（`p = X ? A : B`）的选择依赖运行时变量，不同的环境产生不同的分支选择，导致 trace 索引错位。单纯替换 `p=N` 不足以保证路径一致性。
+
+### 可行方案优先级
+
+| 方案 | Token长度 | API结果 | 可行性 |
+|------|----------|---------|--------|
+| `sign_boss_minimal.js` | 305 | code=38 | ✅ 可用但被拒 |
+| `sign_boss_v17.js` | 453 | code=38 | ✅ 可用但被拒 |
+| 浏览器 replay | 理论匹配 | 未验证 | ⚠️ 条件分支不同步 |
+| **社区 AST 管线** | 纯算法 | code=0 | 🎯 **正确方向** |
+
+### 为什么社区方案可行
+
+1. 先用 AST 解密/脱壳 → 去除所有混淆（字符串表、dispatcher、控制流平坦化）
+2. 控制流平坦化**先于**执行——在 AST 层面就消除了所有分支
+3. 最终输出是纯算法函数，输入 seed+ts，输出 token，**完全不访问浏览器环境**
+
+### 我们与社区的差距
+
+- 我们：跳过 AST 步骤，直接尝试运行时 VMP 路径修复 → 失败因条件分支不同步
+- 社区：先 AST 处理消除所有分支，再运行 → 成功
+
+### 关键资产（用于 AST 管线）
+
+| 文件 | 用途 |
+|------|------|
+| `config/traces/browser_vmp_trace.txt` | 5629 步浏览器路径，用于 CFG 平坦化 |
+| `config/vmp_complete_map.json` | 9705 个 CER→ops 映射 |
+| `config/pure_operations.json` | 4616 步去重操作序列 |
+| `config/browser_path.json` | p→next_p 映射表 |
+| `config/0decrypt_ref.js` | 社区 7 步管线参考（旧版） |
+
+## 当前状态（2026-06-27 最终）— 双路线方案
+
+### 🎯 路线 A：浏览器桥接（推荐，code=0 ✅）
+
+**原理**：Camoufox 浏览器中直接调用 Boss API，浏览器自带完整环境指纹
+
+**已验证**：
+- 在 Camoufox 中通过 `evaluate_js` 调用 `/wapi/zpgeek/search/joblist.json`
+- code=0，返回 15 条职位（python/北京）
+- 支持任意关键词（python、java 均通过）
+
+**实现**：
+1. 启动 Camoufox → 访问 `zhipin.com/web/geek/jobs`
+2. 等待页面加载（安全检查自动完成）
+3. `evaluate_js` 调用 API → 直接获取数据
+
+**限制**：需要浏览器实例运行，速度慢于纯算
+
+### ⚠️ 路线 B：Node.js 补环境（备选，code=38）
+
+**原理**：在 Node.js 中模拟浏览器环境，运行原始 `security-11f5a2fc.js`
+
+**现状**：
+- `sign_boss_v17.js` 可生成 token（453 chars，前缀 `8ed5gw` 匹配）
+- API 返回 code=38（环境异常）— token 有效但指纹不完全匹配
+- 根因：Node.js 的 `typeof`/原型链/jitless 与真实浏览器有 C++ 层差异
+
+**收益**：无需浏览器依赖，速度极快。通过进一步精确匹配指纹可做到 code=0
+
+### 路线 C：纯算（远期，0 依赖）
+
+需要完整的 AST 管线（解密→消除分发器→控制流平坦化），预估 2-3 天工作量。
+
+## 2026-06-27 进度更新（深夜）
+
+### 关键发现
+
+1. **社区 AST 管线不适配 2026 版**：`11f5a2fc.js` 没有 base64 字符串表，直接用数字编码，7 步管线无法直接应用
+
+2. **VMP 结构确认**：2026 版与旧版结构相同，变量名变化：
+   - 旧：WSl=p&31, jSl=p>>5&31, FSl=p>>10&31
+   - 新：Cbl=p&31, Ebl=p>>5&31, Rbl=p>>10&31
+
+3. **成功提取状态表**：1254 CER 状态 + 1141 hp 级状态（含 53 个环境检查点）
+   - 资产：`config/vmp_full_map_2026.json`
+
+4. **浏览器端成功执行 traced JS**：
+   - 在 Camoufox 浏览器中通过本地 HTTP 服务器加载 traced JS
+   - Token: 373 chars（在 127.0.0.1 环境下）
+   - VMP 追踪：107,830 步，5,629 唯一状态
+
+5. **Node.js vs 浏览器路径对比**：
+   - 前 2086 步路径完全一致
+   - **第 2087 步首次分叉**：state 21679 (CER 15,5,21)
+     - 浏览器 → p=11758 (Eg=_[Cg]: 属性查找)
+     - Node.js → p=21126 (vS=g.call(void 0): 函数调用)
+   - 浏览器独有 729 个状态，Node.js 独有 653 个状态
+
+6. **安全问题**：
+   - security JS 在 Boss直聘生产环境中通过 **iframe** 加载
+   - 安全页面创建 `zhipinFrame` iframe，在其中加载 JS
+   - ABC 通过 `iframe.contentWindow.ABC` 访问
+   - 调用：`new ABC().z(seed, ts + 60*(480+timezoneOffset)*1000)`
+
+### 资产更新
+
+| 文件 | 说明 |
+|------|------|
+| `config/extract_map_2026.js` | VMP 状态提取（2026 版） |
+| `config/extract_full_map_2026.js` | 增强版：含 hp 分发 |
+| `config/vmp_full_map_2026.json` | 完整状态表（283KB） |
+| `config/traces/browser_vmp_trace.txt` | 浏览器追踪（5629 唯一状态） |
+| `config/traces/nodejs_vmp_trace.txt` | Node.js 追踪（4900 唯一状态） |
+| `config/vmp_trace_2026.js` | 注入追踪点的脚本 |
+| `config/security-traced-2026.js` | 含追踪的安全 JS（790KB） |
+| `config/trace_runner.js` | Node.js 追踪执行器 |
+| `config/test_browser.html` | 浏览器测试页面 |
+
+### 下一步
+
+修复首个分歧点 → 逐步消除环境差异 → 生成纯算法
+
+定位 state 21679 的具体 hp 检查，修复 Node.js 环境使路径匹配浏览器。

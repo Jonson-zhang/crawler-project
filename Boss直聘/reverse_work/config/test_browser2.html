@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<div id="out"></div>
+<script>
+// Simulate being on zhipin.com
+Object.defineProperty(document, 'domain', {value:'www.zhipin.com', configurable:true});
+Object.defineProperty(document, 'cookie', {value:'__a=30027911.1782538540..1782538540.2.1.2.2;__c=1782538540;__g=-', configurable:true, writable:true});
+
+// Override location
+delete window.location;
+window.location = {
+    hostname: 'www.zhipin.com',
+    host: 'www.zhipin.com',
+    href: 'https://www.zhipin.com/web/common/security-check.html?seed=apitest&ts=1700000000000&name=11f5a2fc&callbackUrl=%2Fweb%2Fgeek%2Fjobs&srcReferer=',
+    protocol: 'https:',
+    origin: 'https://www.zhipin.com',
+    pathname: '/web/common/security-check.html',
+    search: '?seed=apitest&ts=1700000000000&name=11f5a2fc',
+    port: '',
+    hash: '',
+    ancestorOrigins: {},
+    assign: function(){}, replace: function(){}
+};
+
+var s = document.createElement('script');
+s.src = 'security-11f5a2fc.js';
+s.onload = function() {
+    if (typeof ABC !== 'undefined') {
+        var token = new ABC().z('apitest', 1700000000000);
+        document.getElementById('out').textContent = 'TOKEN:' + token + '\nLEN:' + token.length;
+    } else {
+        document.getElementById('out').textContent = 'ABC not defined';
+    }
+};
+s.onerror = function() {
+    document.getElementById('out').textContent = 'Script load failed';
+};
+document.body.appendChild(s);
+</script>
+</body></html>
