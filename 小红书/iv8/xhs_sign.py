@@ -196,7 +196,7 @@ Object.getOwnPropertyNames(window).forEach(function(n){try{
         h = str(self._ctx.eval(
             f"window.mnsv2({json.dumps(c)},{json.dumps(md5_c)},{json.dumps(md5_url)})"
         ))
-        x4 = "object" if body else ""
+        x4 = "object" if body is not None else ""
         payload = json.dumps(
             {"x0": "4.3.5", "x1": "xhs-pc-web", "x2": "Windows",
              "x3": h, "x4": x4},
