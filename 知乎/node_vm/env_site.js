@@ -34,6 +34,18 @@ setupEnv({
 global.crypto = _require("crypto").webcrypto;
 
 // ═══════════════════════════════════════════════════════════════
+// 知乎特有覆盖：canvas 元素需要返回 POJO
+// 原 env.js 的 createElement 对所有 tag 返回 {}。
+// env_patch 返回真正的 HTMLCanvasElement，其 toString() 会污染签名。
+// 只覆盖 canvas，其他 tag 保持 env_patch 原型链。
+// ═══════════════════════════════════════════════════════════════
+const origCreateElement = document.createElement;
+document.createElement = function (tag) {
+  if (tag === "canvas") return {};
+  return origCreateElement.call(document, tag);
+};
+
+// ═══════════════════════════════════════════════════════════════
 // 加载 webpack chunk
 // ═══════════════════════════════════════════════════════════════
 
