@@ -1,39 +1,78 @@
 # iv8 使用文档 — Boss直聘逆向
 
-## 一、什么是 iv8
+## 一、iv8 是什么、不是什么
+
+### 1.1 iv8 的定位：JS 运行时（补环境引擎）
 
 [iv8](https://github.com/HanZzzzz000/iv8) 是 Python 原生 C++ 扩展，
 嵌入 Chrome 同款 **V8 JavaScript 引擎**，并在 **C++ 层** 实现浏览器 API。
 
 ```
-┌─────────────────────────────────────┐
-│  Python 代码                        │
-│  ctx.eval("new ABC().z(seed, ts)") │
-├─────────────────────────────────────┤
-│  iv8 C++ Bridge                     │
-├─────────────────────────────────────┤
-│  V8 引擎 (Chrome 同款)              │
-│  ├── BOM API (navigator/screen/...) │  ← C++ 层实现
-│  ├── DOM API (document/Element/...) │  ← 原型链天然正确
-│  ├── Canvas/WebGL                   │
-│  ├── Crypto / Performance           │
-│  └── 事件循环 (setTimeout/Promise)   │
-└─────────────────────────────────────┘
+Python 代码                           iv8 的职责边界
+──────────                           ────────────────
+ctx.eval("new ABC().z(seed, ts)")    ✅ 创建 V8 Isolate
+                                     ✅ 加载 JS 源码并执行
+┌─────────────────────────────────┐  ✅ 提供 navigator/document/canvas 等浏览器 API
+│  iv8 C++ Bridge                 │  ✅ 管理事件循环 (setTimeout/Promise)
+├─────────────────────────────────┤  ✅ ctx.eval() 返回 JS 表达式结果
+│  V8 引擎 (Chrome 同款)           │
+│  ├── BOM API (navigator/screen) │  ❌ 发起 HTTPS 请求
+│  ├── DOM API (document/Element) │  ❌ TLS 握手 / 指纹伪装
+│  ├── Canvas/WebGL               │  ❌ Cookie Jar 管理
+│  ├── Crypto / Performance       │  ❌ DOM 渲染 / 用户交互
+│  └── 事件循环                   │  ❌ 接收 Set-Cookie / 处理 302 跳转
+└─────────────────────────────────┘
 ```
 
-**与 jsdom / Node.js 补环境的本质区别**：
+**iv8 本质上是"在 C++ 层补环境"**——它没有消灭补环境这个环节，而是把原来你手写 40 行 JS stub（`window={}`/`location={}`/…）的工作变成了 C++ 层自带。对比三种补环境方式：
 
-| | Node.js 补环境 | jsdom | iv8 |
+| | 手写 JS stub（Node.js vm） | jsdom | iv8 |
 |---|---|---|---|
-| API 实现层 | JS 层 (Object.defineProperty) | JS 层 | **C++ 层（V8 引擎内部）** |
+| **补环境代码量** | 40+ 行 JS | 1 行 `new JSDOM()` | 0 行 — C++ 内置 |
+| **API 实现层** | JS 层 (`Object.defineProperty`) | JS 层 | **C++ 层（V8 引擎内部）** |
 | `typeof navigator` | `"object"` ✅ | `"object"` ✅ | `"object"` ✅ |
 | `navigator.toString()` | 需手动伪装 | 可能暴露 | 天然 `[native code]` |
-| 原型链 `navigator.__proto__` | 需手动构造 | jsdom 构造 | 天然正确 |
+| **原型链** `navigator.__proto__` | 需手动构造 | jsdom 构造 | 天然正确 |
 | `{}` 的 hidden class | Node.js 的 | jsdom 的 | **Chrome 的** |
-| Canvas 指纹 | 需手动拼接 base64 | 需手动拼接 | 内置可配置 |
-| `Object.getOwnPropertyDescriptor` | 手动 | 部分缺失 | 天然正确 |
+| **属性描述符** `getOwnPropertyDescriptor` | 手动 | 部分缺失 | 天然正确 |
+| **Canvas 指纹** | 需手动拼接 base64 | 需手动拼接 | 内置可配置 |
+| **Proxy 陷阱** 检测 | 会被检测到 | 会被检测到 | 与真实浏览器一致 |
 
-iv8 因为 API 在 C++ 层实现，**VMP 的所有环境检测手段（typeof / toString / 原型链 / hidden class / 属性描述符）天然通过**，不需要写任何补环境代码。
+iv8 因为 API 在 C++ 层实现，**VMP 的所有环境检测手段（typeof / toString / 原型链 / hidden class / 属性描述符 / Proxy 陷阱）天然通过**。
+
+### 1.2 iv8 的能力边界
+
+iv8 是"阶段一之后"的工具。完整的逆向流程分为三个阶段，iv8 只负责最后一个：
+
+```
+阶段零：勘探采集                      阶段一/二：本地计算
+（需要网络层 + 渲染层）               （只需 JS 执行环境）
+─────────────────────                ────────────────────
+• 发起 HTTPS 请求（TLS 握手）         • 加载 JS 源码到 V8
+• 接收 Set-Cookie、管 Cookie Jar       • 执行加密/签名/Token 生成
+• 渲染页面、获取动态 chunk URL         • 返回结果给 Python
+• 提取 Canvas 指纹样本                 • 复用 V8 Isolate（一次创建，多次调用）
+• 用户交互（登录、过验证码）
+
+        ↓                                    ↓
+  用什么：requests / cloakbrowser          用什么：iv8 / Node.js vm
+  角色：采集原料                           角色：加工原料
+  产出：Cookie + JS 文件 + 指纹样本         产出：签名 / Token
+```
+
+**核心原则**：iv8 不能替代浏览器做勘探——它没有 HTTP 客户端、TLS 指纹伪装、Cookie Jar、DOM 渲染引擎。但当勘探完成后，iv8 是执行本地签名的最佳选择：纯 Python、无跨进程、初始化 3ms、后续调用 ~1ms。
+
+Boss直聘的 iv8 流程中，以下步骤在 iv8 **之外**：
+
+| 步骤 | 用什么 | 说明 |
+|------|--------|------|
+| GET API → 拿到 code=37 + seed | `requests`（Python HTTP 库）| iv8 不做网络请求 |
+| 下载 security JS | `requests` | URL 来自 API 返回的 `name` 字段 |
+| 获取 Canvas 指纹样本 | 浏览器 DevTools 一次性提取 | 取一次保存到 `_canvas_png.txt`，之后永久复用 |
+| 执行 `new ABC().z()` | iv8 | V8 中执行混淆 JS，生成 token |
+| 携带 token 重试 API | `requests` | iv8 只算 token，不调 API |
+
+每一个网络 I/O 步骤都用 `requests`，iv8 只在"把 JS 源码执行出 token"这一步介入。
 
 ---
 
@@ -240,6 +279,26 @@ with iv8.JSContext(time_mode="logical") as ctx:
 
 ## 四、Boss直聘完整示例
 
+### 4.0 工具分工一览
+
+整个流程中每个步骤的工具选择：
+
+```
+步骤 1  POST API          → requests     (HTTP 客户端)
+       ← code=37, seed                                   ───── 网络层
+步骤 3  GET security JS    → requests     (HTTP 客户端)         ───/
+
+
+步骤 4  new ABC().z()      → iv8          (V8 引擎)       ───── 计算层
+       ← token                                             ───/
+
+
+步骤 5  POST API + token   → requests     (HTTP 客户端)   ───── 网络层
+       ← code=0 ✅                                          ───/
+```
+
+iv8 只在步骤 4 介入——它不参与任何网络通信，只管把下载好的 JS 在类浏览器环境中执行出 token。
+
 ### 4.1 最简可用代码
 
 ```python
@@ -375,7 +434,12 @@ def search_jobs(city="101010100", query="python", page=1):
 
 ---
 
-## 五、Canvas 指纹获取
+## 五、Canvas 指纹获取（阶段零：一次性勘探）
+
+> Canvas 指纹是 VMP 最关键的检测点。Boss直聘的 `ABC.z()` 在执行过程中会读取 `canvas.toDataURL()` 并哈希，
+> 如果指纹值与预期不符 → code=38。
+>
+> **指纹只需提取一次**，保存到 `_canvas_png.txt` 后永久复用。以下三种方法选一即可。
 
 ### 方法 1：从 iv8 示例提取（最简单）
 
@@ -466,15 +530,39 @@ pip install ./iv8-0.1.3-cp314-cp314-macosx_14_0_arm64.whl
 
 8 线程并行可达到 ~4.7x 加速。
 
-### Q8: 和 Camoufox / Playwright 的区别
+### Q8: 和 Camoufox / Playwright / requests 的分工
 
-| | iv8 | Camoufox | Playwright |
+这些工具不是竞争关系，而是**接力关系**：
+
+| 职责 | 工具 | 说明 |
+|------|------|------|
+| **网络层**：HTTPS 请求、TLS 指纹、Cookie Jar | `requests` / `curl_cffi` | 纯 Python HTTP，不启动浏览器 |
+| **渲染层**：需要真实 DOM 渲染、用户交互 | cloakbrowser / Playwright / Camoufox | 只在必须时用（登录、canvas 取样） |
+| **计算层**：JS 加密/签名/Token 生成 | iv8 | 代替 Node.js 子进程，同进程调用 |
+
+三者是接力：
+
+```
+requests → API 通信（拿 seed、下载 JS）
+    ↓
+iv8 → JS 执行（算 token）
+    ↓
+requests → 带 token 重试 API（拿数据）
+```
+
+只有在极少数情况才需要启动浏览器（Canvas 指纹取样一次、登录一次），之后全部走 requests + iv8。
+
+| | iv8 | cloakbrowser (Chromium) | Camoufox (Firefox) |
 |---|---|---|---|
-| 启动速度 | ~3ms | ~2s | ~3s |
+| 启动速度 | ~3ms | ~3s | ~2s |
 | 内存占用 | ~15MB | ~500MB | ~500MB |
-| 需要浏览器 | ❌ | ✅ Firefox | ✅ Chromium |
-| 指纹稳定性 | 绝对固定 | 随机化 | 固定但有 headless 标记 |
-| 适用场景 | JS 签名/Token | 需要真实渲染 | 需要真实渲染 |
+| 能发 HTTP 请求吗 | ❌ | ✅ | ✅ |
+| 能执行 JS | ✅ 真实 V8 | ✅ 真实 V8 | ✅ 真实 SpiderMonkey |
+| 补环境 | C++ 层内置 | 不需要（真浏览器） | 不需要（真浏览器） |
+| 指纹稳定性 | 绝对固定 | 固定 | **随机化**（每次不同） |
+| 适用场景 | JS 签名/Token 计算 | 登录、Canvas 取样 | 需 Firefox 指纹的站点 |
+
+> Boss直聘的 VMP 要求 Canvas 指纹**每次稳定一致**（否则 token 无效），这就是为什么 Camoufox 不行、iv8 可以——Camoufox 的 Firefox 引擎会给 Canvas 加随机噪声，iv8 直接用固定 base64 值。
 
 ---
 

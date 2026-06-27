@@ -8,6 +8,7 @@
 
 依赖: pip install iv8 requests urllib3
 """
+
 import json
 import sys
 import time
@@ -48,9 +49,7 @@ def safe_print(*args, **kwargs):
     except UnicodeEncodeError:
         print(
             *(
-                str(a).encode("ascii", "replace").decode()
-                if isinstance(a, str)
-                else a
+                str(a).encode("ascii", "replace").decode() if isinstance(a, str) else a
                 for a in args
             ),
             **kwargs,
@@ -66,9 +65,7 @@ def cookies_load():
 
 
 def cookies_save(d):
-    COOKIE_FILE.write_text(
-        json.dumps(d, ensure_ascii=False, indent=2), "utf-8"
-    )
+    COOKIE_FILE.write_text(json.dumps(d, ensure_ascii=False, indent=2), "utf-8")
 
 
 def cookies_check(verbose=True):
@@ -123,7 +120,7 @@ def login_browser():
             wait_until="domcontentloaded",
             timeout=30000,
         )
-        time.sleep(3)
+        time.sleep(1)
         safe_print("\n  [*] 请在浏览器中完成登录, 然后回到这里按 Enter")
         input(">>> 按 Enter 继续...")
         cookies = {c["name"]: c["value"] for c in p.context.cookies()}
@@ -191,9 +188,7 @@ class ZhihuAPI:
 
     def feed_next(self, next_url: str):
         path = (
-            next_url.split("zhihu.com", 1)[-1]
-            if "zhihu.com" in next_url
-            else next_url
+            next_url.split("zhihu.com", 1)[-1] if "zhihu.com" in next_url else next_url
         )
         if not path.startswith("/"):
             path = "/" + path
@@ -245,9 +240,7 @@ def cmd_feed(args):
         for i, it in enumerate(items, 1):
             t = it.get("target", {})
             q = t.get("question", {})
-            safe_print(
-                f"  {i:2d}. {(q.get('title') or t.get('title', ''))}"
-            )
+            safe_print(f"  {i:2d}. {(q.get('title') or t.get('title', ''))}")
 
         paging = data.get("paging", {})
         if paging.get("is_end"):

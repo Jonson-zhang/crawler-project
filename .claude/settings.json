@@ -3,5 +3,18 @@
     "allow": [
       "Read(//c/Users/cdpf/**)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import json,sys,re; d=json.load(sys.stdin); fp=d.get('tool_input',{}).get('file_path','') or d.get('tool_response',{}).get('filePath',''); sys.stdout.write(re.sub(r'^[hH]:/Crawler/?','',fp.replace(chr(92),'/')))\" | { read -r f; [ -n \"$f\" ] && git add \"$f\" && git commit -m \"auto: $f\"; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
   }
 }
