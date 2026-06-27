@@ -5,10 +5,10 @@ PC 端知乎 API 调用链路：登录 → x-zse 签名 → 爬虫。
 ## 文件结构
 
 ```
-知乎/
+知乎/node_vm/
 ├── main.py          Python 入口：登录 + Cookie 管理 + 爬取命令
 ├── sign.js          Node 签名入口：接收 stdin JSON，输出签名头
-├── env.js           补环境模块：vm 沙箱定义 + 加载知乎 webpack chunk
+├── env_site.js      补环境模块：env_patch 底座 + 知乎特有覆盖 + 加载 chunk
 ├── runtime.js       知乎 webpack runtime（浏览器提取，17KB）
 ├── vendor.js        知乎 vendor chunk（浏览器提取，215KB）
 ├── 479.js           签名模块所在 chunk（浏览器提取，3.4MB）
@@ -20,8 +20,8 @@ PC 端知乎 API 调用链路：登录 → x-zse 签名 → 爬虫。
 ```
 main.py (Python)                              sign.js (Node)
 ─────────────                                ──────────────
-ensure_login()  ← Cookie 检查/弹窗登录         require("./env")  ← 补环境
-ZhihuAPI._sign()                              sign(url, d_c0)    ← 签名
+ensure_login()  ← Cookie 检查/弹窗登录         require("./env_site") ← env_patch 补环境
+ZhihuAPI._sign()                              sign(url, d_c0)        ← 签名
   └─ subprocess ["node","sign.js"]              └─ x-zse-96 / x-zst-81
        stdin ← {"url":"...","d_c0":"..."}                │
        stdout → {"x-zse-96":"...","x-zst-81":"..."}  ←──┘
@@ -45,16 +45,16 @@ Cookie 自动管理：首次弹 cloakbrowser 浏览器手工登录 → 保存 `c
 
 > **为什么不用自动化登录？** 知乎登录页接入了易盾滑块验证码，逆向成本极高。本项目选择**绕过登录**（浏览器人工登录一次，Cookie 持久复用），把精力集中在 API 签名（x-zse-96）的逆向还原上。
 
-### 自动化工具使用范围
+### 工具使用范围
 
 | 阶段 | 工具 | 说明 |
 |------|------|------|
-| 登录 | cloakbrowser（自动化浏览器）| 仅在登录时弹窗一次，用户手工扫码/密码登录后提取 Cookie |
+| 登录 | cloakbrowser（自动化浏览器）| 仅首次登录弹窗，提取 Cookie 后停用 |
 | Cookie 验证 | `requests`（纯 HTTP）| `/api/v4/me` 检查 Cookie 是否有效 |
 | 签名计算 | Node.js `sign.js`（本地）| `subprocess` 调用，不依赖浏览器 |
 | API 请求 | `requests`（纯 HTTP）| 全部走 `requests.Session`，不碰浏览器 |
 
-登录之后的签名、请求、翻页全程不涉及自动化浏览器。
+签名、请求、翻页全程不涉及自动化浏览器。
 
 ### Cookie 角色划分
 
@@ -87,16 +87,14 @@ Cookie 自动管理：首次弹 cloakbrowser 浏览器手工登录 → 保存 `c
 
 ## 补环境
 
-知乎 chunk 对浏览器 API 依赖浅，`env.js` 用 Node.js `vm` 模块 + 几十行 stub 即可：
+知乎 chunk 对浏览器 API 依赖极浅，`env_site.js` 基于通用框架 `.claude/env-patch/env_patch.js` 底座，45 行搞定：
 
-| 对象 | 补的程度 | 备注 |
-|------|---------|------|
-| `location` | 完整字段 | chunk 读 `href`/`host` |
-| `document` | 空 stub | 不实际操作 DOM |
-| `navigator` | 基础字段 | `userAgent`/`webdriver` |
-| `crypto.webcrypto` | 完整 | `getRandomValues` 被调用 |
-| `window`/`self` | 循环引用 | `window === self === s` |
-| `XMLHttpRequest`/`fetch` | 空实现 | 仅占位 |
+```
+setupEnv({ url, userAgent, platform, canvas: false, ... })
+global.crypto = require("crypto").webcrypto
+document.createElement = override canvas → POJO   ← 唯一定制
+eval(runtime.js, vendor.js, 479.js)               ← 加载 chunk
+```
 
 runtime.js 注入点：
 
@@ -118,7 +116,7 @@ echo '{"url":"/api/v4/me","d_c0":"xxx"}' | node sign.js
 ## 依赖
 
 ```bash
-uv add requests DrissionPage urllib3
+uv add requests urllib3
 node --version  # >= 20
 ```
 
