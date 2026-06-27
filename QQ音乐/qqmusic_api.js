@@ -38,32 +38,14 @@ setupEnv({
   plugins: false,
   storage: false,
   extraConstructors: true,
-  crypto: false,
+  crypto: true,
   windowToGlobal: true,
 });
 
-// ── 2. 覆盖 crypto 为 Node.js 原生 Web Crypto ────────────
+// ── 2. 替换 crypto 为 Node.js 原生 Web Crypto ────────────
+// setupEnv 已用 defineProperty 将其变为可写，直接覆盖即可
 const nodeWebCrypto = _require('crypto').webcrypto;
-if (nodeWebCrypto) {
-  // Node.js 24 的 crypto 是 getter，setupEnv 已经用 defineProperty 覆盖过
-  global.crypto = nodeWebCrypto;
-} else {
-  const cr = _require('crypto');
-  global.crypto = {
-    getRandomValues: function (arr) {
-      var b = cr.randomBytes(arr.length);
-      for (var i = 0; i < arr.length; i++) arr[i] = b[i];
-      return arr;
-    },
-    subtle: undefined,
-    randomUUID: function () {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        var r = Math.random() * 16 | 0;
-        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-      });
-    },
-  };
-}
+global.crypto = nodeWebCrypto;
 
 // ── 3. 加载 webpack runtime ──────────────────────────────
 global.window.webpackJsonp = [];
