@@ -2201,6 +2201,8 @@
         )(6151, [], oe, [void 0, null, !0, !1], void 0)();
         var ae = oe.__cgiEncrypt,
           se = oe.__cgiDecrypt;
+        window.__cgiEncrypt = oe.__cgiEncrypt;
+        window.__cgiDecrypt = oe.__cgiDecrypt;
         (delete oe.__cgiEncrypt, delete oe.__cgiDecrypt);
         function ue(e) {
           var t = e.param,
