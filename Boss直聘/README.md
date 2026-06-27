@@ -32,7 +32,7 @@ Boss直聘/
 ```bash
 pip install iv8 requests
 cd iv8
-python boss_iv8.py                       # 搜北京 Python
+python boss_iv8.py                   # 搜北京 Python（默认）
 python boss_iv8.py 101010100 java        # 搜北京 Java
 python boss_iv8.py 101280600 前端         # 搜深圳前端
 ```
