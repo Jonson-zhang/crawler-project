@@ -34,3 +34,12 @@
 - [VMP env slot 预填充](xhs-setter-intercept.md) — 可复用的 VMP 通用技巧：setter 拦截 + env 数组预填 200 个构造槽位
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
 - [Boss直聘逆向进度](boss-zhipin-reverse.md) — **2026-06-26**: VMP 9912状态map + 1318步trace, 补环境13轮(code 38→37), 明天转纯算
+
+## iv8 引擎踩坑（Node.js → iv8 迁移）
+
+> 四条经验来自小红书 iv8 迁移实战，每条都解决了一个"VMP 加载成功但 mnsv2=undefined"的根因。
+
+- [DOM 方法必须提前 stub](iv8-dom-stubs.md) — iv8 真实 DOM 校验参数类型，VMP 调 removeChild 抛 TypeError → 必须在 VMP 前 stub
+- [IIFE 隔离作用域](iv8-iife-scope.md) — iv8 无模块系统，var 全在全局作用域；ds_v2 覆盖 ds_script 的变量 → VMP 解码失败 → 必须 IIFE 包裹
+- [.forEach() 闭包隔离](iv8-foreach-closure.md) — for + var 共享闭包变量 → VMP setter 拦截失效；forEach 每次回调独立闭包
+- [navigator.plugins 空数组](iv8-navigator-plugins.md) — iv8 C++ navigator 默认含真实 Chrome 插件 → VMP 误判环境 → 必须显式设为 []
