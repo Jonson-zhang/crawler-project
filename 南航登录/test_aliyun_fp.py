@@ -89,15 +89,53 @@ window.__xhrBridge = true;
 
 ctx.locals["__pythonXhr"] = xhr_bridge
 
-# Stub Web Worker (fp.min.js uses Workers for background fingerprinting)
+# Stub Web Worker aggressively (fp.min.js tries to access .onmessage on Worker)
 ctx.eval("""\
-window.Worker = function() {
-    this.postMessage = function() {};
-    this.onmessage = null;
-    this.onerror = null;
-    this.terminate = function() {};
-};
-window.Worker.prototype = {};
+(function() {
+    // Worker stub that prevents null access
+    function StubWorker(scriptUrl) {
+        this.onmessage = null;
+        this.onerror = null;
+        this.postMessage = function(data) {
+            // Auto-respond to simulate worker completion
+            var self = this;
+            setTimeout(function() {
+                if (typeof self.onmessage === 'function') {
+                    self.onmessage({data: {}});
+                }
+            }, 100);
+        };
+        this.terminate = function() {};
+    }
+    window.Worker = StubWorker;
+    self.Worker = StubWorker;
+
+    // Also stub SharedWorker
+    window.SharedWorker = StubWorker;
+
+    // Stub Blob (used for inline workers)
+    window.Blob = function(parts, options) {
+        this.parts = parts;
+        this.type = (options && options.type) || '';
+        this.size = 0;
+        for (var i = 0; i < parts.length; i++) {
+            this.size += parts[i].length;
+        }
+    };
+
+    // Stub URL.createObjectURL
+    window.URL = window.URL || {};
+    window.URL.createObjectURL = function(blob) { return 'blob:stub-' + Math.random(); };
+    window.URL.revokeObjectURL = function(url) {};
+
+    // Stub atob/btoa if needed
+    if (typeof atob === 'undefined') {
+        window.atob = function(s) { return s; };
+    }
+    if (typeof btoa === 'undefined') {
+        window.btoa = function(s) { return s; };
+    }
+})();
 """)
 
 # Stub Canvas for fingerprinting
