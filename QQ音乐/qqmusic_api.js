@@ -84,11 +84,33 @@ try {
 // 现在 window._getSecuritySign, window.__cgiEncrypt, window.__cgiDecrypt 应该已设置
 
 // Debug: check what's available
+const wpRequire = global.window.__webpack_require__;
+console.error('[DEBUG] __webpack_require__:', typeof wpRequire);
 console.error('[DEBUG] window._getSecuritySign:', typeof global.window._getSecuritySign);
 console.error('[DEBUG] window.__cgiEncrypt:', typeof global.window.__cgiEncrypt);
-console.error('[DEBUG] window.__cgiDecrypt:', typeof global.window.__cgiDecrypt);
-console.error('[DEBUG] window._getSecuritySign2:', typeof global.window._getSecuritySign2);
-console.error('[DEBUG] webpackJsonp length:', global.window.webpackJsonp ? global.window.webpackJsonp.length : 'N/A');
+
+if (wpRequire) {
+  // List available modules
+  if (wpRequire.m) {
+    const moduleIds = Object.keys(wpRequire.m);
+    console.error('[DEBUG] Total modules:', moduleIds.length);
+    console.error('[DEBUG] First 20 module IDs:', moduleIds.slice(0, 20).join(','));
+  }
+
+  // Try to require all modules (this will execute them)
+  if (wpRequire.m) {
+    const ids = Object.keys(wpRequire.m);
+    for (const id of ids) {
+      try {
+        wpRequire(id);
+      } catch (e) {
+        console.error('[DEBUG] Module', id, 'error:', e.message.substring(0, 100));
+      }
+    }
+    console.error('[DEBUG] After require all - _getSecuritySign:', typeof global.window._getSecuritySign);
+    console.error('[DEBUG] After require all - __cgiEncrypt:', typeof global.window.__cgiEncrypt);
+  }
+}
 
 function getSign(data) {
   const signFn = global.window._getSecuritySign || global.window._getSecuritySign2;
