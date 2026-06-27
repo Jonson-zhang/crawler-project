@@ -22,7 +22,7 @@ setupEnv({
   screenWidth: 1920,
   screenHeight: 1080,
   title: "知乎",
-  canvas: false,
+  canvas: false,  // 知乎 encrypt 对 canvas 做黑盒操作，需返回 POJO
   webgl: false,
   plugins: false,
   storage: false,
