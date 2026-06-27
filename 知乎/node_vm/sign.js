@@ -7,10 +7,11 @@
 //  用法: echo '{"url":"...","d_c0":"..."}' | node sign.js
 // ═══════════════════════════════════════════════════════════════
 
+const _process = process;
 const crypto = require("crypto");
 
-// ── 引入补环境（env.js 负责 sandbox + 加载 webpack chunk） ────
-const { wp } = require("./env");
+// ── 引入补环境（env_site.js 负责 env_patch + 加载 webpack chunk）───
+const { wp } = require("./env_site");
 
 if (!wp) {
   process.stdout.write(JSON.stringify({ error: "init" }));
