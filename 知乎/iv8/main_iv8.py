@@ -19,8 +19,6 @@ import urllib3
 
 urllib3.disable_warnings()
 
-# 添加 iv8 到 path
-sys.path.insert(0, str(Path(__file__).parent / "iv8"))
 from zhihu_sign import ZhihuSigner
 
 BASE_DIR = Path(__file__).parent
