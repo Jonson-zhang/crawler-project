@@ -7,8 +7,8 @@ from curl_cffi import requests
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
 
 # ===== Boot with Node.js daemon =====
-proc = subprocess.Popen(['node','../v2.0/sign.js','--daemon'],
-    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd='..')
+proc = subprocess.Popen(['node','sign.js','--daemon'],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd='../v2.0')
 
 def node_sign(path, body):
     proc.stdin.write(json.dumps({'path':path,'body':body or {}}, separators=(',',':')) + '\n')
