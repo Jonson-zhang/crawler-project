@@ -107,9 +107,8 @@ global.window.webpackJsonp.push([
   },
 ]);
 
-// ── 5. 加载 chunk 文件 ─────────────────────────────────
+// ── 5. 加载 vendor.chunk.js ──────────────────────────────
 eval(fs.readFileSync(path.join(__dirname, 'vendor.chunk.js'), 'utf-8'));
-eval(fs.readFileSync(path.join(__dirname, 'common.chunk.js'), 'utf-8'));
 
 // ── 6. 激活所有 webpack 模块 ─────────────────────────────
 const wp = global.window.__webpack_require__;
