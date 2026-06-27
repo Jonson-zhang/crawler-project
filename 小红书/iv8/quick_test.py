@@ -48,7 +48,7 @@ s.cookies.update({'a1':a1,'webId':webId,'webBuild':'6.12.3','xsecappid':'xhs-pc-
 r = s.post('https://as.xiaohongshu.com/api/sec/v1/scripting', json={'callFrom':'web','callback':'seccallback'}, headers={'content-type':'application/json'}, timeout=15, impersonate='chrome131')
 resp = r.json()
 js_text = resp['data']['data']
-b_m = re.search(r'"b":"(.*?)",', js_text); d_m = re.search(r'"d":(.*?)\)', js_text)
+b_m = re.search(r'"b":"(.*?)",', js_text); d_m = re.search(r'"d":(\[.*?\])\}\)', js_text)
 b,d = b_m.group(1), json.loads(d_m.group(1))
 if len(b)%4: b += '='*(4-len(b)%4)
 decoded = __import__('base64').b64decode(b).decode('utf-8')
