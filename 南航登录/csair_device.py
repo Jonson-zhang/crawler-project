@@ -165,8 +165,11 @@ if (typeof ALIYUN_FP !== 'undefined') {{
             config={"timezone": "Asia/Shanghai"},
         )
         self._ctx.__enter__()
-        self._ctx.locals["__pythonGet"] = self._py_get
-        self._ctx.locals["__pythonPost"] = self._py_post
+        # iv8 can't convert bound methods — use lambda wrappers
+        _get = self._py_get
+        _post = self._py_post
+        self._ctx.locals["__pythonGet"] = lambda url, get=_get: get(url)
+        self._ctx.locals["__pythonPost"] = lambda url, body, hdr, post=_post: post(url, body, hdr)
 
         self._ctx.expose({
             "baseURL": "https://b2c.csair.com/B2C40/modules/bookingnew/manage/login.html",
