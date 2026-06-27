@@ -114,7 +114,8 @@ if (d1parts.length >= 2) {
       const start = m === 0 ? 0 : comma_pos[m - 1] + 1;
       const end = m < comma_pos.length ? comma_pos[m] : modArr.length;
       const entry = modArr.substring(start, end + 1).trim();
-      console.log(`Module ${m}: "${entry.substring(0, 100)}");
+      var preview = entry.substring(0, 100);
+      console.log('Module ' + m + ': ' + preview);
     }
   } else {
     console.log('Less than 130 modules. First 5 entries:');
