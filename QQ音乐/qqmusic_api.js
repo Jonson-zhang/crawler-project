@@ -39,13 +39,13 @@ setupEnv({
   storage: false,
   extraConstructors: true,
   crypto: true,
-  windowToGlobal: true,
+  windowToGlobal: false,
 });
 
 // ── 2. 替换 crypto 为 Node.js 原生 Web Crypto ────────────
-// setupEnv 已用 defineProperty 将其变为可写，直接覆盖即可
 const nodeWebCrypto = _require('crypto').webcrypto;
 global.crypto = nodeWebCrypto;
+global.window.crypto = nodeWebCrypto;
 
 // ── 3. 加载 webpack runtime ──────────────────────────────
 global.window.webpackJsonp = [];
