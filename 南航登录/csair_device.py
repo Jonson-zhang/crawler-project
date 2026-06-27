@@ -1,11 +1,17 @@
 """
 南航设备指纹生成 — iv8 page.load() 方案
 
-参考文章思路：
-  1. iv8 page.load() 加载最小 HTML 页面
-  2. document.createElement('script') hook → 拦截 JSONP/XHR 通过 Python 发包
-  3. 同盾 fm.js → _fmOpt.success(data) → blackbox
-  4. 阿里云飞林 fp.min.js → ALIYUN_FP.use('um') → um.getToken() → deviceToken
+参考 CSDN 文章思路：
+  1. iv8 page.load() 加载单个 HTML 页面，内含两个 SDK
+  2. document.createElement('script') hook → 拦截 JSONP
+  3. XHR hook → 拦截 XMLHttpRequest 通过 Python 发包
+  4. 同盾 fm.js → window._fmOpt.success(data) → blackbox
+  5. 阿里云飞林 fp.min.js → ALIYUN_FP.use('um') → um.getToken() → deviceToken
+
+修复早期踩坑：
+  - page.load() 每次都重置环境，必须一个 HTML 加载所有 JS
+  - iv8 Worker/Blob 必须先 stub 再加载 SDK
+  - 阿里云 XHR 返回 body 要完整（不能截断）
 """
 import json
 import time
@@ -31,38 +37,197 @@ class CsairDevice:
 
     def __init__(self):
         self._ctx = None
-        self._requests_log = []
+        self._requests = []
 
-    # ── Python 端 HTTP 桥接 ──────────────────────────────────
+    # ── Python HTTP bridge ────────────────────────────────────
 
-    def _http_get(self, url: str, **_kw) -> str:
-        """JSONP/script GET → Python requests"""
+    def _py_get(self, url: str) -> str:
+        """JSONP GET request"""
         try:
-            r = py_requests.get(url, headers={"User-Agent": UA}, timeout=15, verify=False)
-            self._requests_log.append(f"GET {url[:80]} → {r.status_code} {len(r.text)}B")
+            r = py_requests.get(url, headers={"User-Agent": UA}, timeout=20, verify=False)
+            self._requests.append(f"GET:{url[:100]} -> {r.status_code} {len(r.text)}B")
             return r.text
         except Exception as e:
-            self._requests_log.append(f"GET {url[:80]} → ERROR {e}")
+            self._requests.append(f"GET:{url[:100]} -> ERR:{e}")
             return ""
 
-    def _http_post(self, url: str, body: str, headers_json: str) -> str:
-        """XHR POST → Python requests"""
+    def _py_post(self, url: str, body: str, hdr_json: str) -> str:
+        """XHR POST request"""
         try:
-            if headers_json:
-                h = json.loads(headers_json)
-                h.setdefault("User-Agent", UA)
-            else:
-                h = {"User-Agent": UA}
-            r = py_requests.post(url, headers=h, data=body or None, timeout=15, verify=False)
-            return json.dumps({"status": r.status_code, "statusText": r.reason, "body": r.text})
+            h = json.loads(hdr_json) if hdr_json else {}
+            h.setdefault("User-Agent", UA)
+            h.setdefault("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+            r = py_requests.post(url, headers=h, data=body or None, timeout=20, verify=False)
+            self._requests.append(f"POST:{url[:60]} -> {r.status_code} {len(r.text)}B")
+            return json.dumps({"status": r.status_code, "body": r.text})
         except Exception as e:
-            return json.dumps({"status": 0, "statusText": str(e)[:200], "body": ""})
+            self._requests.append(f"POST:{url[:60]} -> ERR:{e}")
+            return json.dumps({"status": 0, "body": ""})
 
-    # ── 构建 iv8 环境 ───────────────────────────────────────
+    # ── Build single HTML page loading both SDKs ───────────────
 
-    def _build_environment(self):
-        if self._ctx is not None:
-            return
+    def get_tokens(self) -> dict:
+        fm_js = (BASE_DIR / "fm.js").read_text("utf-8")
+        fp_js = (BASE_DIR / "fp.min.js").read_text("utf-8")
+
+        html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>CSAir</title></head>
+<body>
+<script>
+// ============ 1. Browser API Stubs ============
+(function() {{
+    var N = function(){{}};
+
+    // Worker stub
+    window.Worker = function(url) {{
+        this.onmessage = N; this.onerror = N;
+        this.postMessage = function(d) {{
+            var s = this;
+            setTimeout(function(){{ if(typeof s.onmessage==="function") s.onmessage({{data:{{}}}}); }}, 20);
+        }};
+        this.terminate = N;
+    }};
+    window.Blob = function(p) {{ this.parts = p; this.size = p.join('').length; }};
+    window.URL = window.URL || {{}};
+    window.URL.createObjectURL = function() {{ return 'blob:s-'+Math.random(); }};
+    window.URL.revokeObjectURL = N;
+    if(typeof btoa==='undefined') window.btoa = function(s){{return s;}};
+    if(typeof atob==='undefined') window.atob = function(s){{return s;}};
+
+    // Performance
+    if(!performance.timing) {{
+        var now = Date.now();
+        performance.timing = {{ navigationStart:now, fetchStart:now, domainLookupStart:now,
+            domainLookupEnd:now, connectStart:now, connectEnd:now, requestStart:now,
+            responseStart:now, responseEnd:now, domLoading:now, domInteractive:now,
+            domContentLoadedEventStart:now, domContentLoadedEventEnd:now,
+            domComplete:now, loadEventStart:now, loadEventEnd:now }};
+    }}
+
+    // localStorage
+    if(!window.localStorage) {{
+        var d={{}}; window.localStorage={{ getItem:function(k){{return d[k]||null}},
+        setItem:function(k,v){{d[k]=v}}, removeItem:function(k){{delete d[k]}},
+        clear:function(){{d={{}}}}, key:function(i){{return Object.keys(d)[i]||null}},
+        get length(){{return Object.keys(d).length;}} }};
+    }}
+    if(!window.sessionStorage) {{
+        var s={{}}; window.sessionStorage={{ getItem:function(k){{return s[k]||null}},
+        setItem:function(k,v){{s[k]=v}}, removeItem:function(k){{delete s[k]}},
+        clear:function(){{s={{}}}}, key:function(i){{return Object.keys(s)[i]||null}},
+        get length(){{return Object.keys(s).length;}} }};
+    }}
+    history.pushState = N; history.replaceState = N;
+
+    // Canvas
+    var _origCE = document.createElement.bind(document);
+    document.createElement = function(tag) {{
+        var el = _origCE(tag);
+        if((tag||'').toLowerCase()==='canvas') {{
+            el.getContext = function(type) {{
+                if(type==='2d') return {{
+                    fillText:N, strokeText:N, fillRect:N, clearRect:N,
+                    measureText:function(t){{return {{width:t.length*8}};}},
+                    getImageData:function(x,y,w,h){{return {{data:new Uint8ClampedArray(w*h*4)}};}},
+                    createLinearGradient:function(){{return {{addColorStop:N}};}},
+                    canvas:{{width:300,height:150}}, font:'', fillStyle:'', strokeStyle:'',
+                    beginPath:N, moveTo:N, lineTo:N, stroke:N, arc:N,
+                    toDataURL:function(){{return 'data:image/png;base64,test';}},
+                }};
+                if(type==='webgl'||type==='experimental-webgl') return {{
+                    getParameter:function(p){{return {{37445:'Google Inc.'}}[p];}},
+                    getExtension:function(){{return null;}},
+                }};
+                return null;
+            }};
+        }}
+        return el;
+    }};
+}})();
+
+// ============ 2. JSONP + XHR Bridge ============
+(function() {{
+    // JSONP: intercept script.src assignment for tongdun.net
+    var _origCE2 = document.createElement.bind(document);
+    document.createElement = function(tag) {{
+        var el = _origCE2(tag);
+        if((tag||'').toLowerCase()==='script') {{
+            var _origSA = el.setAttribute ? el.setAttribute.bind(el) : function(){{}};
+            el.setAttribute = function(name, value) {{
+                if(name==='src' && typeof value==='string' && window.__pythonGet) {{
+                    var result = window.__pythonGet(value);
+                    if(result) {{
+                        try{{ eval(result); }}catch(e){{ window.__jsonpErr=String(e).substring(0,200); }}
+                    }}
+                }}
+                return _origSA(name, value);
+            }};
+        }}
+        return el;
+    }};
+
+    // XHR bridge
+    var _OrigXHR = XMLHttpRequest;
+    XMLHttpRequest = function() {{
+        var xhr = new _OrigXHR(), _m, _u, _hdrs={{}}, _body;
+        var o = xhr.open; xhr.open = function(m,u,a) {{ _m=m; _u=u; o.call(xhr,m,u,a!==false); }};
+        var sh = xhr.setRequestHeader; xhr.setRequestHeader = function(n,v) {{ _hdrs[n]=v; sh.call(xhr,n,v); }};
+        var sd = xhr.send; xhr.send = function(b) {{
+            _body = b;
+            if(_u && window.__pythonPost) {{
+                var resp = window.__pythonPost(_u, _body||'', JSON.stringify(_hdrs));
+                try {{
+                    var p = JSON.parse(resp);
+                    Object.defineProperty(xhr,'status',{{value:p.status||200}});
+                    Object.defineProperty(xhr,'responseText',{{value:p.body||''}});
+                    Object.defineProperty(xhr,'response',{{value:p.body||''}});
+                    Object.defineProperty(xhr,'readyState',{{value:4}});
+                }} catch(e) {{ window.__xhrErr = String(e).substring(0,200); }}
+            }} else {{ sd.call(xhr, b); }}
+            if(xhr.onreadystatechange) xhr.onreadystatechange();
+            if(xhr.onload) xhr.onload();
+            if(xhr.onloadend) xhr.onloadend();
+        }};
+        return xhr;
+    }};
+    XMLHttpRequest.DONE = 4; XMLHttpRequest.UNSENT = 0;
+}})();
+
+// ============ 3. Load Tongdun (同盾) ============
+window._fmOpt = {{
+    partner: '{TD_PARTNER}',
+    appName: '{TD_APP_NAME}',
+    success: function(data) {{ window.__blackbox = data || ''; }}
+}};
+</script>
+<script src="/fm.js"></script>
+
+<script>
+// ============ 4. Load Aliyun FP ============
+</script>
+<script src="/fp.js"></script>
+<script>
+if(typeof ALIYUN_FP !== 'undefined') {{
+    ALIYUN_FP.use('um', function(state, um) {{
+        window.__umState = state;
+        if(state === 'loaded') {{
+            um.init({{
+                appKey: '{ALIYUN_APP_KEY}',
+                appName: '{ALIYUN_APP_NAME}'
+            }}, function(s) {{
+                window.__umInit = s;
+                if(s === 'success') {{
+                    window.__deviceToken = um.getToken() || '';
+                }}
+            }});
+        }}
+    }});
+}} else {{
+    window.__fpErr = 'ALIYUN_FP not defined';
+}}
+</script>
+</body></html>"""
 
         self._ctx = iv8.JSContext(
             environment={
@@ -85,310 +250,46 @@ class CsairDevice:
             config={"timezone": "Asia/Shanghai"},
         )
         self._ctx.__enter__()
-
-    # ── DOM / Browser API Stubs ──────────────────────────────
-
-    def _setup_dom_stubs(self):
-        """补全 iv8 缺失的浏览器 API，匹配真实浏览器行为"""
-        self._ctx.eval("""\
-(function() {
-    var n = function(){};
-
-    // Web Worker stub — fp.min.js uses Workers
-    window.Worker = function() {
-        this.onmessage = null; this.onerror = null;
-        this.postMessage = function(data) {
-            var s = this;
-            setTimeout(function() {
-                if (typeof s.onmessage === 'function') s.onmessage({data: {}});
-            }, 50);
-        };
-        this.terminate = function(){};
-    };
-
-    // Blob + URL.createObjectURL — for inline workers
-    window.Blob = function(parts) { this.parts = parts; };
-    window.URL = window.URL || {};
-    window.URL.createObjectURL = function(b) { return 'blob:stub-' + Date.now(); };
-    window.URL.revokeObjectURL = function(u) {};
-
-    // btoa / atob
-    if (typeof btoa === 'undefined') window.btoa = function(s) { return s; };
-    if (typeof atob === 'undefined') window.atob = function(s) { return s; };
-
-    // Performance timing
-    performance.timing = {
-        navigationStart: Date.now(), fetchStart: Date.now(),
-        domainLookupStart: Date.now(), domainLookupEnd: Date.now(),
-        connectStart: Date.now(), connectEnd: Date.now(),
-        requestStart: Date.now(), responseStart: Date.now(),
-        responseEnd: Date.now(), domLoading: Date.now(),
-        domInteractive: Date.now(), domContentLoadedEventStart: Date.now(),
-        domContentLoadedEventEnd: Date.now(), domComplete: Date.now(),
-        loadEventStart: Date.now(), loadEventEnd: Date.now()
-    };
-
-    // localStorage / sessionStorage
-    if (!window.localStorage) {
-        window.localStorage = { _data: {}, getItem: function(k) { return this._data[k] || null; },
-            setItem: function(k,v) { this._data[k] = v; }, removeItem: function(k) { delete this._data[k]; },
-            clear: function() { this._data = {}; }, key: function(i) { return Object.keys(this._data)[i] || null; },
-            get length() { return Object.keys(this._data).length; } };
-    }
-    if (!window.sessionStorage) {
-        window.sessionStorage = { _data: {}, getItem: function(k) { return this._data[k] || null; },
-            setItem: function(k,v) { this._data[k] = v; }, removeItem: function(k) { delete this._data[k]; },
-            clear: function() { this._data = {}; }, key: function(i) { return Object.keys(this._data)[i] || null; },
-            get length() { return Object.keys(this._data).length; } };
-    }
-
-    // history
-    history.pushState = n; history.replaceState = n;
-
-    // Canvas stub — fingerprint SDKs need this
-    var origCreateElement = document.createElement.bind(document);
-    document.createElement = function(tag) {
-        var el = origCreateElement(tag);
-        var tagLower = (tag || '').toLowerCase();
-        if (tagLower === 'canvas') {
-            el.getContext = function(type) {
-                if (type === '2d') return {
-                    fillText: n, strokeText: n, fillRect: n, clearRect: n,
-                    measureText: function(t) { return {width: t.length * 8}; },
-                    getImageData: function(x,y,w,h) { return {data: new Uint8ClampedArray(w*h*4)}; },
-                    createLinearGradient: function() { return {addColorStop: n}; },
-                    createRadialGradient: function() { return {addColorStop: n}; },
-                    canvas: {width: 300, height: 150},
-                    font: '', textBaseline: '', textAlign: '',
-                    fillStyle: '', strokeStyle: '',
-                    beginPath: n, moveTo: n, lineTo: n, stroke: n, arc: n,
-                    toDataURL: function(fmt) { return 'data:image/png;base64,iVBORw0KGgo='; },
-                };
-                if (type === 'webgl' || type === 'experimental-webgl') return {
-                    getParameter: function(p) {
-                        var m = {37445:'Google Inc.',37446:'ANGLE',7937:'WebKit',7938:'WebKit WebGL'};
-                        return m[p];
-                    },
-                    getExtension: function() { return null; },
-                    getShaderPrecisionFormat: function() { return {rangeMin:127,rangeMax:127,precision:23}; },
-                };
-                return null;
-            };
-        }
-        return el;
-    };
-
-    window.__domStubsDone = true;
-})();
-""")
-
-    # ── 获取 blackbox（同盾）──────────────────────────────────
-
-    def _get_blackbox(self) -> str:
-        """加载同盾 fm.js，通过 JSONP 生成 blackbox"""
-
-        fm_js = (BASE_DIR / "fm.js").read_text("utf-8")
-
-        # JSONP 桥接：拦截 document.createElement('script') 的 src 设置
-        # 同盾 SDK 会动态创建 script 标签加载 JSONP URL
-        html_page = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head><meta charset="UTF-8"><title>CSAir</title></head>
-<body>
-<script>
-// ===== JSONP + XHR 桥接 =====
-(function() {{
-    window.__jsonpResults = [];
-    window.__jsonpCount = 0;
-    // Hook document.createElement for script JSONP
-    var _origCE = document.createElement.bind(document);
-    document.createElement = function(tag) {{
-        var el = _origCE(tag);
-        if ((tag || '').toLowerCase() === 'script') {{
-            var _origSA = el.setAttribute ? el.setAttribute.bind(el) : function(){{}};
-            el.setAttribute = function(name, value) {{
-                if (name === 'src' && value && value.indexOf('fp.tongdun') >= 0) {{
-                    window.__jsonpCount++;
-                    var result = window.__pythonGet(value);
-                    window.__jsonpResults.push({{url: value, len: result ? result.length : 0}});
-                    if (result) {{
-                        try {{ eval(result); }} catch(e) {{ window.__jsonpErr = String(e); }}
-                    }}
-                }}
-                _origSA(name, value);
-            }};
-        }}
-        return el;
-    }};
-
-    // XHR bridge (for any XHR calls in fm.js)
-    (function() {{
-        var OrigXHR = XMLHttpRequest;
-        XMLHttpRequest = function() {{
-            var xhr = new OrigXHR();
-            var _m, _u, _h = {{}}, _b;
-            var o = xhr.open; xhr.open = function(m,u,a) {{ _m=m; _u=u; o.call(xhr,m,u,a!==false); }};
-            var s = xhr.setRequestHeader; xhr.setRequestHeader = function(n,v) {{ _h[n]=v; s.call(xhr,n,v); }};
-            var d = xhr.send; xhr.send = function(b) {{
-                _b = b;
-                if (_u && window.__pythonPost) {{
-                    var r = window.__pythonPost(_u, _b||'', JSON.stringify(_h));
-                    try {{
-                        var p = JSON.parse(r);
-                        Object.defineProperty(xhr, 'status', {{value: p.status||200}});
-                        Object.defineProperty(xhr, 'responseText', {{value: p.body||''}});
-                        Object.defineProperty(xhr, 'response', {{value: p.body||''}});
-                        Object.defineProperty(xhr, 'readyState', {{value: 4}});
-                        if (xhr.onreadystatechange) xhr.onreadystatechange();
-                        if (xhr.onload) xhr.onload();
-                    }} catch(e) {{}}
-                }} else {{ d.call(xhr, b); }}
-            }};
-            return xhr;
-        }};
-        XMLHttpRequest.DONE = 4; XMLHttpRequest.UNSENT = 0;
-    }})();
-}})();
-
-// ===== 同盾 SDK 入口 =====
-window._fmOpt = {{
-    partner: '{TD_PARTNER}',
-    appName: '{TD_APP_NAME}',
-    success: function(data) {{
-        window.__blackbox = data || '';
-    }}
-}};
-</script>
-<script src="/fm.js"></script>
-</body></html>"""
+        self._ctx.locals["__pythonGet"] = self._py_get
+        self._ctx.locals["__pythonPost"] = self._py_post
 
         self._ctx.expose(
             {
                 "baseURL": "https://b2c.csair.com/B2C40/modules/bookingnew/manage/login.html",
-                "html": html_page,
+                "html": html,
                 "headers": [],
                 "resources": {
                     "/fm.js": fm_js,
-                },
-            },
-            "snapshot",
-        )
-        self._ctx.eval("__iv8__.page.load(__iv8__.data.snapshot)")
-
-        time.sleep(3)
-        blackbox = str(self._ctx.eval("window.__blackbox || ''"))
-        jsonp_count = self._ctx.eval("window.__jsonpCount || 0")
-        print(f"  [同盾] JSONP calls: {jsonp_count}, blackbox len: {len(blackbox)}")
-        return blackbox
-
-    # ── 获取 deviceToken（阿里云飞林）─────────────────────────
-
-    def _get_device_token(self) -> str:
-        """加载阿里云飞林 fp.min.js，通过 XHR 生成 deviceToken"""
-
-        fp_js = (BASE_DIR / "fp.min.js").read_text("utf-8")
-
-        html_page = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head><meta charset="UTF-8"><title>CSAir</title></head>
-<body>
-<script>
-// ===== XHR 桥接 =====
-(function() {{
-    var OrigXHR = XMLHttpRequest;
-    XMLHttpRequest = function() {{
-        var xhr = new OrigXHR();
-        var _m, _u, _h = {{}}, _b;
-        var o = xhr.open; xhr.open = function(m,u,a) {{ _m=m; _u=u; o.call(xhr,m,u,a!==false); }};
-        var s = xhr.setRequestHeader; xhr.setRequestHeader = function(n,v) {{ _h[n]=v; s.call(xhr,n,v); }};
-        var d = xhr.send; xhr.send = function(b) {{
-            _b = b;
-            if (_u && window.__pythonPost) {{
-                var r = window.__pythonPost(_u, _b||'', JSON.stringify(_h));
-                try {{
-                    var p = JSON.parse(r);
-                    Object.defineProperty(xhr, 'status', {{value: p.status||200}});
-                    Object.defineProperty(xhr, 'responseText', {{value: p.body||''}});
-                    Object.defineProperty(xhr, 'response', {{value: p.body||''}});
-                    Object.defineProperty(xhr, 'readyState', {{value: 4}});
-                    if (xhr.onreadystatechange) xhr.onreadystatechange();
-                    if (xhr.onload) xhr.onload();
-                }} catch(e) {{ window.__xhrErr = String(e); }}
-            }} else {{ d.call(xhr, b); }}
-        }};
-        return xhr;
-    }};
-    XMLHttpRequest.DONE = 4; XMLHttpRequest.UNSENT = 0;
-}})();
-</script>
-<script src="/fp.js"></script>
-<script>
-// ===== 阿里云飞林 SDK 初始化 =====
-if (typeof ALIYUN_FP !== 'undefined') {{
-    ALIYUN_FP.use('um', function(state, um) {{
-        if (state === 'loaded') {{
-            um.init({{
-                appKey: '{ALIYUN_APP_KEY}',
-                appName: '{ALIYUN_APP_NAME}'
-            }}, function(initStatus) {{
-                if (initStatus === 'success') {{
-                    window.__deviceToken = um.getToken() || '';
-                }} else {{
-                    window.__umInitError = 'initStatus=' + initStatus;
-                }}
-            }});
-        }} else {{
-            window.__umLoadError = 'state=' + state;
-        }}
-    }});
-}} else {{
-    window.__fpError = 'ALIYUN_FP not defined';
-}}
-</script>
-</body></html>"""
-
-        self._ctx.expose(
-            {
-                "baseURL": "https://b2c.csair.com/B2C40/modules/bookingnew/manage/login.html",
-                "html": html_page,
-                "headers": [],
-                "resources": {
                     "/fp.js": fp_js,
                 },
             },
             "snapshot",
         )
+
+        print("Loading page with both SDKs...")
         self._ctx.eval("__iv8__.page.load(__iv8__.data.snapshot)")
 
-        time.sleep(5)
-        device_token = str(self._ctx.eval("window.__deviceToken || ''"))
-        fp_error = str(self._ctx.eval("window.__fpError || window.__umInitError || window.__umLoadError || 'none'"))
-        print(f"  [阿里云] deviceToken len: {len(device_token)}, error: {fp_error}")
-        return device_token
+        # Wait for async callbacks
+        time.sleep(8)
 
-    # ── 公开接口 ──────────────────────────────────────────────
-
-    def get_tokens(self) -> dict:
-        """获取 blackbox 和 deviceToken"""
-        self._build_environment()
-        self._setup_dom_stubs()
-
-        # 注册 HTTP 桥接函数
-        self._ctx.locals["__pythonGet"] = self._http_get
-        self._ctx.locals["__pythonPost"] = self._http_post
-
-        # 先获取 deviceToken（阿里云，纯 XHR）
-        print("[1/2] 获取 deviceToken (阿里云飞林)...")
-        device_token = self._get_device_token()
-
-        # 再获取 blackbox（同盾，JSONP）
-        print("[2/2] 获取 blackbox (同盾)...")
-        blackbox = self._get_blackbox()
-
-        return {
-            "blackbox": blackbox,
-            "deviceToken": device_token,
+        result = {
+            "blackbox": str(self._ctx.eval("window.__blackbox || ''")),
+            "deviceToken": str(self._ctx.eval("window.__deviceToken || ''")),
         }
+
+        # Debug info
+        fp_err = str(self._ctx.eval(
+            "window.__fpErr || window.__umInit || window.__umState || 'N/A'"
+        ))
+        jsonp_err = str(self._ctx.eval("window.__jsonpErr || 'none'"))
+        xhr_err = str(self._ctx.eval("window.__xhrErr || 'none'"))
+        print(f"  FP state: {fp_err}, JSONP err: {jsonp_err}, XHR err: {xhr_err}")
+        print(f"  blackbox: {len(result['blackbox'])} chars")
+        print(f"  deviceToken: {len(result['deviceToken'])} chars")
+        for r in self._requests:
+            print(f"  HTTP: {r}")
+
+        return result
 
     def close(self):
         if self._ctx is not None:
@@ -399,20 +300,13 @@ if (typeof ALIYUN_FP !== 'undefined') {{
             self._ctx = None
 
 
-# ===== 命令行测试 =====
 if __name__ == "__main__":
-    print("南航设备指纹生成器 (iv8 page.load)")
+    print("南航设备指纹 (iv8 page.load)")
     print("=" * 50)
-
     dev = CsairDevice()
     try:
         tokens = dev.get_tokens()
-        print()
-        print(f"blackbox:    {tokens['blackbox'][:80]}... ({len(tokens['blackbox'])} chars)")
-        print(f"deviceToken: {tokens['deviceToken'][:80]}... ({len(tokens['deviceToken'])} chars)")
-        print()
-        print("HTTP requests made:")
-        for r in dev._requests_log:
-            print(f"  {r}")
+        print(f"\nblackbox: {tokens['blackbox'][:80]}...")
+        print(f"deviceToken: {tokens['deviceToken'][:80]}...")
     finally:
         dev.close()
