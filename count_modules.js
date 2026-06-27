@@ -2,135 +2,81 @@ const fs = require('fs');
 const code = fs.readFileSync('QQ音乐/vendor.chunk.js', 'utf-8');
 
 const pushIdx = code.indexOf('.push(');
-let pd = 1, end = pushIdx + 6, inS = false;
-for (let i = end; i < code.length; i++) {
-  const ch = code[i];
+var pd = 1, end = pushIdx + 6, inS = false;
+for (var i = end; i < code.length; i++) {
+  var ch = code[i];
   if (ch === '"' && code[i-1] !== '\\') inS = !inS;
   if (!inS) {
     if (ch === '(') pd++;
     if (ch === ')') { pd--; if (pd === 0) { end = i; break; } }
   }
 }
-const fullArg = code.substring(pushIdx + 6, end);
+var fullArg = code.substring(pushIdx + 6, end);
 
-// Parse top-level array elements (at depth 1 inside outer array)
-// fullArg = [[0], [modules...]]
-// Depth 0: start. Depth 1: inside outer array. We track when depth goes 1->2 for sub-arrays.
-let td = 0, ts = false;
-let curStart = null;
-let elements = [];
-for (let i = 0; i < fullArg.length; i++) {
-  const ch = fullArg[i];
-  if (ch === '"' && fullArg[i-1] !== '\\') ts = !ts;
-  if (!ts) {
-    if (ch === '[' || ch === '{') {
-      if (td === 0) curStart = i; // start of outer array
-      td++;
-    }
-    if (ch === ']' || ch === '}') {
-      td--;
-      if (td === 0 && curStart !== null) {
-        // end of outer array
-        elements.push({
-          start: curStart, end: i,
-          preview: fullArg.substring(curStart, Math.min(curStart + 60, i + 1)),
-          isArray: ch === ']',
-        });
-        curStart = null;
-      }
-    }
-    if (ch === ',' && td === 1) {
-      // top-level comma in outer array - split elements
-    }
-  }
-}
-
-// Actually let me just split by finding commas at depth 1
 console.log('fullArg first 100:', fullArg.substring(0, 100));
 
-let d1parts = [];
-let d = 0, s = false;
-let pstart_idx = 0;
-for (let i = 0; i < fullArg.length; i++) {
-  const ch = fullArg[i];
-  if (ch === '"' && fullArg[i-1] !== '\\') s = !s;
+// Split by commas at depth 1
+var depthParts = [];
+var d = 0, s = false;
+var pstart = 0;
+for (var j = 0; j < fullArg.length; j++) {
+  var c = fullArg[j];
+  if (c === '"' && fullArg[j-1] !== '\\') s = !s;
   if (!s) {
-    if (ch === '[' || ch === '{') d++;
-    if (ch === ']' || ch === '}') d--;
-    if (ch === ',' && d === 1) {
-      d1parts.push(fullArg.substring(pstart_idx, i));
-      pstart_idx = i + 1;
+    if (c === '[' || c === '{') d++;
+    if (c === ']' || c === '}') d--;
+    if (c === ',' && d === 1) {
+      depthParts.push(fullArg.substring(pstart, j));
+      pstart = j + 1;
     }
   }
 }
-// Last part (after last comma, up to outer ])
-if (fullArg.length > 0) {
-  // The outer array ends with ]. Let me find the last ]
-  let lastD = 0, lastS = false;
-  for (let i = fullArg.length - 1; i >= 0; i--) {
-    const ch = fullArg[i];
-    if (ch === '"' && fullArg[i-1] !== '\\') lastS = !lastS;
-    if (!lastS) {
-      if (ch === ']') lastD++;
-      if (ch === '[') lastD--;
-      if (lastD < 0) { /* end of outer array */ break; }
-    }
-  }
-  d1parts.push(fullArg.substring(pstart_idx, fullArg.length - 1));
-}
+// Add last part, stripping the outer ]
+var outerEnd = fullArg.length - 1;
+while (outerEnd >= 0 && fullArg[outerEnd] !== ']') outerEnd--;
+depthParts.push(fullArg.substring(pstart, outerEnd));
 
-console.log('Parts at depth 1:', d1parts.length);
-d1parts.forEach((p, i) => {
-  console.log(`Part ${i}: length=${p.length}, starts: "${p.trim().substring(0, 80)}"`);
-  console.log(`  ends: "${p.trim().substring(Math.max(0, p.trim().length - 40))}"`);
+console.log('Parts at depth 1:', depthParts.length);
+var partsPreview = depthParts.map(function(p, idx) {
+  return 'Part ' + idx + ': len=' + p.trim().length + ' starts="' + p.trim().substring(0, 60) + '"';
 });
+partsPreview.forEach(function(s) { console.log(s); });
 
-// Now part 1 should be the modules array
-if (d1parts.length >= 2) {
-  let modArr = d1parts[1].trim();
-  // Remove outer [ ]
-  if (modArr.startsWith('[')) modArr = modArr.substring(1);
-  if (modArr.endsWith(']')) modArr = modArr.substring(0, modArr.length - 1);
+// Part 1 = modules array
+if (depthParts.length >= 2) {
+  var modArr = depthParts[1].trim();
+  if (modArr[0] === '[') modArr = modArr.substring(1);
+  if (modArr[modArr.length - 1] === ']') modArr = modArr.substring(0, modArr.length - 1);
 
-  // Count top-level entries
-  let md = 0, ms3 = false;
-  let comma_pos = [];
-  for (let i = 0; i < modArr.length; i++) {
-    const ch = modArr[i];
-    if (ch === '"' && modArr[i-1] !== '\\') ms3 = !ms3;
+  // Count entries
+  var md = 0, ms3 = false;
+  var cpos = [];
+  for (var k = 0; k < modArr.length; k++) {
+    var c2 = modArr[k];
+    if (c2 === '"' && modArr[k-1] !== '\\') ms3 = !ms3;
     if (!ms3) {
-      if (ch === '[' || ch === '{') md++;
-      if (ch === ']' || ch === '}') md--;
-      if (ch === ',' && md === 0) comma_pos.push(i);
+      if (c2 === '[' || c2 === '{') md++;
+      if (c2 === ']' || c2 === '}') md--;
+      if (c2 === ',' && md === 0) cpos.push(k);
     }
   }
   console.log('\n=== MODULES ===');
-  console.log('Comma count:', comma_pos.length);
-  console.log('Module count:', comma_pos.length + 1);
+  console.log('Comma count:', cpos.length);
+  console.log('Module count:', cpos.length + 1);
 
-  // Show entries around 125-128
-  if (comma_pos.length >= 130) {
-    for (let m of [124, 125, 126, 127, 128]) {
-      const start = m === 0 ? 0 : comma_pos[m - 1] + 1;
-      const end = m < comma_pos.length ? comma_pos[m] : modArr.length;
-      const entry = modArr.substring(start, end + 1).trim();
-      var preview = entry.substring(0, 100);
-      console.log('Module ' + m + ': ' + preview);
-    }
+  function showModule(idx) {
+    var s = idx === 0 ? 0 : cpos[idx - 1] + 1;
+    var e = idx < cpos.length ? cpos[idx] : modArr.length;
+    var entry = modArr.substring(s, e).trim();
+    console.log('Module ' + idx + ' (' + s + '..' + e + '): ' + entry.substring(0, 100));
+  }
+
+  if (cpos.length >= 130) {
+    for (var m = 124; m <= 128; m++) showModule(m);
   } else {
-    console.log('Less than 130 modules. First 5 entries:');
-    for (let m = 0; m < 5 && m <= comma_pos.length; m++) {
-      const start = m === 0 ? 0 : comma_pos[m - 1] + 1;
-      const end = m < comma_pos.length ? comma_pos[m] : modArr.length;
-      const entry = modArr.substring(start, end + 1).trim();
-      console.log(`Module ${m}: starts with "${entry.substring(0, 80)}"`);
-    }
-    console.log('Last 3 entries:');
-    for (let m = Math.max(0, comma_pos.length - 2); m <= comma_pos.length; m++) {
-      const start = m === 0 ? 0 : comma_pos[m - 1] + 1;
-      const end = m < comma_pos.length ? comma_pos[m] : modArr.length;
-      const entry = modArr.substring(start, end + 1).trim();
-      console.log(`Module ${m}: starts with "${entry.substring(0, 80)}"`);
-    }
+    console.log('Total modules:', cpos.length + 1);
+    for (var n = 0; n < Math.min(5, cpos.length + 1); n++) showModule(n);
+    console.log('...');
+    for (var p = Math.max(0, cpos.length - 2); p <= cpos.length; p++) showModule(p);
   }
 }
