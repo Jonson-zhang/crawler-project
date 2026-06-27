@@ -1,112 +1,153 @@
 /**
- * QQ音乐 API 签名/加解密工具 — Object.create 原型链补环境
+ * QQ音乐 API 签名/加解密工具 — JSDOM 补环境
  *
  * 用法:
- *   node qqmusic_api.js sign <json_data>
- *   node qqmusic_api.js encrypt <json_data>
- *   node qqmusic_api.js decrypt <base64_data>
- *
- *   数据也可通过 --file <path> 或 stdin 传入
+ *   node qqmusic_api.js sign <json>
+ *   node qqmusic_api.js encrypt <json>
+ *   node qqmusic_api.js decrypt <base64>
+ *   node qqmusic_api.js sign --file <path>
  *
  * 输出: JSON { success: true, result: "..." }
  */
 
+const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 
-// ── 保存 Node.js 原生引用（setupEnv 会隐藏 process/require/module）──
-const _process = process;
-const _require = require;
-const _Buffer = Buffer;
-const _setTimeout = setTimeout;
-const _clearTimeout = clearTimeout;
-
-// ── 1. 构建浏览器环境（Object.create 原型链方案）────────────────
-const { setupEnv } = _require('../.claude/env-patch/env_patch.js');
-
-setupEnv({
+// ── 1. JSDOM 浏览器环境 ────────────────────────────────────
+const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
   url: 'https://y.qq.com/',
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
-  platform: 'Win32',
-  languages: ['zh-CN', 'zh'],
-  screenWidth: 1920,
-  screenHeight: 1080,
-  colorDepth: 24,
-  devicePixelRatio: 1,
-  title: 'QQ音乐',
-  cookie: '',
-  hardwareConcurrency: 16,
-  vendor: 'Google Inc.',
-
-  canvas: true,
-  webgl: false,
-  plugins: false,    // QQ音乐不需要 plugins/mimeTypes
-  storage: false,     // QQ音乐不需要 storage
-  extraConstructors: true,
-  crypto: false,      // 下面手工挂载 Node.js 原生 Web Crypto
+  referrer: 'https://y.qq.com/',
+  contentType: 'text/html',
 });
 
-// ── 2. 挂载真实的 Web Crypto API（QQ音乐加解密必须用真 crypto）──
-const nodeWebCrypto = _require('crypto').webcrypto;
-if (nodeWebCrypto) {
-  global.crypto = nodeWebCrypto;
-} else {
-  // Node < 20 fallback
-  global.crypto = globalThis.crypto || {
-    getRandomValues(arr) {
-      const bytes = _require('crypto').randomBytes(arr.length);
-      for (let i = 0; i < arr.length; i++) arr[i] = bytes[i];
-      return arr;
-    },
-    subtle: undefined,
-    randomUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'; },
-  };
+global.window = dom.window;
+global.document = dom.window.document;
+global.navigator = dom.window.navigator;
+global.location = dom.window.location;
+global.XMLHttpRequest = dom.window.XMLHttpRequest;
+global.FormData = dom.window.FormData;
+
+global.navigator.userAgent =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+global.navigator.platform = 'Win32';
+
+if (!global.crypto) global.crypto = require('crypto').webcrypto;
+if (!global.crypto.subtle) global.crypto.subtle = require('crypto').webcrypto.subtle;
+
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+
+if (!global.performance) global.performance = require('perf_hooks').performance;
+
+// 拷贝 JSDOM window 上的其余属性到 global
+for (const key of Object.keys(global.window)) {
+  if (typeof global[key] === 'undefined' &&
+      key !== 'window' && key !== 'document' && key !== 'navigator' && key !== 'location') {
+    try { global[key] = global.window[key]; } catch (_) {}
+  }
 }
 
-// ── 3. 初始化 webpack 模块系统 ─────────────────────────────────
+// ── 2. 加载 webpack runtime ────────────────────────────────
 global.window.webpackJsonp = [];
 eval(fs.readFileSync(path.join(__dirname, 'runtime.js'), 'utf-8'));
 
-// 加载必需的 chunk 文件
-['common.chunk.js', 'vendor.chunk.js'].forEach(f => {
-  const p = path.join(__dirname, f);
-  if (fs.existsSync(p)) eval(fs.readFileSync(p, 'utf-8'));
-});
+// ── 3. 注入缺失模块 stub ──────────────────────────────────
+// vendor.chunk.js 字节码解释器运行时依赖 module 380/381/382
+// （readable-stream Debuglog/BufferList/Queue），否则模块8执行失败
+global.window.webpackJsonp.push([
+  [999],
+  {
+    380: function (e) {
+      e.exports = { debuglog: function () { return function () {}; }, inspect: { colors: false } };
+    },
+    381: function (e) {
+      (e.exports = function () {
+        this.head = null; this.tail = null; this.length = 0;
+      });
+      e.exports.prototype.push = function (e) {
+        var n = { data: e, next: null };
+        this.length > 0 ? (this.tail.next = n) : (this.head = n);
+        this.tail = n; ++this.length;
+      };
+      e.exports.prototype.unshift = function (e) {
+        var n = { data: e, next: this.head };
+        0 === this.length && (this.tail = n);
+        this.head = n; ++this.length;
+      };
+      e.exports.prototype.shift = function () {
+        if (0 !== this.length) {
+          var e = this.head.data;
+          return 1 === this.length && (this.head = this.tail = null),
+            (this.head = this.head.next), --this.length, e;
+        }
+      };
+    },
+    382: function (e) {
+      function n() { this.head = null; this.tail = null; this.length = 0; }
+      n.prototype.push = function (e) {
+        var t = { data: e, next: null };
+        this.length > 0 ? (this.tail.next = t) : (this.head = t);
+        this.tail = t; ++this.length;
+      };
+      n.prototype.unshift = function (e) {
+        var t = { data: e, next: this.head };
+        0 === this.length && (this.tail = t);
+        this.head = t; ++this.length;
+      };
+      n.prototype.shift = function () {
+        if (0 !== this.length) {
+          var e = this.head.data;
+          return 1 === this.length && (this.head = this.tail = null),
+            (this.head = this.head.next), --this.length, e;
+        }
+      };
+      e.exports = n;
+    },
+  },
+]);
 
-// 执行模块8（包含签名/加解密函数）
-const wpRequire = global.window.__webpack_require__;
-if (wpRequire && wpRequire.m && wpRequire.m[8]) {
-  wpRequire(8);
+// ── 4. 加载 vendor.chunk.js ─────────────────────────────────
+eval(fs.readFileSync(path.join(__dirname, 'vendor.chunk.js'), 'utf-8'));
+
+// ── 5. 执行所有已注册模块，触发 sign/encrypt/decrypt 挂载到 window ──
+const wp = global.window.__webpack_require__;
+if (wp && wp.m) {
+  Object.keys(wp.m).forEach(function (id) {
+    try { wp(id); } catch (_) {}
+  });
 }
 
-// ── 获取函数引用 ──────────────────────────────────────────────
-const getSecuritySign = global.window._getSecuritySign;
+// ── 6. 获取函数引用 ────────────────────────────────────────
+const getSecuritySign = global.window._getSecuritySign || global.window._getSecuritySign2;
 const cgiEncrypt = global.window.__cgiEncrypt;
 const cgiDecrypt = global.window.__cgiDecrypt;
 
-// ── 主入口 ────────────────────────────────────────────────────
+// ── 7. 主入口 ──────────────────────────────────────────────
 async function main() {
-  const action = _process.argv[2];
-  let input = _process.argv[3];
+  const action = process.argv[2];
+  let input = process.argv[3];
 
-  // 支持 --file 参数：从文件读取大数据
-  if (input === '--file' && _process.argv[4]) {
-    input = fs.readFileSync(_process.argv[4], 'utf-8');
+  // --file 参数
+  if (input === '--file' && process.argv[4]) {
+    input = fs.readFileSync(process.argv[4], 'utf-8');
   }
-
-  // 支持 stdin 输入
-  if (input === '-' || (input === undefined && _process.argv.length <= 3)) {
+  // stdin 输入
+  if (input === '-' || (input === undefined && process.argv.length <= 3)) {
     input = fs.readFileSync(0, 'utf-8');
   }
 
   if (!action || !input) {
-    _process.stderr.write(JSON.stringify({ success: false, error: 'Usage: node qqmusic_api.js <sign|encrypt|decrypt> <data>' }) + '\n');
-    _process.exit(1);
+    process.stderr.write(JSON.stringify({
+      success: false, error: 'Usage: node qqmusic_api.js <sign|encrypt|decrypt> <data>',
+    }) + '\n');
+    process.exit(1);
   }
 
-  const timeout = _setTimeout(() => {
-    _process.stderr.write(JSON.stringify({ success: false, error: 'Operation timed out' }) + '\n');
-    _process.exit(1);
+  const timeout = setTimeout(function () {
+    process.stderr.write(JSON.stringify({ success: false, error: 'Operation timed out' }) + '\n');
+    process.exit(1);
   }, 30000);
 
   try {
@@ -123,7 +164,7 @@ async function main() {
       case 'decrypt':
         if (!cgiDecrypt) throw new Error('Decrypt function not available');
         {
-          const binaryBuf = _Buffer.from(input.trim(), 'base64');
+          const binaryBuf = Buffer.from(input.trim(), 'base64');
           const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
           result = cgiDecrypt(uint8);
         }
@@ -131,13 +172,12 @@ async function main() {
       default:
         throw new Error('Unknown action: ' + action);
     }
-    _clearTimeout(timeout);
-    _process.stdout.write(JSON.stringify({ success: true, result: result }) + '\n');
-    _process.exit(0);
+    clearTimeout(timeout);
+    process.stdout.write(JSON.stringify({ success: true, result: result }) + '\n');
   } catch (e) {
-    _clearTimeout(timeout);
-    _process.stderr.write(JSON.stringify({ success: false, error: e.message }) + '\n');
-    _process.exit(1);
+    clearTimeout(timeout);
+    process.stderr.write(JSON.stringify({ success: false, error: e.message }) + '\n');
+    process.exit(1);
   }
 }
 
