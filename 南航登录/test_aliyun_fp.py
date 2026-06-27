@@ -89,6 +89,60 @@ window.__xhrBridge = true;
 
 ctx.locals["__pythonXhr"] = xhr_bridge
 
+# Stub Web Worker (fp.min.js uses Workers for background fingerprinting)
+ctx.eval("""\
+window.Worker = function() {
+    this.postMessage = function() {};
+    this.onmessage = null;
+    this.onerror = null;
+    this.terminate = function() {};
+};
+window.Worker.prototype = {};
+""")
+
+# Stub Canvas for fingerprinting
+ctx.eval("""\
+try {
+    var c = document.createElement('canvas');
+    if (c && !c.getContext) {
+        HTMLCanvasElement.prototype.getContext = function(type) {
+            if (type === '2d') {
+                return {
+                    fillText: function(){}, strokeText: function(){},
+                    measureText: function(t){ return {width: t.length * 6}; },
+                    fillRect: function(){}, clearRect: function(){},
+                    getImageData: function(x,y,w,h){ return {data: new Uint8ClampedArray(w*h*4)}; },
+                    createLinearGradient: function(){ return {addColorStop: function(){}}; },
+                    createRadialGradient: function(){ return {addColorStop: function(){}}; },
+                    canvas: {width:300,height:150},
+                    font: '', textBaseline: '', textAlign: '',
+                    fillStyle: '', strokeStyle: '',
+                    beginPath: function(){}, moveTo: function(){}, lineTo: function(){},
+                    stroke: function(){}, arc: function(){},
+                    toDataURL: function(){ return 'data:image/png;base64,test'; },
+                };
+            }
+            if (type === 'webgl' || type === 'experimental-webgl') {
+                return {
+                    getParameter: function(p) {
+                        var params = {
+                            37445: 'Intel Inc.', 37446: 'Intel Iris OpenGL Engine',
+                            7937: 'WebKit', 7938: 'WebKit WebGL',
+                            33901: {vendor: 32902, renderer: 32903},
+                            33902: 32902,
+                        };
+                        return params[p];
+                    },
+                    getExtension: function(){ return null; },
+                    getShaderPrecisionFormat: function(){ return {rangeMin:127,rangeMax:127,precision:23}; },
+                };
+            }
+            return null;
+        };
+    }
+} catch(e) {}
+""")
+
 # Load fp.min.js
 print("Loading fp.min.js...")
 fp_js = open("fp.min.js", encoding="utf-8").read()
