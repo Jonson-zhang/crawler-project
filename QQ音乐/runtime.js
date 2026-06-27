@@ -21,6 +21,7 @@
     o = { 23: 0 },
     f = [];
   function d(t) {
+    if (!e[t]) { console.error('[STUB] Missing webpack module:', t, '- returning empty stub'); return {}; }
     if (a[t]) return a[t].exports;
     var r = (a[t] = { i: t, l: !1, exports: {} });
     return (e[t].call(r.exports, r, r.exports, d), (r.l = !0), r.exports);
@@ -294,6 +295,8 @@
       return Object.prototype.hasOwnProperty.call(e, t);
     }),
     (d.p = "/ryqq/"),
+    // Patch d.e to prevent dynamic chunk loading in Node.js
+    (d.e = function() { return Promise.resolve(); }),
     (window.__webpack_require__ = d),
     (d.oe = function (e) {
       throw e;

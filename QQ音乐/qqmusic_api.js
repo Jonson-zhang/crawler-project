@@ -1,27 +1,36 @@
 /**
- * QQ音乐API签名和加解密工具 - Node.js 适配层
+ * QQ音乐 API 签名/加解密工具 - Node.js 原型链补环境
  *
- * 用法: node qqmusic_api.js <action> <data>
- *   action: sign | encrypt | decrypt
- *   data: JSON字符串 (sign/encrypt) 或 base64字符串 (decrypt)
+ * 用法:
+ *   node qqmusic_api.js sign <json_data>
+ *   node qqmusic_api.js encrypt <json_data>
+ *   node qqmusic_api.js decrypt <base64_or_binary_data>
  *
- * 输出: JSON { success: true, result: "..." } 或 { success: false, error: "..." }
+ *   数据也可通过 stdin 传入 (使用 - 作为数据参数)
+ *
+ * 输出: JSON { success: true, result: "..." }
  */
 
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
+const nodeCrypto = require('crypto').webcrypto;
 
-// 创建最小化浏览器环境
+// ── 构建最小浏览器环境 ──────────────────────────────────
 const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
   url: 'https://y.qq.com/',
   referrer: 'https://y.qq.com/',
   contentType: 'text/html',
-  includeNodeLocations: false,
-  storageQuota: 10000000,
 });
 
-// 设置全局变量
+// 原型链方式补全全局对象
+const winProto = Object.getOwnPropertyDescriptors(dom.window);
+for (const [key, desc] of Object.entries(winProto)) {
+  if (key === 'window' || key === 'document' || key === 'navigator' || key === 'location') continue;
+  if (typeof global[key] !== 'undefined') continue;
+  try { Object.defineProperty(global, key, { ...desc, configurable: true }); } catch (e) {}
+}
+
 global.window = dom.window;
 global.document = dom.window.document;
 global.navigator = dom.window.navigator;
@@ -29,143 +38,102 @@ global.location = dom.window.location;
 global.XMLHttpRequest = dom.window.XMLHttpRequest;
 global.FormData = dom.window.FormData;
 
-// 补充 navigator 属性
-global.navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
-global.navigator.appVersion = '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
-global.navigator.platform = 'Win32';
+// 补全 navigator 属性
+Object.defineProperty(global.navigator, 'userAgent', {
+  value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+  configurable: true, writable: true
+});
+Object.defineProperty(global.navigator, 'platform', {
+  value: 'Win32', configurable: true, writable: true
+});
 
-// 补充 crypto (Node.js 18+ 自带 Web Crypto)
-if (!global.crypto) {
-  global.crypto = require('crypto').webcrypto;
-}
-if (!global.crypto.subtle) {
-  global.crypto.subtle = require('crypto').webcrypto.subtle;
-}
+// 补全 crypto (Web Crypto API)
+global.crypto = nodeCrypto;
+global.window.crypto = nodeCrypto;
 
-// 补充 TextEncoder/TextDecoder (Node.js 自带)
-global.TextEncoder = global.TextEncoder || require('util').TextEncoder;
-global.TextDecoder = global.TextDecoder || require('util').TextDecoder;
+// 补全 TextEncoder/TextDecoder
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
 
-// 补充 performance
-if (!global.performance) {
-  global.performance = require('perf_hooks').performance;
-}
+// 补全 performance
+global.performance = require('perf_hooks').performance;
 
-// 设置 window 属性到 global
-for (const key of Object.keys(global.window)) {
-  if (typeof global[key] === 'undefined' && key !== 'window' && key !== 'document' && key !== 'navigator' && key !== 'location') {
-    try {
-      global[key] = global.window[key];
-    } catch (e) {
-      // skip non-configurable properties
-    }
-  }
-}
+// ── 初始化 webpack 模块系统 ─────────────────────────────
+global.window.webpackJsonp = [];
+eval(fs.readFileSync(path.join(__dirname, 'runtime.js'), 'utf-8'));
 
-// 初始化 webpackJsonp
-global.window.webpackJsonp = global.window.webpackJsonp || [];
+// 加载必需的 chunk 文件
+['common.chunk.js', 'vendor.chunk.js'].forEach(f => {
+  const p = path.join(__dirname, f);
+  if (fs.existsSync(p)) eval(fs.readFileSync(p, 'utf-8'));
+});
 
-// 加载 webpack runtime
-const runtimePath = path.join(__dirname, 'runtime.js');
-const runtimeCode = fs.readFileSync(runtimePath, 'utf-8');
-eval(runtimeCode);
-
-// 加载 vendor.chunk.js (包含加密/签名模块)
-const vendorPath = path.join(__dirname, 'vendor.chunk.js');
-const vendorCode = fs.readFileSync(vendorPath, 'utf-8');
-try {
-  eval(vendorCode);
-  console.error('[DEBUG] vendor.chunk.js loaded successfully');
-} catch (e) {
-  console.error('[DEBUG] vendor.chunk.js error:', e.message);
-  console.error('[DEBUG] stack:', e.stack ? e.stack.substring(0, 500) : 'no stack');
-}
-
-// 现在 window._getSecuritySign, window.__cgiEncrypt, window.__cgiDecrypt 应该已设置
-
-// Debug: check what's available
+// 执行模块8 (包含签名/加解密函数)
 const wpRequire = global.window.__webpack_require__;
-console.error('[DEBUG] __webpack_require__:', typeof wpRequire);
-console.error('[DEBUG] window._getSecuritySign:', typeof global.window._getSecuritySign);
-console.error('[DEBUG] window.__cgiEncrypt:', typeof global.window.__cgiEncrypt);
-
-if (wpRequire) {
-  // List available modules
-  if (wpRequire.m) {
-    const moduleIds = Object.keys(wpRequire.m);
-    console.error('[DEBUG] Total modules:', moduleIds.length);
-    console.error('[DEBUG] First 20 module IDs:', moduleIds.slice(0, 20).join(','));
-  }
-
-  // Try to require all modules (this will execute them)
-  if (wpRequire.m) {
-    const ids = Object.keys(wpRequire.m);
-    for (const id of ids) {
-      try {
-        wpRequire(id);
-      } catch (e) {
-        console.error('[DEBUG] Module', id, 'error:', e.message.substring(0, 100));
-      }
-    }
-    console.error('[DEBUG] After require all - _getSecuritySign:', typeof global.window._getSecuritySign);
-    console.error('[DEBUG] After require all - __cgiEncrypt:', typeof global.window.__cgiEncrypt);
-  }
+if (wpRequire && wpRequire.m && wpRequire.m[8]) {
+  wpRequire(8);
 }
 
-function getSign(data) {
-  const signFn = global.window._getSecuritySign || global.window._getSecuritySign2;
-  if (!signFn) {
-    throw new Error('_getSecuritySign not found on window');
-  }
-  const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
-  return signFn(dataStr);
-}
+// ── 获取函数引用 ────────────────────────────────────────
+const getSecuritySign = global.window._getSecuritySign;
+const cgiEncrypt = global.window.__cgiEncrypt;
+const cgiDecrypt = global.window.__cgiDecrypt;
 
-async function encrypt(data) {
-  const encryptFn = global.window.__cgiEncrypt;
-  if (!encryptFn) {
-    throw new Error('__cgiEncrypt not found on window');
-  }
-  const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
-  return await encryptFn(dataStr);
-}
-
-function decrypt(data) {
-  const decryptFn = global.window.__cgiDecrypt;
-  if (!decryptFn) {
-    throw new Error('__cgiDecrypt not found on window');
-  }
-  return decryptFn(data);
-}
-
-// 主入口
+// ── 主入口 ──────────────────────────────────────────────
 async function main() {
   const action = process.argv[2];
-  const input = process.argv[3];
+  let input = process.argv[3];
+
+  // 支持 --file 参数：从文件读取大数据
+  if (input === '--file' && process.argv[4]) {
+    input = require('fs').readFileSync(process.argv[4], 'utf-8');
+  }
+
+  // 支持 stdin 输入
+  if (input === '-' || (input === undefined && process.argv.length <= 3)) {
+    input = require('fs').readFileSync(0, 'utf-8');
+  }
 
   if (!action || !input) {
-    console.log(JSON.stringify({ success: false, error: 'Usage: node qqmusic_api.js <sign|encrypt|decrypt> <data>' }));
+    process.stderr.write(JSON.stringify({ success: false, error: 'Usage: node qqmusic_api.js <sign|encrypt|decrypt> <data>' }) + '\n');
     process.exit(1);
   }
+
+  const timeout = setTimeout(() => {
+    process.stderr.write(JSON.stringify({ success: false, error: 'Operation timed out' }) + '\n');
+    process.exit(1);
+  }, 30000);
 
   try {
     let result;
     switch (action) {
       case 'sign':
-        result = getSign(input);
+        if (!getSecuritySign) throw new Error('Sign function not available');
+        result = getSecuritySign(typeof input === 'string' ? input : JSON.stringify(input));
         break;
       case 'encrypt':
-        result = await encrypt(input);
+        if (!cgiEncrypt) throw new Error('Encrypt function not available');
+        result = await cgiEncrypt(typeof input === 'string' ? input : JSON.stringify(input));
         break;
       case 'decrypt':
-        result = decrypt(input);
+        if (!cgiDecrypt) throw new Error('Decrypt function not available');
+        // decrypt需要 ArrayBuffer: base64解码后传Uint8Array
+        {
+          const binaryBuf = Buffer.from(input.trim(), 'base64');
+          const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
+          result = cgiDecrypt(uint8);
+        }
         break;
       default:
         throw new Error('Unknown action: ' + action);
     }
-    console.log(JSON.stringify({ success: true, result: result }));
+    clearTimeout(timeout);
+    process.stdout.write(JSON.stringify({ success: true, result: result }) + '\n');
+    process.exit(0);
   } catch (e) {
-    console.log(JSON.stringify({ success: false, error: e.message }));
+    clearTimeout(timeout);
+    process.stdout.write(JSON.stringify({ success: false, error: e.message }) + '\n');
     process.exit(1);
   }
 }
