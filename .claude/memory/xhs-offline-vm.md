@@ -41,10 +41,15 @@ shield/webprofile 和 activate 若不带完整签名，服务端静默降级 →
 
 ## 实现
 
-`小红书/v2.0/` — 完整离线方案：env.js + sign.js(daemon) + main.py。
+- `小红书/v2.0/` — Node.js 完整离线方案：env.js + sign.js(daemon) + main.py
+- `小红书/iv8/` — iv8 C++ V8 方案（2026-06-27）：纯 Python，无 Node.js、无补环境。迁移踩坑记录见 iv8 系列记忆。
 
 ## 相关 memory
 
 - [[xhs-setter-intercept]] — setter 拦截技术详解
 - [[env-sign-separation]] — env.js / sign.js 分离架构
 - [[online-resources-keep-raw]] — 线上资源禁止截断
+- [[iv8-dom-stubs]] — iv8 迁移：DOM 方法必须 stub
+- [[iv8-iife-scope]] — iv8 迁移：IIFE 隔离作用域
+- [[iv8-foreach-closure]] — iv8 迁移：.forEach() 闭包修复
+- [[iv8-navigator-plugins]] — iv8 迁移：navigator.plugins 空数组
