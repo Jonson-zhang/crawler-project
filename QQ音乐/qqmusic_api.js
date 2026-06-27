@@ -73,7 +73,13 @@ eval(runtimeCode);
 // 加载 vendor.chunk.js (包含加密/签名模块)
 const vendorPath = path.join(__dirname, 'vendor.chunk.js');
 const vendorCode = fs.readFileSync(vendorPath, 'utf-8');
-eval(vendorCode);
+try {
+  eval(vendorCode);
+  console.error('[DEBUG] vendor.chunk.js loaded successfully');
+} catch (e) {
+  console.error('[DEBUG] vendor.chunk.js error:', e.message);
+  console.error('[DEBUG] stack:', e.stack ? e.stack.substring(0, 500) : 'no stack');
+}
 
 // 现在 window._getSecuritySign, window.__cgiEncrypt, window.__cgiDecrypt 应该已设置
 
