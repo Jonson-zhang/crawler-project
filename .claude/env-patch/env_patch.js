@@ -211,7 +211,7 @@ Object.defineProperty(MemoryInfo, 'name', { value: 'MemoryInfo', writable: false
 function _defineGetter(proto, prop, getter) {
   Object.defineProperty(proto, prop, {
     get: getter,
-    enumerable: true,
+    enumerable: false,
     configurable: true,
   });
 }
@@ -805,12 +805,14 @@ const EXTRA_CONSTRUCTORS = [
 
 // Node.js ≥21 的部分全局变量是 getter（navigator/crypto/performance），
 // 直接赋值无效，必须用 Object.defineProperty 覆盖。
-function _setGlobal(key, value) {
+// enumerable 参数控制属性是否可枚举（默认 true），对齐浏览器行为。
+function _setGlobal(key, value, enumerable) {
+  const enu = enumerable !== undefined ? enumerable : true;
   try {
     Object.defineProperty(global, key, {
       value,
       writable: true,
-      enumerable: true,
+      enumerable: enu,
       configurable: true,
     });
   } catch (_) {
@@ -897,16 +899,22 @@ function setupEnv(options) {
     }
   }
 
+  // 浏览器中 window 的 _身份属性_（self/top/parent）和 _状态属性_
+  // （innerWidth/closed/length/…）是不可枚举的，函数引用
+  // （fetch/addEventListener/…）也是不可枚举的。
+  // 对齐此行为可避免 Object.keys(window) 检测。
+
+  // ── window 身份引用（不可枚举）──
   if (opts.windowToGlobal) {
-    _setGlobal('window', global);
-    _setGlobal('self', global);
-    _setGlobal('top', global);
-    _setGlobal('parent', global);
-    _setGlobal('globalThis', global);
+    _setGlobal('window', global, false);
+    _setGlobal('self', global, false);
+    _setGlobal('top', global, false);
+    _setGlobal('parent', global, false);
   } else {
-    _setGlobal('window', global.window || {});
+    _setGlobal('window', global.window || {}, false);
   }
 
+  // ── 文档 / 导航 / 存储 / crypto（浏览器中可枚举）──
   _setGlobal('navigator', nav);
   _setGlobal('document', doc);
   _setGlobal('location', loc);
@@ -924,16 +932,16 @@ function setupEnv(options) {
     if (!opts.windowToGlobal) global.window.crypto = cryptoObj;
   }
 
-  // btoa / atob
+  // ── btoa / atob（浏览器中不可枚举）──
   if (typeof global.btoa !== 'function') {
     const _btoa = function (s) { return Buffer.from(String(s), 'binary').toString('base64'); };
     sn(_btoa, 'btoa');
-    _setGlobal('btoa', _btoa);
+    _setGlobal('btoa', _btoa, false);
   }
   if (typeof global.atob !== 'function') {
     const _atob = function (s) { return Buffer.from(String(s), 'base64').toString('binary'); };
     sn(_atob, 'atob');
-    _setGlobal('atob', _atob);
+    _setGlobal('atob', _atob, false);
   }
 
   // TextEncoder / TextDecoder
@@ -941,48 +949,50 @@ function setupEnv(options) {
   if (typeof global.TextEncoder === 'undefined') _setGlobal('TextEncoder', _TE);
   if (typeof global.TextDecoder === 'undefined') _setGlobal('TextDecoder', _TD);
 
-  // console
+  // ── console（浏览器中不可枚举）──
   if (typeof global.console === 'undefined') {
-    _setGlobal('console', { log() { }, error() { }, warn() { }, info() { }, debug() { } });
+    _setGlobal('console', { log() { }, error() { }, warn() { }, info() { }, debug() { } }, false);
   }
 
-  // window 尺寸
-  _setGlobal('innerWidth', opts.screenWidth);
-  _setGlobal('innerHeight', opts.screenHeight);
-  _setGlobal('outerWidth', opts.screenWidth);
-  _setGlobal('outerHeight', opts.screenHeight);
-  _setGlobal('devicePixelRatio', opts.devicePixelRatio);
-  _setGlobal('screenX', 0);
-  _setGlobal('screenY', 0);
-  _setGlobal('scrollX', 0);
-  _setGlobal('scrollY', 0);
-  _setGlobal('name', '');
-  _setGlobal('closed', false);
-  _setGlobal('length', 0);
-  _setGlobal('opener', null);
-  _setGlobal('origin', new URL(opts.url).origin);
-  _setGlobal('isSecureContext', true);
+  // ── window 尺寸 / 状态（浏览器中不可枚举）──
+  _setGlobal('innerWidth', opts.screenWidth, false);
+  _setGlobal('innerHeight', opts.screenHeight, false);
+  _setGlobal('outerWidth', opts.screenWidth, false);
+  _setGlobal('outerHeight', opts.screenHeight, false);
+  _setGlobal('devicePixelRatio', opts.devicePixelRatio, false);
+  _setGlobal('screenX', 0, false);
+  _setGlobal('screenY', 0, false);
+  _setGlobal('scrollX', 0, false);
+  _setGlobal('scrollY', 0, false);
+  _setGlobal('name', '', false);
+  _setGlobal('closed', false, false);
+  _setGlobal('length', 0, false);
+  _setGlobal('opener', null, false);
+  _setGlobal('origin', new URL(opts.url).origin, false);
+  _setGlobal('isSecureContext', true, false);
 
-  // 通用 window 方法
+  // ── 定时器（浏览器中可枚举）──
   _setGlobal('setTimeout', setTimeout);
   _setGlobal('setInterval', setInterval);
   _setGlobal('clearTimeout', clearTimeout);
   _setGlobal('clearInterval', clearInterval);
-  _setGlobal('fetch', mf('fetch'));
-  _setGlobal('postMessage', mf('postMessage'));
-  _setGlobal('addEventListener', mf('addEventListener'));
-  _setGlobal('removeEventListener', mf('removeEventListener'));
-  _setGlobal('requestAnimationFrame', mf('requestAnimationFrame'));
-  _setGlobal('cancelAnimationFrame', mf('cancelAnimationFrame'));
+
+  // ── window 函数（浏览器中不可枚举）──
+  _setGlobal('fetch', mf('fetch'), false);
+  _setGlobal('postMessage', mf('postMessage'), false);
+  _setGlobal('addEventListener', mf('addEventListener'), false);
+  _setGlobal('removeEventListener', mf('removeEventListener'), false);
+  _setGlobal('requestAnimationFrame', mf('requestAnimationFrame'), false);
+  _setGlobal('cancelAnimationFrame', mf('cancelAnimationFrame'), false);
   const _mm = function () { return { matches: false, media: '', onchange: null, addListener() { }, removeListener() { } }; };
   sn(_mm, 'matchMedia');
-  _setGlobal('matchMedia', _mm);
+  _setGlobal('matchMedia', _mm, false);
   const _gcs = function () { return {}; };
   sn(_gcs, 'getComputedStyle');
-  _setGlobal('getComputedStyle', _gcs);
+  _setGlobal('getComputedStyle', _gcs, false);
   const _gs = function () { return null; };
   sn(_gs, 'getSelection');
-  _setGlobal('getSelection', _gs);
+  _setGlobal('getSelection', _gs, false);
 
   // 隐藏 Node.js 特征
   if (opts.windowToGlobal) {
