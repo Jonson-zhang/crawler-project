@@ -6,12 +6,6 @@
 Boss直聘/
 ├── main.py                    # 入口：python main.py 101010100 python
 │
-├── solution_iv8/              # ✅ 可用方案（code=0）
-│   ├── boss_iv8.py            #   简洁版（60行核心逻辑）
-│   ├── zp_stoken.py           #   iv8 官方示例（含 canvas 指纹）
-│   └── README.md
-│
-├── iv8/                       # iv8 框架（git clone 参考）
 │
 └── reverse_work/              # 📚 逆向全过程记录
     ├── README.md              #   完整时间线和技术总结

@@ -7,7 +7,7 @@ Boss直聘 — 入口
   python main.py 101280600 前端              # 搜深圳前端
 
 方案：
-  solution_iv8/   — iv8 (C++ V8 + 原生浏览器 API) → code=0 ✅
+  iv8/   — iv8 (C++ V8 + 原生浏览器 API) → code=0 ✅
   reverse_work/   — 逆向全过程记录（20 轮补环境 + VMP 分析 + 浏览器 trace）
 
 依赖：
@@ -15,7 +15,7 @@ Boss直聘 — 入口
 """
 
 import sys
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent / "solution_iv8"))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent / "iv8"))
 from boss_iv8 import search_jobs
 
 if __name__ == "__main__":
