@@ -449,6 +449,18 @@ function buildDocument(opts) {
   doc.removeEventListener = mf('removeEventListener');
   doc.createDocumentFragment = function () { return new HTMLElement(); };
   sn(doc.createDocumentFragment, 'createDocumentFragment');
+  doc.createTextNode = function (text) {
+    const n = Object.create(HTMLElement.prototype);
+    n[ST] = 'Text';
+    n.nodeType = 3;
+    n.nodeName = '#text';
+    n.textContent = String(text || '');
+    n.nodeValue = n.textContent;
+    n.data = n.textContent;
+    n.length = n.textContent.length;
+    return n;
+  };
+  sn(doc.createTextNode, 'createTextNode');
 
   doc.hidden = false;
   doc.readyState = 'complete';
@@ -982,10 +994,36 @@ function setupEnv(options) {
   }
 
   // ── 6. 额外构造函数 ──
+  // 先注册文件级自定义构造函数（有完整原型链）
+  [
+    EventTarget, Window, Navigator, HTMLDocument, HTMLElement, HTMLHtmlElement,
+    HTMLHeadElement, HTMLBodyElement, HTMLCanvasElement, HTMLIFrameElement,
+    HTMLScriptElement, Location, Screen, History, Storage, Performance,
+    PluginArray, MimeTypeArray, Plugin, MimeType, SubtleCrypto, Crypto, MemoryInfo,
+  ].forEach(function (Ctor) {
+    var name = Ctor.name;
+    if (name && typeof global[name] === 'undefined') {
+      _setGlobal(name, Ctor);
+    }
+  });
+
   if (opts.extraConstructors) {
     EXTRA_CONSTRUCTORS.forEach(name => {
       if (typeof global[name] === 'undefined') {
         _setGlobal(name, mc(name));
+      }
+    });
+
+    // 补 Observer 原型方法（EXTRA_CONSTRUCTORS 中的 mc() 只有空壳）
+    ['MutationObserver', 'IntersectionObserver', 'ResizeObserver', 'PerformanceObserver'].forEach(function (name) {
+      var Ctor = global[name];
+      if (Ctor && Ctor.prototype) {
+        Ctor.prototype.observe = mf('observe');
+        Ctor.prototype.disconnect = mf('disconnect');
+        if (name === 'MutationObserver') Ctor.prototype.takeRecords = function () { return []; };
+        if (name === 'IntersectionObserver' || name === 'ResizeObserver') {
+          Ctor.prototype.unobserve = mf('unobserve');
+        }
       }
     });
   }
