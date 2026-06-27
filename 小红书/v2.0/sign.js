@@ -11,17 +11,19 @@
  */
 
 "use strict";
-const fs = require("fs"), path = require("path"), CryptoJS = require("crypto-js");
+// 保存原生引用（env_patch 会隐藏 process/require/module/__dirname）
+const _process = process, _require = require, __dir = __dirname;
+const fs = _require("fs"), path = _require("path"), CryptoJS = _require("crypto-js");
 
 // 静默加载
-const _s = process.stdout.write.bind(process.stdout);
-process.stdout.write = () => true;
+const _s = _process.stdout.write.bind(_process.stdout);
+_process.stdout.write = () => true;
 
-require("./env");
-require("./ds_script");
+_require("./env_site");   // env_patch 底座 + env.js 叠加
+_require("./ds_script");
 global.MutationObserver = function () { this.observe = function () {}; this.disconnect = function () {}; };
 
-eval(fs.readFileSync(path.join(__dirname, "data", "ds_api.js"), "utf8"));
+eval(fs.readFileSync(path.join(__dir, "data", "ds_api.js"), "utf8"));
 
 // 动态发现 VMP 解释器 → 设 setter 拦截 → 加载 ds_v2 升级 mns0201 → mns0301
 //
@@ -69,11 +71,11 @@ eval(fs.readFileSync(path.join(__dirname, "data", "ds_api.js"), "utf8"));
   }
 })();
 
-eval(fs.readFileSync(path.join(__dirname, "data", "ds_v2.js"), "utf8"));
+eval(fs.readFileSync(path.join(__dir, "data", "ds_v2.js"), "utf8"));
 
-process.stdout.write = _s;
+_process.stdout.write = _s;
 
-if (typeof window.mnsv2 !== "function") { console.error("mnsv2 不存在"); process.exit(1); }
+if (typeof window.mnsv2 !== "function") { console.error("mnsv2 不存在"); _process.exit(1); }
 
 // 编码函数
 const U = "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5".split("");
@@ -99,8 +101,8 @@ function seccore_signv2(url, body) {
 // ===== 常驻模式 =====
 function daemonLoop() {
   var buf = "";
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", function (chunk) {
+  _process.stdin.setEncoding("utf8");
+  _process.stdin.on("data", function (chunk) {
     buf += chunk;
     var lines = buf.split("\n");
     buf = lines.pop(); // 最后一段可能不完整
@@ -114,27 +116,27 @@ function daemonLoop() {
         var xs = seccore_signv2(api, body);
         var xt = String(Date.now());
         var xsc = b64Encode(encodeUtf8(JSON.stringify({ a1: "", x1: "4.3.5", x2: api, x3: "xhs-pc-web", x4: CryptoJS.MD5(api).toString() })));
-        process.stdout.write(JSON.stringify({ "X-s": xs, "X-t": xt, "X-s-common": xsc }) + "\n");
+        _process.stdout.write(JSON.stringify({ "X-s": xs, "X-t": xt, "X-s-common": xsc }) + "\n");
       } catch (e) {
-        process.stdout.write(JSON.stringify({ error: e.message }) + "\n");
+        _process.stdout.write(JSON.stringify({ error: e.message }) + "\n");
       }
     }
   });
-  process.stdin.on("end", function () { process.exit(0); });
-  process.stdin.resume();
+  _process.stdin.on("end", function () { _process.exit(0); });
+  _process.stdin.resume();
 }
 
 // ===== 入口 =====
-if (process.argv[2] === "--daemon") {
+if (_process.argv[2] === "--daemon") {
   daemonLoop();
 } else {
   // 单次调用模式（兼容旧用法）
-  var API = process.argv[2] || "/api/sns/web/v1/homefeed";
-  var arg = process.argv[3];
-  if (!arg) { console.error("用法: node sign.js <api_path> '<json_body>'"); process.exit(1); }
+  var API = _process.argv[2] || "/api/sns/web/v1/homefeed";
+  var arg = _process.argv[3];
+  if (!arg) { console.error("用法: node sign.js <api_path> '<json_body>'"); _process.exit(1); }
   var bodyObj;
-  try { bodyObj = JSON.parse(arg); } catch (e) { console.error("body 不是有效 JSON"); process.exit(1); }
+  try { bodyObj = JSON.parse(arg); } catch (e) { console.error("body 不是有效 JSON"); _process.exit(1); }
   var xs = seccore_signv2(API, bodyObj), xt = String(Date.now());
   var xsc = b64Encode(encodeUtf8(JSON.stringify({ a1: "", x1: "4.3.5", x2: API, x3: "xhs-pc-web", x4: CryptoJS.MD5(API).toString() })));
-  process.stdout.write(JSON.stringify({ "X-s": xs, "X-t": xt, "X-s-common": xsc }) + "\n");
+  _process.stdout.write(JSON.stringify({ "X-s": xs, "X-t": xt, "X-s-common": xsc }) + "\n");
 }
