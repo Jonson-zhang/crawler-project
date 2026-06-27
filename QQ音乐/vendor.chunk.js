@@ -32030,6 +32030,7 @@
               })(u(e));
             }));
           var i = n._getSecuritySign;
+          window._getSecuritySign2 = n._getSecuritySign;
           (delete n._getSecuritySign, (t.default = i));
         }.call(this, n(16)));
     },
