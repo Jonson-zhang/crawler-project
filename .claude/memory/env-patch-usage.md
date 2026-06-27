@@ -39,7 +39,7 @@ metadata:
 |------|------|---------|
 | QQ音乐 | 纯 env_patch | `windowToGlobal: false` |
 | Boss直聘 | 纯 env_patch | `windowToGlobal: true`（vm 沙箱） |
-| 小红书 | env_patch + env.js 叠加 | `windowToGlobal: true`，env.js 补 watch Proxy + setter 拦截 |
+| 小红书 | 纯 env_patch | `windowToGlobal: true` + `watch(window)` |
 
 ## 为什么 windowToGlobal 影响 VMP
 
