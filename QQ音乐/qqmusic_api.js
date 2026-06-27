@@ -77,6 +77,13 @@ eval(vendorCode);
 
 // 现在 window._getSecuritySign, window.__cgiEncrypt, window.__cgiDecrypt 应该已设置
 
+// Debug: check what's available
+console.error('[DEBUG] window._getSecuritySign:', typeof global.window._getSecuritySign);
+console.error('[DEBUG] window.__cgiEncrypt:', typeof global.window.__cgiEncrypt);
+console.error('[DEBUG] window.__cgiDecrypt:', typeof global.window.__cgiDecrypt);
+console.error('[DEBUG] window._getSecuritySign2:', typeof global.window._getSecuritySign2);
+console.error('[DEBUG] webpackJsonp length:', global.window.webpackJsonp ? global.window.webpackJsonp.length : 'N/A');
+
 function getSign(data) {
   const signFn = global.window._getSecuritySign || global.window._getSecuritySign2;
   if (!signFn) {
