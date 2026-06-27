@@ -1054,10 +1054,41 @@ function setupEnv(options) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 12. watch() — Proxy 包装器（VMP 兼容）
+// ═══════════════════════════════════════════════════════════════
+// 某些 VMP（如小红书）在运行时通过 window 上的 Proxy 检测环境。
+// 用此函数对任意对象施加透明 Proxy，拦截 get/set/apply/construct。
+// 使用方式: window = watch(window, 'window');
+function watch(func, name) {
+  if (typeof func !== 'object' && typeof func !== 'function') return func;
+  return new Proxy(func, {
+    get(target, p, receiver) {
+      try {
+        var pk = typeof p === 'symbol' ? p.toString() : String(p);
+        if (pk === 'Math' || pk === 'isNaN') return Reflect.get(target, p, receiver);
+        if (pk === 'crypto') return global.crypto;
+        return Reflect.get(target, p, receiver);
+      } catch (e) {
+        return Reflect.get(target, p, receiver);
+      }
+    },
+    set(target, p, value, receiver) {
+      try { return Reflect.set(target, p, value, receiver); } catch (e) { return false; }
+    },
+    apply(target, thisArg, args) {
+      try { return Reflect.apply(target, thisArg, args); } catch (e) { throw e; }
+    },
+    construct(target, args, newTarget) {
+      try { return Reflect.construct(target, args, newTarget); } catch (e) { throw e; }
+    },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 导出
 // ═══════════════════════════════════════════════════════════════
 module.exports = {
   setupEnv,
   // 工具函数（高级用法）
-  sn, mf, mc,
+  sn, mf, mc, watch,
 };

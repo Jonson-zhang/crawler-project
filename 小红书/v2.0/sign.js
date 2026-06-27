@@ -19,7 +19,7 @@ const fs = _require("fs"), path = _require("path"), CryptoJS = _require("crypto-
 const _s = _process.stdout.write.bind(_process.stdout);
 _process.stdout.write = () => true;
 
-_require("./env_site");   // env_patch 底座 + env.js 叠加
+_require("./env_site");   // env_patch 底座 + watch(window)
 _require("./ds_script");
 global.MutationObserver = function () { this.observe = function () {}; this.disconnect = function () {}; };
 

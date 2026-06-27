@@ -10,7 +10,7 @@
  */
 
 const _require = require;
-const { setupEnv, sn, mf, mc } = _require("../.claude/env-patch/env_patch.js");
+const { setupEnv, sn, mf, mc, watch } = _require("../.claude/env-patch/env_patch.js");
 
 // ═══════════════════════════════════════════════════════════════
 // 1. 站点配置
@@ -53,6 +53,9 @@ global.window.crypto = nodeWebCrypto;
 //   set(v) {},
 //   configurable: true, enumerable: true,
 // });
+
+// --- VMP 签名结果为 undefined 时，给 window 加 Proxy 包装 ---
+// global.window = watch(global.window, "window");
 
 // --- 常用: 覆盖 Navigator 属性 ---
 // navigator.hardwareConcurrency = 8;
