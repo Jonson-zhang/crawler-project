@@ -21,7 +21,7 @@
     o = { 23: 0 },
     f = [];
   function d(t) {
-    if (!e[t]) { console.error('[STUB] Missing webpack module:', t, '- returning empty stub'); return {}; }
+    if (!e[t]) { return {}; }
     if (a[t]) return a[t].exports;
     var r = (a[t] = { i: t, l: !1, exports: {} });
     return (e[t].call(r.exports, r, r.exports, d), (r.l = !0), r.exports);
