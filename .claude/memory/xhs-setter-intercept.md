@@ -40,5 +40,7 @@ Object.defineProperty(global, "_AUuXfEG27Xa3x", {
 
 任何通过 `Object.defineProperty` + setter 拦截来修补 VMP 解释器 env 数组缺口的场景。
 
+> **iv8 迁移注意**：在 iv8 中此技巧需配合 `.forEach()` 闭包隔离使用，见 [[iv8-foreach-closure]]。iv8 中还需额外处理 DOM stub（[[iv8-dom-stubs]]）和作用域隔离（[[iv8-iife-scope]]）。
+
 **Why:** 直接加载 ds_v2.js 会因 VMP `new env[i]()` 报 undefined is not a constructor。
 **How to apply:** 找到 VMP 升级函数对应的全局属性名 → Object.defineProperty setter 拦截 → 预填充 env slot。
