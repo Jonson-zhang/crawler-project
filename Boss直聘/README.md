@@ -4,8 +4,11 @@
 
 ```
 Boss直聘/
-├── main.py                    # 入口：python main.py 101010100 python
-│
+├── iv8/                       # ✅ 当前方案：iv8 C++ V8 引擎
+│   ├── boss_iv8.py            #    入口 + 核心实现
+│   ├── zp_stoken.py           #    iv8 官方示例
+│   ├── _canvas_png.txt        #    Canvas 指纹
+│   └── ...
 │
 └── reverse_work/              # 📚 逆向全过程记录
     ├── README.md              #   完整时间线和技术总结
@@ -28,9 +31,10 @@ Boss直聘/
 
 ```bash
 pip install iv8 requests
-python main.py                       # 搜北京 Python
-python main.py 101010100 java        # 搜北京 Java
-python main.py 101280600 前端         # 搜深圳前端
+cd iv8
+python boss_iv8.py                       # 搜北京 Python
+python boss_iv8.py 101010100 java        # 搜北京 Java
+python boss_iv8.py 101280600 前端         # 搜深圳前端
 ```
 
 ## 原理
