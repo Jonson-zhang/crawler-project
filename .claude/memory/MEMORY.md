@@ -35,11 +35,25 @@
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
 - [Boss直聘逆向进度](boss-zhipin-reverse.md) — **2026-06-26**: VMP 9912状态map + 1318步trace, 补环境13轮(code 38→37), 明天转纯算
 
-## iv8 引擎踩坑（Node.js → iv8 迁移）
+## iv8 引擎 + 逆向方法论（Boss直聘 + 知乎 + 小红书三轮实战）
 
-> 四条经验来自小红书 iv8 迁移实战，每条都解决了一个"VMP 加载成功但 mnsv2=undefined"的根因。
+> 三个站点的 iv8 迁移沉淀出的完整工作流、工具分工、常见陷阱。
 
-- [DOM 方法必须提前 stub](iv8-dom-stubs.md) — iv8 真实 DOM 校验参数类型，VMP 调 removeChild 抛 TypeError → 必须在 VMP 前 stub
-- [IIFE 隔离作用域](iv8-iife-scope.md) — iv8 无模块系统，var 全在全局作用域；ds_v2 覆盖 ds_script 的变量 → VMP 解码失败 → 必须 IIFE 包裹
-- [.forEach() 闭包隔离](iv8-foreach-closure.md) — for + var 共享闭包变量 → VMP setter 拦截失效；forEach 每次回调独立闭包
-- [navigator.plugins 空数组](iv8-navigator-plugins.md) — iv8 C++ navigator 默认含真实 Chrome 插件 → VMP 误判环境 → 必须显式设为 []
+### 核心工作流
+
+- [两阶段逆向工作流](iv8-nodejs-workflow.md) — **Node.js 勘探 + iv8 交付**：MCP 提取原料 → Node.js 快速试错 → iv8 纯 Python 交付。每个工具做它最擅长的事
+- [Python/JS 语义差异](python-js-semantic-gaps.md) — **签名被拒时先查这四条**：空 dict 判空、双重序列化、Base64 编码表对齐、JSON 分隔符
+
+### iv8 引擎特定踩坑（VMP 加载 → mnsv2 可用）
+
+- [DOM 方法必须提前 stub](iv8-dom-stubs.md) — iv8 真实 DOM 校验参数类型 → TypeError
+- [IIFE 隔离作用域](iv8-iife-scope.md) — 模拟 Node.js require 模块作用域
+- [.forEach() 闭包隔离](iv8-foreach-closure.md) — for + var 共享闭包 → setter 拦截失效
+- [navigator.plugins 空数组](iv8-navigator-plugins.md) — iv8 默认值 ≠ env.js
+- [document.cookie 直接赋值](iv8-doc-cookie.md) — iv8 document 不可 POJO 替换，用 getter 覆盖
+
+### 各站点总结
+
+- **Boss直聘** — VMP 53 检查点，Canvas 指纹文本关键。iv8 可行：`_canvas_png.txt` 注入
+- **知乎** — 最轻量，无 VMP，只读 `crypto.getRandomValues`。iv8 一线过
+- **小红书** — VMP 中量，只读 `doc.body + doc.cookie`。iv8 可行但踩了 Python 语法坑。**结论：VMP 检测不深于 iv8 C++ 能力范围**

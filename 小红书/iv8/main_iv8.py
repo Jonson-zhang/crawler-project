@@ -8,7 +8,7 @@
   python main_iv8.py --detail   显示每条笔记正文
 
 签名头:
-  x-s         → xhs_sign.py (iv8 C++ V8, 替代 sign.js + env.js)
+  x-s         → xhs_sign.py (iv8 C++ V8)
   x-t         → int(time.time() * 1000)
   x-b3        → random 16 hex
   x-xray      → (ts << 23) | random
@@ -19,7 +19,6 @@ Cookie 引导（全自动 4 步）:
 
 依赖:
   pip install iv8 curl-cffi pycryptodome
-  # 无需 Node.js、无需 npm install
 """
 
 import hashlib
@@ -37,7 +36,7 @@ from pathlib import Path
 from Crypto.Cipher import ARC4, DES
 from curl_cffi import requests
 
-from xhs_sign import XhsSigner, _b64e, _json_to_bytes, B64_CHARS
+from xhs_sign import XhsSigner, _b64e, _json_to_bytes
 
 # ===== 配置 =====
 PAGES = 3
@@ -46,8 +45,6 @@ INTERVAL = 1.5
 
 BASE_DIR = Path(__file__).parent
 COOKIES_FILE = BASE_DIR / "data" / "cookies.json"
-API_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/homefeed"
-API_PATH = "/api/sns/web/v1/homefeed"
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -59,10 +56,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  全局 iv8 签名器（复用 V8 Isolate）
+#  全局 iv8 签名器（单例，cookie 变化自动重建 Context）
 # ═══════════════════════════════════════════════════════════════
 
-_signer: XhsSigner | None = None
+_signer = None
 
 
 def _get_signer() -> XhsSigner:
@@ -72,14 +69,26 @@ def _get_signer() -> XhsSigner:
     return _signer
 
 
+def _cookies_to_str(cookies: dict) -> str:
+    """dict → 'key=value; key=value'"""
+    parts = []
+    for k, v in cookies.items():
+        if isinstance(v, (str, int, float)):
+            parts.append(f"{k}={v}")
+        elif isinstance(v, bool):
+            parts.append(f"{k}=true" if v else f"{k}=false")
+    return "; ".join(parts)
+
+
 # ═══════════════════════════════════════════════════════════════
-#  x-s — 调 iv8（替代原 sign.js 子进程）
+#  签名
 # ═══════════════════════════════════════════════════════════════
 
 
-def _xs(path: str, body: dict | None = None) -> str:
-    """x-s: iv8 V8 引擎直接返回签名字符串"""
-    return _get_signer().sign(path, body)
+def _xs(path: str, body: dict | None, cookies: dict) -> str:
+    """x-s — 直接传 cookie_str，sign 内部自动处理 Context 重建"""
+    cookie_str = _cookies_to_str(cookies)
+    return _get_signer().sign(path, body, cookie_str=cookie_str)
 
 
 def _xt() -> int:
@@ -97,31 +106,22 @@ def _xxray() -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  x-s-common — Python 纯算（与原 main.py 完全相同）
+#  x-s-common — Python 纯算
 # ═══════════════════════════════════════════════════════════════
 
 
 def _make_fp(ts: int | None = None) -> dict:
     ts = ts or int(time.time() * 1000)
     return {
-        "x33": "0",
-        "x34": "0",
-        "x35": "0",
+        "x33": "0", "x34": "0", "x35": "0",
         "x36": str(random.randint(1, 20)),
         "x37": "0|0|0|0|0|0|0|0|0|1|0|0|0|0|0|0|0|0|1|0|0|0|0|0",
         "x38": "0|0|1|0|1|0|0|0|0|0|1|0|1|0|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0|0",
-        "x39": 0,
-        "x42": "3.5.4",
-        "x43": "Canvas not supported",
+        "x39": 0, "x42": "3.5.4", "x43": "Canvas not supported",
         "x44": str(ts),
         "x45": "__SEC_CAV__1-1-1-1-1|__SEC_WSA__|",
-        "x46": "false",
-        "x48": "",
-        "x49": "{list:[],type:}",
-        "x50": "",
-        "x51": "",
-        "x52": "",
-        "x82": "_0x17a2|_0x1954",
+        "x46": "false", "x48": "", "x49": "{list:[],type:}",
+        "x50": "", "x51": "", "x52": "", "x82": "_0x17a2|_0x1954",
     }
 
 
@@ -131,7 +131,8 @@ def _make_b1(fp: dict) -> str:
         "x42", "x43", "x44", "x45", "x46", "x48", "x49",
         "x50", "x51", "x52", "x82",
     ]
-    s = json.dumps({k: fp[k] for k in keys}, separators=(",", ":"), ensure_ascii=False)
+    s = json.dumps({k: fp[k] for k in keys}, separators=(",", ":"),
+                    ensure_ascii=False)
     ct = ARC4.new(b"xhswebmplfbt").encrypt(s.encode("utf-8"))
     u = urllib.parse.quote(ct.decode("latin1"), safe="!*'()~_-")
     r = bytearray()
@@ -174,19 +175,18 @@ def make_xsc(a1: str, fp: dict | None = None) -> str:
 
 def sign_headers(url: str, cookies: dict, body: dict | None = None) -> dict:
     path = "/" + url.split("/", 3)[-1]
-    a1 = cookies.get("a1", "")
     return {
         "content-type": "application/json;charset=UTF-8",
-        "x-s": _xs(path, body),           # ← iv8 直接调用，不再 subprocess
+        "x-s": _xs(path, body, cookies),
         "x-t": str(_xt()),
-        "x-s-common": make_xsc(a1),
+        "x-s-common": make_xsc(cookies.get("a1", "")),
         "x-b3-traceid": _xb3(),
         "x-xray-traceid": _xxray(),
     }
 
 
 # ═══════════════════════════════════════════════════════════════
-#  Cookie 引导（与原 main.py 完全相同，全自研 Python）
+#  Cookie 引导
 # ═══════════════════════════════════════════════════════════════
 
 A1_CHARS = "abcdefghijklmnopqrstuvwxyz1234567890"
@@ -202,7 +202,7 @@ def _gen_a1() -> tuple[str, str]:
 
 def _gen_websectiga(js_text: str) -> str:
     b_m = re.search(r'"b":"(.*?)",', js_text)
-    d_m = re.search(r'"d":(.*?)\}\)', js_text)
+    d_m = re.search(r'"d":(\[.*?\])\}\)', js_text)
     b, d = b_m.group(1), json.loads(d_m.group(1))
     if len(b) % 4:
         b += "=" * (4 - len(b) % 4)
@@ -215,7 +215,7 @@ def _gen_websectiga(js_text: str) -> str:
         chunk.append(ord(c) - 1)
     if chunk:
         logic.append(chunk)
-    target = logic[d[92] : d[93] + 1]
+    target = logic[d[92]: d[93] + 1]
     kb = [d[target[675 + i][2]] for i in range(0, 128, 2)]
     return "".join(chr(kb[i + j]) for i in range(56, -1, -8) for j in range(8))
 
@@ -233,7 +233,8 @@ def _get_gid(session: "requests.Session") -> None:
     pf = DES.new(b"zbp30y86", DES.MODE_ECB).encrypt(padded).hex()
 
     url = "https://as.xiaohongshu.com/api/sec/v1/shield/webprofile"
-    data = {"platform": "Windows", "profileData": pf, "sdkVersion": "4.2.6", "svn": "2"}
+    data = {"platform": "Windows", "profileData": pf,
+            "sdkVersion": "4.2.6", "svn": "2"}
     cookies = session.cookies.get_dict()
     session.post(
         url, json=data,
@@ -260,7 +261,9 @@ def boot_guest_cookies() -> dict:
         "accept": "application/json, text/plain, */*",
         "origin": "https://www.xiaohongshu.com",
         "referer": "https://www.xiaohongshu.com/",
-        "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "sec-ch-ua": (
+            '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"'
+        ),
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"Windows"',
     })
@@ -294,7 +297,7 @@ def boot_guest_cookies() -> dict:
     try:
         _get_gid(s)
         gid = "ok" if s.cookies.get("gid") else "no"
-        print(f"[3/4] gid={gid} acw_tc={'ok' if s.cookies.get('acw_tc') else '?'}")
+        print(f"[3/4] gid={gid}")
     except Exception as e:
         print(f"[3/4] gid 失败: {e}")
 
@@ -319,8 +322,9 @@ def load_cookies() -> dict:
     return json.loads(COOKIES_FILE.read_text()) if COOKIES_FILE.exists() else {}
 
 
-def fetch_homefeed(cursor: str = "", note_index: int = 0,
-                   cookies: dict | None = None) -> dict:
+def fetch_homefeed(
+    cursor: str = "", note_index: int = 0, cookies: dict | None = None
+) -> dict:
     body = {
         "cursor_score": cursor, "num": 20, "refresh_type": 1,
         "note_index": note_index, "unread_begin_note_id": "",
@@ -331,26 +335,30 @@ def fetch_homefeed(cursor: str = "", note_index: int = 0,
     }
     s = requests.Session()
     s.headers.update({
-        "user-agent": UA,
-        "origin": "https://www.xiaohongshu.com",
+        "user-agent": UA, "origin": "https://www.xiaohongshu.com",
         "referer": "https://www.xiaohongshu.com/explore",
         "accept": "application/json, text/plain, */*",
     })
     if cookies:
-        s.cookies.update({k: str(v) for k, v in cookies.items() if isinstance(v, str)})
+        s.cookies.update(
+            {k: str(v) for k, v in cookies.items() if isinstance(v, str)})
+    api_url = "https://edith.xiaohongshu.com/api/sns/web/v1/homefeed"
     resp = s.post(
-        API_URL, json=body,
-        headers=sign_headers(API_URL, cookies, body),
+        api_url, json=body,
+        headers=sign_headers(api_url, cookies, body),
         timeout=30, impersonate="chrome131",
     )
     return resp.json()
 
 
-def fetch_note_detail(note_id: str, xsec_token: str,
-                      session: "requests.Session") -> dict | None:
+def fetch_note_detail(
+    note_id: str, xsec_token: str, session: "requests.Session"
+) -> dict | None:
     try:
-        url = (f"https://www.xiaohongshu.com/explore/{note_id}"
-               f"?xsec_token={xsec_token}&xsec_source=pc_feed")
+        url = (
+            f"https://www.xiaohongshu.com/explore/{note_id}"
+            f"?xsec_token={xsec_token}&xsec_source=pc_feed"
+        )
         resp = session.get(url, headers={
             "accept": "text/html", "user-agent": UA,
         }, timeout=20, impersonate="chrome131")
@@ -361,19 +369,25 @@ def fetch_note_detail(note_id: str, xsec_token: str,
         start = html.index("{", idx)
         depth, end = 0, start
         for i in range(start, len(html)):
-            if html[i] == "{": depth += 1
+            if html[i] == "{":
+                depth += 1
             elif html[i] == "}":
                 depth -= 1
-                if depth == 0: end = i + 1; break
+                if depth == 0:
+                    end = i + 1
+                    break
         data = json.loads(html[start:end].replace("undefined", "null"))
-        note = (data.get("note", {}).get("noteDetailMap", {})
-                .get(note_id, {}).get("note", {}))
+        note = (
+            data.get("note", {}).get("noteDetailMap", {})
+            .get(note_id, {}).get("note", {})
+        )
         if note:
             return {
                 "desc": note.get("desc", ""),
                 "title": note.get("title", ""),
                 "type": note.get("type", ""),
-                "tags": [t.get("name", "") for t in (note.get("tagList") or [])],
+                "tags": [t.get("name", "")
+                         for t in (note.get("tagList") or [])],
             }
     except Exception:
         pass
@@ -403,9 +417,8 @@ def main():
     detail_http.headers.update({
         "user-agent": UA, "origin": "https://www.xiaohongshu.com",
     })
-    detail_http.cookies.update({
-        k: str(v) for k, v in cookies.items() if isinstance(v, str)
-    })
+    detail_http.cookies.update(
+        {k: str(v) for k, v in cookies.items() if isinstance(v, str)})
 
     total, cursor, note_index = 0, "", 0
     for pg in range(1, PAGES + 1):
@@ -428,7 +441,9 @@ def main():
             nc = it.get("note_card") or it
             ntype = nc.get("type", "?")
             icon = {"video": "[V]", "normal": "[N]"}.get(ntype, "[?]")
-            title = (nc.get("display_title") or nc.get("title") or "").strip() or "(无标题)"
+            title = (
+                nc.get("display_title") or nc.get("title") or ""
+            ).strip() or "(无标题)"
             author = (nc.get("user") or {}).get("nickname") or "?"
             likes = (nc.get("interact_info") or {}).get("liked_count", "0")
             print(f"  {idx:2d}. {icon} {title[:70]}")
@@ -442,7 +457,7 @@ def main():
                     if detail and detail.get("desc"):
                         desc = detail["desc"]
                         for j in range(0, min(len(desc), 500), 80):
-                            print(f"      │ {desc[j:j+80]}")
+                            print(f"      │ {desc[j:j + 80]}")
                         if len(desc) > 500:
                             print(f"      │ ...(共 {len(desc)} 字)")
                     time.sleep(0.3)
@@ -461,12 +476,13 @@ def main():
 
 if __name__ == "__main__":
     import argparse
+
     p = argparse.ArgumentParser(description="小红书 — iv8 签名 + 爬取")
-    p.add_argument("--pages", type=int, default=PAGES, help=f"页数（默认 {PAGES}）")
-    p.add_argument("--detail", action="store_true", help="显示每条笔记正文")
+    p.add_argument("--pages", type=int, default=PAGES)
+    p.add_argument("--detail", action="store_true")
     args = p.parse_args()
-    if args.detail:
-        SHOW_DETAIL = True
     if args.pages:
         PAGES = args.pages
+    if args.detail:
+        SHOW_DETAIL = True
     main()

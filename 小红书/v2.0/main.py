@@ -411,10 +411,15 @@ def _activate(session: "requests.Session") -> str | None:
     """/login/activate → web_session（自研签名）"""
     url = "https://edith.xiaohongshu.com/api/sns/web/v1/login/activate"
     cookies = session.cookies.get_dict()
+    headers = sign_headers(url, cookies, {})
+    import sys
+    print(f"  [debug] activate x-s[:80]={headers['x-s'][:80]}", file=sys.stderr)
+    print(f"  [debug] activate x-s-common[:80]={headers['x-s-common'][:80]}", file=sys.stderr)
+    print(f"  [debug] activate x-t={headers['x-t']}", file=sys.stderr)
     session.post(
         url,
         json={},
-        headers=sign_headers(url, cookies, {}),
+        headers=headers,
         timeout=15,
         impersonate="chrome131",
     )

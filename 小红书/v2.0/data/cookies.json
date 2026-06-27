@@ -1,13 +1,13 @@
 {
-  "a1": "19f01b9c6b8hp1nh5cjwm6tt5qes87acnxrsyhtt650000411638",
-  "webId": "6224431a79c4ecc09ce8e7602970652b",
+  "a1": "19f08b2f122auxrk8btfsvtzaj2bcze48qey5t4tx50000292198",
+  "webId": "a3fd454694df98d4a0393fd23a46de44",
   "webBuild": "6.12.3",
   "xsecappid": "xhs-pc-web",
-  "loadts": "1782440380088",
-  "abRequestId": "9a7f37b8-b166-4b86-a870-7a97ade9f5ce",
-  "websectiga": "2c0003418369e2fd482d8c8054ebbcec38777d6a646c9d4c711ad1a0e8cf1a1d",
-  "sec_poison_id": "dfcd5ccd-2d9a-4b20-b91d-96fc91e56645",
-  "gid": "yji8yDjD0YIjyji8yDjSKCx9DYxUyIx2SVE6F9KK992AdM28MYW0Sv8884yyKqY88fdfdKSq",
-  "web_session": "030037ad0eb5cd578173f5a7452d4a6c715533",
-  "acw_tc": "0ad6fb2517824403770944984e21d524c7f0044556856c2ee13b9bc10c08b5"
+  "loadts": "1782557372706",
+  "abRequestId": "6beabfb0-4d21-4c6f-9945-0890e4f0a3da",
+  "websectiga": "20500f11a2cec35a3e9bfa36d77d3f7a3d42785fe9341014a25002ea0b91f943",
+  "sec_poison_id": "e640cd07-f87c-40d4-a929-db7d769d930e",
+  "gid": "yji8YDJdJ0Yjyji8YDJiyA94JJ07CFTYD9iMd9Ch9u0VJv28DSud42888JjJyjY84JdjWWKY",
+  "web_session": "030037ad0cfecd578177f5ec472d4a510e53f4",
+  "acw_tc": "0a8f042117825573691095283e7c52d77621766488e03c728e1390a99e2065"
 }

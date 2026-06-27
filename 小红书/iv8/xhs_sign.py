@@ -188,7 +188,7 @@ Object.getOwnPropertyNames(window).forEach(function(n){try{
 
         body_str = (
             json.dumps(body, separators=(",", ":"), ensure_ascii=False)
-            if body else ""
+            if body is not None else ""
         )
         c = url + body_str
         md5_c = hashlib.md5(c.encode()).hexdigest()
@@ -197,12 +197,10 @@ Object.getOwnPropertyNames(window).forEach(function(n){try{
             f"window.mnsv2({json.dumps(c)},{json.dumps(md5_c)},{json.dumps(md5_url)})"
         ))
         x4 = "object" if body is not None else ""
-        payload = json.dumps(
+        return "XYS_" + _b64e(_json_to_bytes(
             {"x0": "4.3.5", "x1": "xhs-pc-web", "x2": "Windows",
-             "x3": h, "x4": x4},
-            separators=(",", ":"), ensure_ascii=False,
-        )
-        return "XYS_" + _b64e(_json_to_bytes(payload))
+             "x3": h, "x4": x4}
+        ))
 
     def close(self):
         if self._ctx is not None:
