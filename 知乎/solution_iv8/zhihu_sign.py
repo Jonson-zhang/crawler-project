@@ -19,8 +19,7 @@ from pathlib import Path
 
 import iv8
 
-BASE_DIR = Path(__file__).parent.parent  # 知乎/
-CHUNK_DIR = BASE_DIR  # runtime.js / vendor.js / 479.js 都在根目录
+CHUNK_DIR = Path(__file__).parent  # 与 zhihu_sign.py 同目录
 
 
 class ZhihuSigner:
