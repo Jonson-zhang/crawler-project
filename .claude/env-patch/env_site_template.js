@@ -42,6 +42,21 @@ setupEnv({
 // 2. 站点特有覆盖
 // ═══════════════════════════════════════════════════════════════
 
+// --- 调试: Proxy 监控（环境属性缺失排查用）---
+// 当站点 JS 报 "xxx is not defined" 或签名结果为 undefined 时，
+// 开启此项可拦截所有环境对象 get/set 并输出日志。
+// 启用: set DEBUG_PROXY=true   (Windows CMD)
+//       $env:DEBUG_PROXY="true" (PowerShell)
+//       DEBUG_PROXY=true node ... (Linux/Mac/Git Bash)
+//
+// const { watch: dbgWatch } = require("../../.claude/env-patch/debug-proxy.js");
+// global.window    = dbgWatch(global.window,    "window");
+// global.document  = dbgWatch(global.document,  "document");
+// global.navigator = dbgWatch(global.navigator, "navigator");
+// global.location  = dbgWatch(global.location,  "location");
+// global.screen    = dbgWatch(global.screen,    "screen");
+// global.history   = dbgWatch(global.history,   "history");
+
 // --- 常用: 替换 crypto 为 Node.js 原生 Web Crypto ---
 const nodeWebCrypto = _require("crypto").webcrypto;
 global.crypto = nodeWebCrypto;

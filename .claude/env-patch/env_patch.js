@@ -494,21 +494,53 @@ function buildDocument(opts) {
 // 5. Location 构建
 // ═══════════════════════════════════════════════════════════════
 function buildLocation(opts) {
-  const url = new URL(opts.url);
-  const loc = new Location();
-  loc.href = opts.url;
-  loc.protocol = url.protocol;
-  loc.host = url.host;
-  loc.hostname = url.hostname;
-  loc.port = url.port;
-  loc.pathname = url.pathname;
-  loc.search = url.search;
-  loc.hash = url.hash;
-  loc.origin = url.origin;
+  var _url;
+  try {
+    _url = new URL(opts.url);
+  } catch (_) {
+    _url = new URL('about:blank');
+  }
+
+  var loc = new Location();
+
+  // ── Read-write properties: live getter/setter backed by _url ──
+  // Setting any one property cascades to all others (e.g. setting
+  // hostname updates href).  This matches real browser Location behavior.
+  ['href', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'].forEach(function (prop) {
+    Object.defineProperty(loc, prop, {
+      get: function () { return _url[prop]; },
+      set: function (v) {
+        if (prop === 'href') {
+          // Resolve relative URLs (e.g. location.href = '/new-path')
+          try {
+            _url = new URL(String(v), _url.href);
+          } catch (_) {
+            try {
+              _url = new URL(String(v));
+            } catch (__) { /* silently ignore — browser behavior */ }
+          }
+        } else {
+          try { _url[prop] = String(v); } catch (_) { /* ignore */ }
+        }
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  });
+
+  // ── Read-only: origin (setter is a silent no-op, matching browser) ──
+  Object.defineProperty(loc, 'origin', {
+    get: function () { return _url.origin; },
+    set: function () { /* read-only */ },
+    enumerable: true,
+    configurable: true,
+  });
+
+  // ── Methods ──
   loc.reload = mf('reload');
   loc.replace = mf('replace');
   loc.assign = mf('assign');
-  loc.toString = function () { return opts.url; };
+  loc.toString = function () { return _url.href; };
   sn(loc.toString, 'toString');
   return loc;
 }

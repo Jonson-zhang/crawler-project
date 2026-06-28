@@ -51,6 +51,55 @@ Object.defineProperty(document.constructor.prototype, "cookie", { ... });
 // 在 setupEnv 参数中设 windowToGlobal: true
 ```
 
+## debug-proxy — Proxy 调试监控
+
+`debug-proxy.js` 是一个**可选模块**，对浏览器环境对象施加 Proxy 监控，拦截所有属性 get/set 操作并输出日志。用于定位"缺了哪个属性"这类补环境问题。
+
+### 启用方式
+
+```bash
+# Windows CMD
+set DEBUG_PROXY=true
+node your_script.js
+
+# PowerShell
+$env:DEBUG_PROXY="true"
+node your_script.js
+
+# Linux / Mac / Git Bash
+DEBUG_PROXY=true node your_script.js
+```
+
+### 使用方式
+
+在 `env_site.js` 中 require 并包裹对象：
+
+```js
+const { watch } = require("../../.claude/env-patch/debug-proxy.js");
+global.window    = watch(global.window,    "window");
+global.document  = watch(global.document,  "document");
+global.navigator = watch(global.navigator, "navigator");
+global.location  = watch(global.location,  "location");
+global.screen    = watch(global.screen,    "screen");
+```
+
+### 输出示例
+
+```
+[GET] navigator.userAgent → Mozilla/5.0 ...
+[GET] document.createElement → [Function: createElement]
+ ⚠️  [GET] window.__someMissingProp → undefined
+[SET] document.cookie = key=value
+```
+
+### 注意
+
+- `DEBUG_PROXY` 未设置时，`watch()` 直接返回原对象，**零性能开销**。
+- 日志默认去重（同一属性只记一次），避免刷屏。
+- `undefined` 访问会以黄色警告单独标记。
+- `window` 上的函数自动 `.bind(target)` 防止 Illegal invocation。
+- 此模块独立于 `env_patch.js`，无需修改框架文件。
+
 ## 配置项
 
 | 参数 | 默认值 | 说明 |
