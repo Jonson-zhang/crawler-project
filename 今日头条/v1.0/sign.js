@@ -92,16 +92,16 @@ global._realFetchOrig = realFetch;
 //   acrawler.js → init → sdk-glue.js → _SdkGlueInit() → bdms.js → runtime_bundler.js
 
 console.log("[sign] Loading acrawler...");
-eval(_fs.readFileSync(_path.join(__dir, "acrawler.js"), "utf-8"));
+globalEval(_fs.readFileSync(_path.join(__dir, "acrawler.js"), "utf-8"));
 
 console.log("[sign] Initializing acrawler...");
 window.byted_acrawler.init({ aid: 24, dfp: true });
 
 console.log("[sign] Loading sdk-glue...");
-eval(_fs.readFileSync(_path.join(__dir, "sdk-glue.js"), "utf-8"));
+globalEval(_fs.readFileSync(_path.join(__dir, "sdk-glue.js"), "utf-8"));
 
 console.log("[sign] Loading bdms...");
-eval(_fs.readFileSync(_path.join(__dir, "bdms.js"), "utf-8"));
+globalEval(_fs.readFileSync(_path.join(__dir, "bdms.js"), "utf-8"));
 
 console.log("[sign] Initializing bdms pipeline...");
 window._SdkGlueInit({
@@ -114,7 +114,7 @@ window._SdkGlueInit({
 });
 
 console.log("[sign] Loading runtime_bundler...");
-eval(_fs.readFileSync(_path.join(__dir, "runtime_bundler.js"), "utf-8"));
+globalEval(_fs.readFileSync(_path.join(__dir, "runtime_bundler.js"), "utf-8"));
 
 // ═══════════════════════════════════════════════════════════════
 // 4. Hook: 拦截 fetch URL 构建，提取 a_bogus + msToken
