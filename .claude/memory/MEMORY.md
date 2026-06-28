@@ -16,6 +16,10 @@
   2. 请求返回 WAF HTML ≠ Cookie 问题
   3. `Module._malloc` + `Module.cwrap` → Emscripten wasm2js
 
+> ⚠️ **补环境 3 轮后签名仍错误（不 crash）时，对照天花板规则判定是否切 iv8。**
+
+- [env_patch 天花板判定](env-patch-iv8-ceiling.md) — 3 轮法则 + 引擎层差异信号 + iv8 可行性数据（Boss直聘 13 轮→iv8 一次过）
+
 ## 其他经验
 
 - [env.js / sign.js 分离架构](env-sign-separation.md) — 补环境与签名逻辑分离的目录结构规范
