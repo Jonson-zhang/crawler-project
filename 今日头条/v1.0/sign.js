@@ -82,8 +82,8 @@ global._realFetchOrig = realFetch;
 // 3. 加载头条 SDK
 // ═══════════════════════════════════════════════════════════════
 
-console.log("[sign] Loading runtime_bundler...");
-eval(_fs.readFileSync(_path.join(__dir, "runtime_bundler.js"), "utf-8"));
+// Browser load order:
+//   acrawler.js → init → sdk-glue.js → _SdkGlueInit() → bdms.js → runtime_bundler.js
 
 console.log("[sign] Loading acrawler...");
 eval(_fs.readFileSync(_path.join(__dir, "acrawler.js"), "utf-8"));
@@ -106,6 +106,9 @@ window._SdkGlueInit({
     paths: ["/api/pc/list/feed", "/api/pc/list/user/feed"],
   },
 });
+
+console.log("[sign] Loading runtime_bundler...");
+eval(_fs.readFileSync(_path.join(__dir, "runtime_bundler.js"), "utf-8"));
 
 // ═══════════════════════════════════════════════════════════════
 // 4. Hook: 拦截 fetch URL 构建，提取 a_bogus + msToken
