@@ -20,6 +20,12 @@
  *     → 粘贴到下方「站点特有覆盖」区域
  *     → 重跑验证
  *     → 重复直到签名成功 + 🔴 未知属性清零
+ *
+ *   ⚠️ 天花板判定（3 轮仍不通过时）:
+ *     如果签名不 crash 但返回值始终错误（code≠0），
+ *     说明撞到了 C++ 引擎层差异（typeof/原型链/hidden class），
+ *     JS 补环境无法解决 → 切 iv8。
+ *     详见 .claude/env-patch/README.md#env_patch-天花板
  */
 
 const _require = require;

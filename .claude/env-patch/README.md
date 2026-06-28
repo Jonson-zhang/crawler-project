@@ -87,6 +87,46 @@ DEBUG_PROXY=true node script.js          # 验证补全
 2. 输入 `${属性路径}` 查看返回值
 3. 将返回值作为 getter 表达式写到 `env_site.js` 中
 
+## env_patch 天花板 — 何时切换到 iv8
+
+JS 层补环境有天然上限。如果经过 3 轮 debug-proxy → env_patch 迭代，签名结果**始终错误**（不 crash，只是返回值不对），说明撞到了 C++ 引擎层差异。
+
+### 判定表
+
+| 症状 | 根因 | 方案 |
+|------|------|------|
+| VMP 报错 crash，有堆栈 | JS 层缺少属性 | → 继续 env_patch 迭代 |
+| `typeof X` 在 Node.js 和浏览器返回不同值 | C++ 引擎层差异 | → 切 iv8 |
+| 签名不 crash 但 code≠0（如 Boss直聘 code=38） | VMP 条件分支走错路径 | → 切 iv8 |
+| `X instanceof Y` 在 Node.js 为 false，浏览器为 true | 原型链 hidden class | → 切 iv8 |
+
+**经验数据**（来自三个站点）：
+
+| 站点 | 补环境轮数 | 最终方案 | 原因 |
+|------|:---:|------|------|
+| 知乎 | 1 轮 | env_patch ✅ | 无 VMP，只读 `crypto.getRandomValues` |
+| QQ音乐 | 1 轮 | env_patch ✅ | VMP 访问 ~33 个属性，无引擎层检测 |
+| 小红书 | 1 轮 | env_patch ✅ | VMP 读 doc + cookie，Proxy 包裹即可 |
+| Boss直聘 | 13 轮 | **iv8** ✅ | VMP 53 检查点 + typeof/原型链/hidden class 引擎层差异 |
+
+### 决策原则
+
+```
+env_patch 3 轮内签名通过？ → 完成
+    ↓ 不通过
+签名 crash 有堆栈？ → 继续补，不是引擎层问题
+    ↓ 不 crash，但返回值错误
+VMP trace 分叉点是 typeof/prototype？ → 切 iv8
+    ↓ 分叉点是属性值不匹配
+debug-proxy 继续补 → 属性补齐后签名通过？ → 完成
+    ↓ 属性全对齐仍不通过
+切 iv8（C++ V8 引擎 = 真实 Chrome，引擎层检测无效）
+```
+
+**关键认知**：VMP 的"环境检测"目标是 jsdom/Node.js vm 这类 JS 层模拟——它们的 C++ API 与真实 Chrome 不同。iv8 的 C++ 层 API 就是 Chromium 源码编译的，在这些检查点上与真实浏览器**无法区分**。Boss直聘的 53 个检查点 iv8 全过。
+
+> 详细工作流参考: [[iv8-nodejs-workflow]]
+
 ## debug-proxy — Proxy 调试监控 + 补丁生成
 
 `debug-proxy.js` 是一个**可选模块**，对浏览器环境对象施加 Proxy 监控，拦截所有属性 get/set 操作并输出日志。用于定位"缺了哪个属性"这类补环境问题。
