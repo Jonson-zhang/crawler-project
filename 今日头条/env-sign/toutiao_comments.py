@@ -1,14 +1,8 @@
 """
 toutiao_comments.py — 今日头条文章评论获取（补环境方案）
 
-用法:
-    python toutiao_comments.py https://www.toutiao.com/article/7656329019402535474/
-    python toutiao_comments.py 7656329019402535474
-    python toutiao_comments.py https://www.toutiao.com/article/7656329019402535474/ -n 50
-    设置 Cookie:
-    set TOUTIAO_COOKIE="tt_webid=xxx; ttcid=xxx" && python toutiao_comments.py ...
-
-输出: 文章全部评论（自动分页）
+用法: 修改下方 TARGET_ARTICLE / MAX_COMMENTS / COOKIE 变量后直接运行
+    python toutiao_comments.py
 """
 
 import subprocess, json, re, sys, time
@@ -248,39 +242,16 @@ def print_comments(comments: list[dict]) -> None:
 
 def main():
     global COOKIE
-    import os
-    COOKIE = os.environ.get("TOUTIAO_COOKIE", "")
+    COOKIE = COOKIE or ""  # 直接从变量读取
 
-    # 从命令行提取 URL/ID 和 -n 参数
-    url_or_id = None
-    max_n = MAX_COMMENTS
-    i = 1
-    while i < len(sys.argv):
-        arg = sys.argv[i]
-        if arg == "-n" and i + 1 < len(sys.argv):
-            try:
-                max_n = int(sys.argv[i + 1])
-            except ValueError:
-                pass
-            i += 2
-        elif not arg.startswith("-"):
-            url_or_id = arg
-            i += 1
-        else:
-            i += 1
-
-    if url_or_id is None:
-        url_or_id = TARGET_ARTICLE
-
-    # 提取文章 ID
+    # 从变量读取文章 ID
     try:
-        article_id = extract_article_id(url_or_id)
+        article_id = extract_article_id(TARGET_ARTICLE)
     except ValueError as e:
         print(f"错误: {e}", file=sys.stderr)
-        print(file=sys.stderr)
-        print(f"当前 TARGET_ARTICLE: {TARGET_ARTICLE}", file=sys.stderr)
-        print("用法: python toutiao_comments.py [文章URL或ID] [-n 数量]", file=sys.stderr)
         sys.exit(1)
+
+    max_n = MAX_COMMENTS
 
     print(f"文章 ID: {article_id}", file=sys.stderr)
     if COOKIE:
