@@ -56,6 +56,12 @@ if UV_PYTHON.exists() and sys.executable != str(UV_PYTHON):
 ```
 **How to apply:** 首次整理→原代码移入 `dp/v1.0/`；换 CloakBrowser→新建 `cloak/v1.0/` 全量复制依赖；后续升级→新建 `dp/v1.1/` 或 `cloak/v2.0/`。
 
+**Python 参数规范**
+- **所有参数改为顶部变量**，禁止运行时传参（`sys.argv`、`argparse`、命令行）
+- 用户修改参数只需编辑文件顶部变量，然后直接 `python xxx.py` 运行
+- 示例：`TARGET_ARTICLE = "https://..."`、`MAX_COMMENTS = 50`、`COOKIE = ""`
+- **Why:** 参数集中在一处，修改和调试方便，无需记忆命令行参数格式。每个任务自包含，无需外部配置。
+
 **功能要求**
 - Python 代码只需能够从网站获取数据、跑通即可，不追求工程化
 - 提供参数控制返回多少页的数据：用顶部 `CONFIG` dict 集中配置（`start_page`、`pages`、`limit`），用户直观可改
