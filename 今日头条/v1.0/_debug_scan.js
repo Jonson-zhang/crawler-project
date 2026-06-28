@@ -19,7 +19,10 @@ function createHandler(objName) {
       const fullKey = objName + "." + prop;
       _seen.add(fullKey);
       if (value === undefined) _undef.add(fullKey);
-      else if (typeof value !== "function") _values[fullKey] = typeof value === "object" ? JSON.stringify(value).substring(0, 120) : String(value).substring(0, 120);
+      else if (typeof value !== "function") {
+        try { _values[fullKey] = typeof value === "object" && value !== null ? "[object]" : String(value).substring(0, 120); }
+        catch (_) { _values[fullKey] = "[err]"; }
+      }
       if (objName === "window" && typeof value === "function" && !(value.prototype && value.prototype.constructor === value)) return value.bind(target);
       return value;
     },
