@@ -7,6 +7,19 @@
  * 用法: 在你的 sign.js / api.js 第一行 require("./env_site");
  *
  * 详细文档: .claude/env-patch/README.md
+ *
+ * ══ 二阶段补环境工作流 ══
+ *
+ *   阶段 1 — 发现:
+ *     DEBUG_PROXY=true node your_script.js
+ *     → 运行时实时日志（get / set / undefined 警告）
+ *     → 退出时自动打印「📋 补丁代码」报告
+ *
+ *   阶段 2 — 补全:
+ *     → 复制报告中的补丁代码
+ *     → 粘贴到下方「站点特有覆盖」区域
+ *     → 重跑验证
+ *     → 重复直到签名成功 + 🔴 未知属性清零
  */
 
 const _require = require;

@@ -7,6 +7,7 @@
 ```
 .claude/env-patch/
 ├── env_patch.js           # 通用框架（不要改）
+├── debug-proxy.js          # 可选：Proxy 调试监控 + 补丁代码生成
 ├── env_site_template.js   # 新站点从这里复制改名
 └── README.md
 ```
@@ -51,7 +52,42 @@ Object.defineProperty(document.constructor.prototype, "cookie", { ... });
 // 在 setupEnv 参数中设 windowToGlobal: true
 ```
 
-## debug-proxy — Proxy 调试监控
+## 二阶段补环境工作流
+
+### 阶段 1 — 发现（debug-proxy 扫描）
+
+```bash
+DEBUG_PROXY=true node your_sign.js
+```
+
+运行时会输出实时日志（`[GET]` / `[SET]` / `⚠️ undefined`），**退出时自动打印三区报告**：
+
+1. **属性访问清单** — 所有被访问的属性，按对象分組，标记 ✅/⚠️
+2. **需要补的属性** — 🟡 已知默认值 / 🔴 未知需采集
+3. **📋 补丁代码** — 可直接粘贴到 `env_site.js` 的 `Object.defineProperty` 代码
+
+### 阶段 2 — 补全（env_site.js 覆盖）
+
+```
+DEBUG_PROXY=true node script.js          # 发现缺失
+      ↓  复制报告的 📋 补丁代码
+      ↓  粘贴到 env_site.js 的「站点特有覆盖」区域
+      ↓
+DEBUG_PROXY=true node script.js          # 验证补全
+      ↓  重复直到：
+      ↓  ① 签名成功
+      ↓  ② 🔴 未知属性清零（仅剩 🟡 已知默认值 或 ➖ 平台特定）
+```
+
+### 进阶：手动补未知属性
+
+报告中的 🔴 属性没有预置默认值，需要在真浏览器中采集：
+
+1. 打开浏览器 DevTools Console
+2. 输入 `${属性路径}` 查看返回值
+3. 将返回值作为 getter 表达式写到 `env_site.js` 中
+
+## debug-proxy — Proxy 调试监控 + 补丁生成
 
 `debug-proxy.js` 是一个**可选模块**，对浏览器环境对象施加 Proxy 监控，拦截所有属性 get/set 操作并输出日志。用于定位"缺了哪个属性"这类补环境问题。
 
@@ -83,13 +119,30 @@ global.location  = watch(global.location,  "location");
 global.screen    = watch(global.screen,    "screen");
 ```
 
-### 输出示例
+### 报告示例
 
 ```
-[GET] navigator.userAgent → Mozilla/5.0 ...
-[GET] document.createElement → [Function: createElement]
- ⚠️  [GET] window.__someMissingProp → undefined
-[SET] document.cookie = key=value
+════════════════════════════════════════════════
+📊 debug-proxy 环境属性扫描报告
+════════════════════════════════════════════════
+
+── 属性访问清单 (33 个) ──
+
+  navigator (3)
+    ⚠️ scheduling
+    ✅ userAgent
+    ✅ platform
+
+── 需要补的属性 (4 个) ──
+  🟡 navigator.scheduling — 已知默认值
+  🔴 document.all — 未知，需从真浏览器采集
+
+═══ 📋 复制到 env_site.js 的补丁代码 ═══
+// --- 补: navigator ---
+Object.defineProperty(Navigator.prototype, 'scheduling', {
+  get: function scheduling() { return ({ isInputPending: function() { return false; } }); },
+  configurable: true, enumerable: true,
+});
 ```
 
 ### 注意
@@ -98,6 +151,7 @@ global.screen    = watch(global.screen,    "screen");
 - 日志默认去重（同一属性只记一次），避免刷屏。
 - `undefined` 访问会以黄色警告单独标记。
 - `window` 上的函数自动 `.bind(target)` 防止 Illegal invocation。
+- `KNOWN_DEFAULTS` 知识库对常见浏览器 API 提供预置默认值，可在 `env_site.js` 中追加 `KNOWN_DEFAULTS["my.prop"] = "...";`
 - 此模块独立于 `env_patch.js`，无需修改框架文件。
 
 ## 配置项
