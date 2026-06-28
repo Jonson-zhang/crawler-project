@@ -158,9 +158,134 @@ if (typeof global.MutationObserver === "undefined") {
   };
 }
 
-// --- 隐藏 Node.js 特征 (windowToGlobal:true 已做了大部分) ---
-// 额外隐藏
+// --- Image 构造函数 (Canvas 指纹关键 — 缺了 a_bogus 指纹失效) ---
+if (typeof global.Image === "undefined") {
+  global.Image = function (w, h) {
+    this.width = w || 0;
+    this.height = h || 0;
+    this.src = "";
+    this.onload = null;
+    this.onerror = null;
+    this.complete = false;
+    this.naturalWidth = 0;
+    this.naturalHeight = 0;
+  };
+}
+
+// --- Audio / AudioContext (音频指纹) ---
+if (typeof global.Audio === "undefined") {
+  global.Audio = function () {};
+  global.Audio.prototype = { play: function () {}, pause: function () {}, load: function () {} };
+}
+if (typeof global.OfflineAudioContext === "undefined") {
+  global.OfflineAudioContext = function (channels, length, sampleRate) {
+    this.sampleRate = sampleRate || 44100;
+    this.length = length || 128;
+    this.numberOfChannels = channels || 2;
+  };
+  global.OfflineAudioContext.prototype = {
+    createOscillator: function () {
+      return {
+        type: "sine", frequency: { value: 440 },
+        connect: function () {}, start: function () {}, stop: function () {},
+      };
+    },
+    createDynamicsCompressor: function () { return { connect: function () {} }; },
+    createGain: function () { return { connect: function () {}, gain: { value: 1 } }; },
+    createBiquadFilter: function () { return { connect: function () {}, type: "lowpass", frequency: { value: 350 } }; },
+    createBuffer: function (c, len, sr) { return { getChannelData: function () { return new Float32Array(len); }, length: len, numberOfChannels: c, sampleRate: sr }; },
+    startRendering: function () { return Promise.resolve(new AudioBuffer({ length: this.length, sampleRate: this.sampleRate })); },
+    destination: {},
+    sampleRate: 44100,
+  };
+}
+
+// --- document.createEvent / execCommand ---
+document.createEvent = function (type) {
+  return { initEvent: function () {}, initMouseEvent: function () {}, initUIEvent: function () {} };
+};
+document.execCommand = function () { return false; };
+
+// --- navigator.connection (网络信息) ---
+Object.defineProperty(navigator, "connection", {
+  get: function () {
+    return { effectiveType: "4g", rtt: 50, downlink: 10, saveData: false, onchange: null };
+  },
+  configurable: true, enumerable: true,
+});
+
+// --- navigator.storage ---
+Object.defineProperty(navigator, "storage", {
+  get: function () {
+    return {
+      estimate: function () { return Promise.resolve({ quota: 0, usage: 0 }); },
+      persist: function () { return Promise.resolve(false); },
+      persisted: function () { return Promise.resolve(false); },
+    };
+  },
+  configurable: true, enumerable: true,
+});
+
+// --- navigator.userAgentData (Chrome 新版 API) ---
+Object.defineProperty(navigator, "userAgentData", {
+  get: function () {
+    return {
+      brands: [{ brand: "Google Chrome", version: "148" }, { brand: "Chromium", version: "148" }, { brand: "Not/A)Brand", version: "99" }],
+      mobile: false,
+      platform: "Windows",
+      getHighEntropyValues: function () { return Promise.resolve({}); },
+    };
+  },
+  configurable: true, enumerable: true,
+});
+
+// --- window.pageYOffset (滚动位置) ---
+Object.defineProperty(global, "pageYOffset", { value: 0, writable: true, configurable: true });
+Object.defineProperty(global, "pageXOffset", { value: 0, writable: true, configurable: true });
+
+// --- navigator.scheduling (env_patch 缺失) ---
+Object.defineProperty(Navigator.prototype, "scheduling", {
+  get: function () { return { isInputPending: function () { return false; } }; },
+  configurable: true, enumerable: true,
+});
+
+// --- navigator.permissions (env_patch 缺失) ---
+Object.defineProperty(Navigator.prototype, "permissions", {
+  get: function () { return { query: function () { return Promise.resolve({ state: "prompt", onchange: null }); } }; },
+  configurable: true, enumerable: true,
+});
+
+// --- Canvas toDataURL 更真实指纹 (env_patch 返回空 base64) ---
+(function () {
+  var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+  if (origToDataURL && origToDataURL.toString().includes("data:image/png;base64,")) {
+    HTMLCanvasElement.prototype.toDataURL = function () {
+      // Return a more realistic png header (minimal valid PNG)
+      return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAAA8CAYAAAC9xKUYAAAD2ElEQVR4nO3cQWrbQABAUe//y7mLLroIBCjPfkKWs8iu5/l+f38BAPgL/wBgBLAAjAAWgBHAAjACWABGAKsx3fuH4+//N3Cc6c5vN7+PAd7z+/X9Be/DjBjAAm/4/BYBBrAAjAAWgBHAWjN9AHgBg0IIdd25L7kIYPoAPbA3Pj2/54zP3vs+HjN+0dfX9yu1v3/vf7y/937G2K/Lprshns7g+vse7P2+D5LLo+/10D63dmPZ1jo/+/rD+eHg/M3/+t8k8zPfJ6c9w9eR9zLvr5vzeON+XEPCfM/90fD2+zsZf85aABaAEcACMAJYAEYAC8AIYAEYASwAI4AFYASwnvDxfQAHYX8uuvVkA2y2V3PnhLx+C7Ox56NOd/sb3VqxLva5ZwCb17lc2+u1P3p2/f3WLuvXf/4Ys+kZ5lb9W5pn/9brn/KH5Iff5P5ZYAFMAns5bwzLcwAqgAVgBLAATACremi3N0SAOTvP7c3K7avrf/rODIADM88ZX5xdz8j1i3X0e9e1gT8f/T0+cv17j3v0tj+3rn42c63PjC9yDn23niNjV3MNPADYt/Zsz7kHwB9gRd8Z7e2KtPY4zD0GjgHs6PeAPx69XGDUADawJj8Ap+7n2Wfe36T02JHR5s6N+yvPfLZ6rrdz3o3Xb3Z+7t0Dz/+Hh5k52I4Ntm/z0q72Po3uOXPk+vufvvfxn/Vwfu2ReQNEPM3HdPPWmY8hAAOBhd80LgMABTAAjAMWv4BCAARgBLAAjgAVgBLAifn/+fQD8G0/rvHrfASNbb9kq9Mk/+3c29u+qV1+2eoaLZ+3y1Rqw2nlk/W6vbfVPPGv6H1m/o1cuvfsb7ZQAfYABwAIwAlgARgALwAhgARgBLAAjgAVgBLAeq8xnH/3U/9NpP03uz7J+/Nbcp8b2fI6k2zaADWBPfm5m/ZuLf1vPtx8A+39mYAHAXj/Bz+2uHgNWxKsALAAjgAVgBLAAjAAWgBHAAnhzfwFZ7F/BLc+5aAAAAABJRU5ErkJggg==";
+    };
+  }
+})();
+
+// --- WebGL 指纹对齐 ---
+(function () {
+  var origGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type) {
+    if (type === "webgl" || type === "experimental-webgl") {
+      return typeof origGetContext === "function" ? origGetContext.call(this, type) : null;
+    }
+    if (typeof origGetContext === "function") return origGetContext.call(this, type);
+    return null;
+  };
+})();
+
+// --- 隐藏 Node.js 特征 ---
 delete global.queueMicrotask;
+
+// --- 安全探针 (Anti-bot detection probes — 必须 undefined) ---
+// env_patch 已做大部分，头条 SDK 额外检查这些
+["_phantom", "__nightmare", "callPhantom", "cefSharp", "CefSharp", "eoapi", "eoWebBrowserDispatcher"].forEach(function (k) {
+  if (typeof global[k] !== "undefined") Object.defineProperty(global, k, { value: undefined, writable: true, configurable: true });
+});
 
 // ═══════════════════════════════════════════════════════════════
 // 3. 导出
