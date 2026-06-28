@@ -70,7 +70,7 @@ global.fetch = function (url) {
 };
 
 // ── Load SDK ──
-process.stderr.write("[scan] Loading SDK...\n");
+_process.stderr.write("[scan] Loading SDK...\n");
 globalEval(_fs.readFileSync(_path.join(__dir, "acrawler.js"), "utf-8"));
 window.byted_acrawler.init({ aid: 24, dfp: true });
 globalEval(_fs.readFileSync(_path.join(__dir, "sdk-glue.js"), "utf-8"));
