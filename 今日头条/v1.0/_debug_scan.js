@@ -2,7 +2,7 @@
  * Internal: DEBUG_PROXY 指纹扫描器
  * 运行: DEBUG_PROXY=true node 今日头条/v1.0/_debug_scan.js
  */
-const _require = require, _fs = _require("fs"), _path = _require("path"), _vm = _require("vm");
+const _require = require, _fs = _require("fs"), _path = _require("path"), _vm = _require("vm"), _process = process;
 const __dir = __dirname;
 function globalEval(c) { _vm.runInThisContext(c); }
 
