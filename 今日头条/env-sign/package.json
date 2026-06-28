@@ -1,0 +1,11 @@
+{
+  "name": "toutiao-env-sign",
+  "version": "1.0.0",
+  "description": "今日头条 _signature 签名 — 纯 Node.js 补环境方案 (acrawler.js JSVMP + vm sandbox + JSONP)",
+  "main": "sign.js",
+  "scripts": {
+    "demo": "node demo.js"
+  },
+  "keywords": ["toutiao", "signature", "reverse-engineering", "jsvmp", "acrawler"],
+  "license": "MIT"
+}
