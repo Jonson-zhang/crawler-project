@@ -25,7 +25,13 @@ UA = (
     "Chrome/143.0.0.0 Safari/537.36"
 )
 
-COOKIE = ""  # 从环境变量或命令行设置
+# ═══════════════════════════════════════════════════════════
+# 配置（改这里即可）★
+# ═══════════════════════════════════════════════════════════
+TARGET_ARTICLE = "https://www.toutiao.com/article/7656329019402535474/"
+MAX_COMMENTS = None  # None = 全部, 或数字如 50
+
+COOKIE = ""  # 从环境变量 TOUTIAO_COOKIE 自动读取
 
 
 # ═══════════════════════════════════════════════════════════
@@ -245,30 +251,35 @@ def main():
     import os
     COOKIE = os.environ.get("TOUTIAO_COOKIE", "")
 
-    if len(sys.argv) < 2:
-        print("用法: python toutiao_comments.py <文章URL或ID> [-n 数量]")
-        print("示例: python toutiao_comments.py https://www.toutiao.com/article/7656329019402535474/")
-        print("      python toutiao_comments.py 7656329019402535474 -n 50")
-        print()
-        print("环境变量: TOUTIAO_COOKIE (可选，提升获取数量)")
-        sys.exit(1)
-
-    url_or_id = sys.argv[1]
-    max_n = None
-
-    # 解析 -n 参数
-    for i, arg in enumerate(sys.argv):
+    # 从命令行提取 URL/ID 和 -n 参数
+    url_or_id = None
+    max_n = MAX_COMMENTS
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
         if arg == "-n" and i + 1 < len(sys.argv):
             try:
                 max_n = int(sys.argv[i + 1])
             except ValueError:
                 pass
+            i += 2
+        elif not arg.startswith("-"):
+            url_or_id = arg
+            i += 1
+        else:
+            i += 1
+
+    if url_or_id is None:
+        url_or_id = TARGET_ARTICLE
 
     # 提取文章 ID
     try:
         article_id = extract_article_id(url_or_id)
     except ValueError as e:
         print(f"错误: {e}", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"当前 TARGET_ARTICLE: {TARGET_ARTICLE}", file=sys.stderr)
+        print("用法: python toutiao_comments.py [文章URL或ID] [-n 数量]", file=sys.stderr)
         sys.exit(1)
 
     print(f"文章 ID: {article_id}", file=sys.stderr)
