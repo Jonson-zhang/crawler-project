@@ -323,4 +323,55 @@ const realFetch = function (url, init) {
     } catch (e) { reject(e); }
   });
 };
+// ═══════════════════════════════════════════════════════════════
+// 3. 全局 Event / 函数补丁
+// ═══════════════════════════════════════════════════════════════
+
+// addEventListener (runtime_bundler 在 DOMContentLoaded 时调用)
+const _eventListeners = {};
+global.addEventListener = function (event, handler) {
+  if (!_eventListeners[event]) _eventListeners[event] = [];
+  _eventListeners[event].push(handler);
+  // Auto-trigger DOMContentLoaded
+  if (event === "DOMContentLoaded") {
+    setTimeout(() => handler({ type: "DOMContentLoaded" }), 100);
+  }
+};
+global.removeEventListener = function () {};
+
+// ProgressEvent (runtime_bundler uses it)
+global.ProgressEvent = function (type) { this.type = type; };
+
+// fetch — 用真实 HTTPS
+const _https = _require("https");
+const realFetch = function (url, init) {
+  init = init || {};
+  const method = init.method || "GET";
+  const headers = init.headers || {};
+  return new Promise((resolve, reject) => {
+    try {
+      const u = typeof url === "string" ? new URL(url) : new URL(url.url || "about:blank");
+      _https.get({
+        hostname: u.hostname, path: u.pathname + u.search, method,
+        headers: Object.assign({ "User-Agent": "Mozilla/5.0", Referer: "https://www.toutiao.com/" }, headers),
+      }, (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => resolve({
+          status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300,
+          headers: res.headers,
+          text: () => Promise.resolve(data),
+          json: () => Promise.resolve(JSON.parse(data || "{}")),
+        }));
+      }).on("error", reject);
+    } catch (e) { reject(e); }
+  });
+};
+global.fetch = realFetch;
+
+// setTimeout — 可能被 env_patch 隐藏，重新暴露
+if (typeof global.setTimeout !== "function") {
+  global.setTimeout = setTimeout;
+}
+
 module.exports = { globalEval };
