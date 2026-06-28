@@ -15,10 +15,16 @@
 // ── 保存原生引用 ─────────────────────────────────────────
 const _process = process;
 const _require = require;
+const _vm = _require("vm");
 const _fs = _require("fs");
 const _path = _require("path");
 const _https = _require("https");
 const __dir = __dirname;
+
+// ── Helper: eval in global scope (works around strict mode eval isolation) ──
+function globalEval(codeStr) {
+  _vm.runInThisContext(codeStr);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 1. 加载环境补丁
