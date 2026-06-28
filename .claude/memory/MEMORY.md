@@ -57,6 +57,10 @@
 - [navigator.plugins 空数组](iv8-navigator-plugins.md) — iv8 默认值 ≠ env.js
 - [document.cookie 直接赋值](iv8-doc-cookie.md) — iv8 document 不可 POJO 替换，用 getter 覆盖
 
+### 目录组织
+
+- [iv8 目录自包含](iv8-self-contained.md) — **强制规则**：每个站点的 SDK 文件必须复制到本目录，禁止跨目录引用。复制整个文件夹即可独立部署，版本隔离。
+
 ### 各站点总结
 
 - **Boss直聘** — VMP 53 检查点，Canvas 指纹文本关键。iv8 可行：`_canvas_png.txt` 注入

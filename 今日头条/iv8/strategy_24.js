@@ -1,0 +1,6 @@
+/*!
+* @byted/secsdk-strategy v1.0.1
+* (c) 2024
+*/
+!function(e){"function"==typeof define&&define.amd?define(e):e()}((function(){"use strict";window.registToModule("strategy",{event:{API_LOCALSTORAGE_SET:["sensitiveFieldSetReport"]},strategy:{report:{body:{version:"1.0.0",key:"report",name:"上报配置策略"},config:{bid:"argus3",sampleRatio:1e4}},sensitiveFieldSetReport:{body:{version:"1.0.0",key:"sensitiveFieldSetReport",name:"敏感字段存储检测",condition:"",expression:function(e){var o=window.use("ActionType"),t="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";function n(e){for(var o="",n=0,i=0,r=0;r<e.length;r++)for(n=n<<8|e.charCodeAt(r),i+=8;i>=6;)o+=t[n>>(i-=6)&63];for(i>0&&(o+=t[n<<6-i&63]);o.length%4!=0;)o+="=";return o}return{type:o.REPORT_ONLY,reason:"敏感字段存储检测",once:!0,key:e.payload.key,eventOverwrite:{args:[e.payload.key,n(e.payload.value)],key:e.payload.key,value:n(e.payload.value)},payload:{}}}},config:{}}},execution:{API_LOCALSTORAGE_SET:"executeApiStorageSet"}})}));
+//# source
