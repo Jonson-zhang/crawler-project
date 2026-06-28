@@ -92,21 +92,27 @@ async function fetchComments(articleId, signer, cookie) {
 
     try {
       const data = await httpGet(fullUrl, cookie);
-      const comments = data?.data?.comments || data?.data || [];
-      const total = data?.data?.total_count ?? "?";
 
-      if (comments.length === 0) {
+      // data 是 { 0: {comment:{...}}, 1: {...}, ... } 的对象
+      const rawComments = data?.data || {};
+      const commentList = Object.values(rawComments)
+        .filter((v) => v && v.comment)
+        .map((v) => v.comment);
+
+      const total = data?.total_number ?? "?";
+
+      if (commentList.length === 0) {
         process.stderr.write(`无评论\n`);
         hasMore = false;
         break;
       }
 
-      allComments.push(...comments);
+      allComments.push(...commentList);
       process.stderr.write(
-        `${comments.length} 条 (累计 ${allComments.length}/${total})\n`
+        `${commentList.length} 条 (累计 ${allComments.length}/${total})\n`
       );
 
-      hasMore = data?.data?.has_more ?? false;
+      hasMore = data?.has_more ?? false;
       offset += count;
     } catch (e) {
       process.stderr.write(`失败: ${e.message}\n`);
@@ -122,23 +128,17 @@ async function fetchComments(articleId, signer, cookie) {
 // ═══════════════════════════════════════════════════════════════════
 
 function formatComment(c, index) {
-  const user = c.user?.name || c.user_name || c.name || "匿名";
-  const text = (c.text || c.content || "").replace(/\n/g, " ");
-  const time = c.create_time
-    ? new Date(c.create_time * 1000).toISOString().slice(0, 19).replace("T", " ")
-    : "";
-  const likes = c.digg_count ?? c.like_count ?? 0;
-  const replies = c.reply_count ?? c.reply_comment_count ?? 0;
-  const location = c.user?.location || "";
-
   return {
     index: index + 1,
-    user,
-    text: text.slice(0, 500),
-    time,
-    likes,
-    replies,
-    location,
+    user: c.user_name || "匿名",
+    text: (c.text || "").replace(/\n/g, " "),
+    time: c.create_time
+      ? new Date(c.create_time * 1000).toISOString().slice(0, 19).replace("T", " ")
+      : "",
+    likes: c.digg_count ?? 0,
+    replies: c.reply_count ?? 0,
+    location: c.publish_loc_info || "",
+    comment_id: c.id_str || String(c.id),
   };
 }
 
