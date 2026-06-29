@@ -19,6 +19,7 @@
 > ⚠️ **补环境 3 轮后签名仍错误（不 crash）时，对照天花板规则判定是否切 iv8。**
 
 - [env_patch 天花板判定](env-patch-iv8-ceiling.md) — 3 轮法则 + 引擎层差异信号 + iv8 可行性数据（Boss直聘 13 轮→iv8 一次过）
+- [iv8 社区版天花板 — Tongdun 指纹 SDK](iv8-tongdun-ceiling.md) — **新 (2026-06-29)**：iv8 CE 可加载运行 Tongdun SDK 但不能通过服务器端 AI 指纹验证。包含 polyfill 方案、blackbox token 结构、三条路径分析。
 
 ## 其他经验
 
