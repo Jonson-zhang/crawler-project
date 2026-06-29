@@ -67,3 +67,4 @@
 - **Boss直聘** — VMP 53 检查点，Canvas 指纹文本关键。iv8 可行：`_canvas_png.txt` 注入
 - **知乎** — 最轻量，无 VMP，只读 `crypto.getRandomValues`。iv8 一线过
 - **小红书** — VMP 中量，只读 `doc.body + doc.cookie`。iv8 可行但踩了 Python 语法坑。**结论：VMP 检测不深于 iv8 C++ 能力范围**
+- **东航** — **新 (2026-06-29)**：WASM 白盒 AES（iv8 零补丁 ✅），但 Tongdun 指纹 SDK 服务器端 AI 拒绝合成指纹（iv8 CE 天花板 ❌）。[[iv8-tongdun-ceiling]] 记录完整过程。
