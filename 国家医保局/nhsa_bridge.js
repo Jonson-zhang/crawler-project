@@ -234,10 +234,34 @@
     window.onunload = null;
     window.onbeforeunload = null;
 
-    // window.parent / window.top (防止 null.onmessage 或 null.postMessage)
+    // window.parent / window.top / window.self
     if (!window.parent) window.parent = window;
     if (!window.top) window.top = window;
     if (!window.self) window.self = window;
+
+    // 全局 null-safe 代理：捕获对 null 对象的属性访问
+    // 防止 app.js 中类似 null.onmessage = ... 的错误
+    var _safeStub = function() { return _safeStub; };
+    _safeStub.toString = function() { return 'function(){}'; };
+
+    // 补丁：用 Proxy 包装 window 以返回安全存根而非 null/undefined
+    if (typeof Proxy !== 'undefined') {
+        try {
+            window = new Proxy(window, {
+                get: function(target, prop) {
+                    if (prop in target) {
+                        var v = target[prop];
+                        return v === null ? _safeStub : v;
+                    }
+                    return _safeStub;
+                },
+                set: function(target, prop, value) {
+                    target[prop] = value;
+                    return true;
+                }
+            });
+        } catch(e) {}
+    }
 
     // 额外的 DOM 安全垫
     if (!document.documentElement) {
