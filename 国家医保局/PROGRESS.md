@@ -169,11 +169,76 @@ Python → subprocess → 加密服务器.js (sm-crypto npm)
        → API 返回 173370 (签名不匹配)
 ```
 
+## 2026-06-30 进展
+
+### 6. jsdom 验证 ✅
+
+jsdom 可以成功加载 app.js (3.7MB) 并生成有效的加密请求:
+
+```
+jsdom → app.js → selectByKeys API 调用
+→ x-tif-signature 正确生成 (SHA-256, 64 hex)
+→ SM2 签名正确 (base64)
+→ SM4 加密正确
+```
+
+**关键发现**:
+- Vue 组件不会渲染 (`#app` 为空)，但 API 服务层正常初始化
+- `selectByKeys` 在 app.js 加载期间自动触发 (不带用户交互)
+- `queryFixedHospital` 需要 Vue 搜索组件触发，jsdom 中不可用
+- 加密模块 (sm2/sm3/sm4) 在 webpack 闭包内，无法通过 `window` 访问
+
+### 7. x-tif-signature 算法分析
+
+**穷举测试结果**: 对所有合理组合 (appCode+ts+nonce+body 的 SHA-256/SM3/HMAC 各种排列) 均不匹配。
+
+**结论**: x-tif-signature 包含某种**动态会话密钥**，可能:
+- `sm2.generateKeyPairHex()` 生成的私钥参与计算
+- 某个 session-level secret 在初始化阶段生成
+- SHA-256 输入包含我们未发现的字段
+
+**验证**: jsdom 中每次启动产生不同的 x-tif-signature (即使同一 appCode)， 证明密钥是动态的。
+
+### 8. 新增工具文件
+
+| 文件 | 用途 |
+|------|------|
+| `nhsa_client.py` | 统一客户端 (CDP 模式, encrypt 模式) |
+| `capture_sig.js` | jsdom 拦截 XHR 捕获签名 |
+| `capture_sig2.js` | 增强版: 捕获调用栈 |
+| `jsdom_server.js` | jsdom JSON-RPC 加密服务器 |
+| `extract_crypto.js` | 尝试提取 sm-crypto 模块 |
+| `extract_crypto2.js` | 通过 defineProperty hook 提取 |
+| `find_api.js` | 扫描 window 查找 API 服务 |
+| `debug_jsdom.js` | 调试 jsdom DOM 状态 |
+| `brute_xtif_sig.py` | 暴力测试 SHA-256 输入 |
+| `brute_xtif_sig2.py` | 暴力测试 SHA-256 + SM3 |
+
+### 9. Camoufox 浏览器测试
+
+- CSP 策略阻止 `eval()`，导致 app.js 产生大量 CSP 错误
+- `hook_function` 和 `inject_hook_preset` 兼容性有问题
+- **结论**: js-reverse MCP (CDP-based) 更可靠
+
 ## 下一步行动清单
 
-1. [ ] 浏览器 MCP Hook `setRequestHeader('x-tif-signature', ...)` 获取精确签名输入
-2. [ ] 从 jsdom 中提取 `Uint8Array(16)` 获取 SM4 密钥
-3. [ ] 确认 SM4 密钥 → 解密已知 response encData 验证
-4. [ ] 补全 x-tif-signature 算法 → API 调用成功
-5. [ ] 实现响应 SM4 解密
-6. [ ] 最终交付: 纯协议 Python main.py，无浏览器依赖
+1. [x] 浏览器 MCP Hook + break_on_xhr 获取实时请求样本 ✅
+2. [x] jsdom 加载 app.js 验证加密正确性 ✅
+3. [ ] 在 jsdom 中 hook webpack require 提取 sm-crypto 模块 → 获取 SM4 密钥
+4. [ ] 正向追踪: 从 webpack 源码定位 x-tif-signature 计算函数
+5. [ ] 确认 SM4 密钥 → 解密已知 response encData 验证
+6. [ ] 补全 x-tif-signature 算法 → API 调用成功 (纯协议)
+7. [ ] 实现响应 SM4 解密
+8. [ ] 最终交付: 纯协议 Python main.py，无浏览器依赖
+
+## 当前可用方案
+
+### CDP Bridge (已验证可用)
+
+```bash
+python nhsa_client.py encrypt --keyword "医院"
+# 输出加密请求 (headers + body)，可直接用 curl/requests 发送
+
+python nhsa_client.py search "北京大学第一医院"
+# 完整搜索流程
+```
