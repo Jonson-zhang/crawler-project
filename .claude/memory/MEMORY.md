@@ -32,6 +32,7 @@
 ## 其他经验
 
 - [env.js / sign.js 分离架构](env-sign-separation.md) — 补环境与签名逻辑分离的目录结构规范
+- [CONFIG 块规范](config-block-convention.md) — **最终交付必须用 CONFIG 块替代纯 CLI**，修改参数只需改一个值，`python xxx.py` 即可运行
 - [Crawler 项目约定](crawler-conventions.md) — 工具链、代码组织、输出方式的默认约定
 - [WAF/TLS 指纹识别与应对](waf-tls-fingerprint.md) — requests 返回 WAF HTML 的诊断 + 浏览器桥接方案 + Cookie 保鲜
 - [线上资源保持原始完整](online-resources-keep-raw.md) — 从线上获取的 JS 源码/字节码必须和原始文件一模一样，禁止截断/格式化
