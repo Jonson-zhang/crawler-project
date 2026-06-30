@@ -46,6 +46,7 @@
 - [VMP env slot 预填充](xhs-setter-intercept.md) — 可复用的 VMP 通用技巧：setter 拦截 + env 数组预填 200 个构造槽位
 - [换电脑恢复流程](backup-restore.md) — git push 即备份，bash install-mcp.sh 即恢复
 - [Boss直聘逆向进度](boss-zhipin-reverse.md) — **2026-06-26**: VMP 9912状态map + 1318步trace, 补环境13轮(code 38→37), 明天转纯算
+- [国家医保局 逆向教训](nhsa-reverse.md) — **2026-06-30 完成**: SM2/SM4 国密，内部函数与 npm 不兼容，最终 webpack 提取方案解决
 
 ## iv8 引擎 + 逆向方法论（Boss直聘 + 知乎 + 小红书三轮实战）
 
