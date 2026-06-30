@@ -204,7 +204,17 @@
     window.Event = function(type){ this.type = type; };
     window.CustomEvent = function(type, opts){ this.type = type; this.detail = (opts||{}).detail; };
 
-    // Performance
+    // document extensions (for iv8 compatibility)
+    document.createEvent = function(type) { return { initEvent: function(){} }; };
+    document.createComment = function() { return {}; };
+    document.importNode = function() { return null; };
+    document.adoptNode = function() { return null; };
+
+    // DOMParser
+    if (typeof DOMParser === 'undefined') {
+        window.DOMParser = function() {};
+        DOMParser.prototype.parseFromString = function() { return document; };
+    }
     window.performance = {
         now: function(){ return Date.now(); },
         timing: { navigationStart: Date.now() - 1000 },
