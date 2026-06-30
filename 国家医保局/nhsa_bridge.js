@@ -189,9 +189,62 @@
         window.screen = { width: 1920, height: 1080, availWidth: 1920, availHeight: 1040, colorDepth: 24 };
     }
 
-    // ═══════════════════════════════════════════════════════════
+    // Worker 代理 (app.js 可能尝试创建 Worker)
+    if (typeof Worker === 'undefined') {
+        window.Worker = function() {
+            this.postMessage = function() {};
+            this.terminate = function() {};
+            this.onmessage = null;
+            this.onerror = null;
+        };
+    }
+
+    // MessageChannel/MessagePort
+    if (typeof MessageChannel === 'undefined') {
+        window.MessageChannel = function() {
+            var ch = this;
+            this.port1 = {
+                postMessage: function() {},
+                onmessage: null,
+                close: function() {},
+            };
+            this.port2 = {
+                postMessage: function() {},
+                onmessage: null,
+                close: function() {},
+            };
+        };
+    }
+
+    // ServiceWorker
+    if (typeof navigator !== 'undefined' && !navigator.serviceWorker) {
+        navigator.serviceWorker = {
+            register: function() { return Promise.resolve({}); },
+            ready: Promise.resolve({}),
+            getRegistration: function() { return Promise.resolve(null); },
+        };
+    }
+
+    // 防止 null.onmessage 错误
+    window.onmessage = null;
+    window.onerror = null;
+    window.onpopstate = null;
+    window.onhashchange = null;
+    window.onload = null;
+    window.onunload = null;
+    window.onbeforeunload = null;
+
+    // 额外的 DOM 安全垫
+    if (!document.documentElement) {
+        document.documentElement = document.createElement('html');
+    }
+    if (!document.body) {
+        document.body = document.createElement('body');
+    }
+
+    // ===========================================================
     // 模块拦截
-    // ═══════════════════════════════════════════════════════════
+    // ===========================================================
 
     window.__nhsa_sm_crypto = null;
     window.__nhsa_exports = {};
