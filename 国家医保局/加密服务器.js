@@ -86,7 +86,7 @@ function encrypt(params) {
     // 2. SM4-CBC 加密
     let encData;
     try {
-        encData = sm4.encrypt(plainJson, SM4_KEY_HEX, {
+        encData = sm4.encrypt(plainJson, _sm4Key, {
             mode: 'cbc', iv: SM4_IV
         });
     } catch (e) {
@@ -104,7 +104,7 @@ function encrypt(params) {
     // 4. SM2 签名
     let signData;
     try {
-        signData = sm2.doSignature(innerJson, PRIVATE_KEY, { hash: true });
+        signData = sm2.doSignature(innerJson, _keypair.privateKey, { hash: true });
     } catch (e) {
         return { error: 'SM2 sign failed: ' + e.message };
     }
