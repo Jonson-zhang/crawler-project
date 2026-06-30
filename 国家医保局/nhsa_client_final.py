@@ -52,8 +52,12 @@ def js_call(func_name: str, *args: object) -> dict:
     try:
         r = subprocess.run(
             ["node", str(tmp_file)],
-            capture_output=True, text=True, cwd=str(HERE), timeout=30,
-            encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            cwd=str(HERE),
+            timeout=30,
+            encoding="utf-8",
+            errors="replace",
         )
         for line in r.stdout.strip().split("\n"):
             line = line.strip()
@@ -101,7 +105,7 @@ class NhsaClient:
         self,
         medins_name: str = "",
         regn_code: str = "110000",
-        page_num: int = 1,
+        page_num: int = 5,
         page_size: int = 10,
         *,
         addr: str = "",
@@ -165,7 +169,9 @@ class NhsaClient:
 
         code = result.get("code", -1)
         msg = result.get("message", "")
-        print(f"[Nhsa] Page {page_num} response: code={code} msg={msg}", file=sys.stderr)
+        print(
+            f"[Nhsa] Page {page_num} response: code={code} msg={msg}", file=sys.stderr
+        )
 
         # 解密响应
         if code == 0:
@@ -173,7 +179,10 @@ class NhsaClient:
                 decrypted = js_call("DecryptedData", result)
                 result["_decrypted"] = decrypted
                 total = decrypted.get("total", len(decrypted.get("list", [])))
-                print(f"[Nhsa] Page {page_num} decrypted: {total} results", file=sys.stderr)
+                print(
+                    f"[Nhsa] Page {page_num} decrypted: {total} results",
+                    file=sys.stderr,
+                )
             except RuntimeError as e:
                 print(f"[Nhsa] Decrypt error: {e}", file=sys.stderr)
 
@@ -206,23 +215,12 @@ def main() -> None:
     parser.add_argument(
         "--regn", "-r", default="110000", help="行政区划代码 (默认110000=北京市)"
     )
-    parser.add_argument(
-        "--pages", "-P", type=int, default=1,
-        help="获取页数 (默认1页)"
-    )
+    parser.add_argument("--pages", "-P", type=int, default=1, help="获取页数 (默认1页)")
     parser.add_argument("--size", "-s", type=int, default=10, help="每页条数")
-    parser.add_argument(
-        "--addr", default="", help="地址 (可选筛选)"
-    )
-    parser.add_argument(
-        "--level", "-l", default="", help="医疗机构等级代码 (空=全部)"
-    )
-    parser.add_argument(
-        "--type", "-t", default="", help="医疗机构类型代码 (空=全部)"
-    )
-    parser.add_argument(
-        "--elec", "-e", default="", help="电子凭证 (空=全部, 1=已开通)"
-    )
+    parser.add_argument("--addr", default="", help="地址 (可选筛选)")
+    parser.add_argument("--level", "-l", default="", help="医疗机构等级代码 (空=全部)")
+    parser.add_argument("--type", "-t", default="", help="医疗机构类型代码 (空=全部)")
+    parser.add_argument("--elec", "-e", default="", help="电子凭证 (空=全部, 1=已开通)")
     parser.add_argument("--json", action="store_true", help="JSON output")
     args = parser.parse_args()
 
@@ -249,9 +247,9 @@ def main() -> None:
                 "results": [],
             }
             for r in results:
-                output["results"].append({
-                    k: v for k, v in r.items() if k not in ("_decrypted",)
-                })
+                output["results"].append(
+                    {k: v for k, v in r.items() if k not in ("_decrypted",)}
+                )
                 if r.get("_decrypted"):
                     output["results"][-1]["decrypted"] = r["_decrypted"]
             print(json.dumps(output, ensure_ascii=False, indent=2))
@@ -277,7 +275,9 @@ def main() -> None:
             print("\n所有页面请求均失败")
             return
 
-        print(f"\n查询完成! 共 {grand_total} 条结果，实际获取 {len(all_items)} 条 (跨越 {args.pages} 页)\n")
+        print(
+            f"\n查询完成! 共 {grand_total} 条结果，实际获取 {len(all_items)} 条 (跨越 {args.pages} 页)\n"
+        )
 
         for item in all_items:
             name = item.get("medinsName", item.get("medName", "?"))
