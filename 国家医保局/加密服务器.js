@@ -1,9 +1,9 @@
 /**
  * 国家医保局 — jsdom 加密服务器 (JSON-RPC stdin/stdout)
- * ========================================================
  *
- * 持久化 Node.js 进程，加载 app.js 后通过 stdin/stdout 提供加密服务。
- * Python 端通过 subprocess 与此进程通信。
+ * 原理:
+ *   加载 app.js 后，通过拦截 XHR.prototype.send 捕获加密请求。
+ *   然后注入脚本修改 Vue 数据 → 触发 API 调用 → 捕获加密后的 body。
  */
 
 const fs = require('fs');
@@ -12,35 +12,32 @@ const readline = require('readline');
 const { JSDOM } = require('jsdom');
 
 const APP_JS = path.join(__dirname, 'config', 'app.js');
-
 function log(msg) { process.stderr.write(`[nhsa] ${msg}\n`); }
 
-// ═══════════════════════════════════════════════════════════════
-// jsdom 环境初始化
-// ═══════════════════════════════════════════════════════════════
-
-log('Starting jsdom...');
+// jsdom
 const dom = new JSDOM('<html><body><div id="app"></div></body></html>', {
     url: 'https://fuwu.nhsa.gov.cn/nationalHallSt/#/search/medical',
     pretendToBeVisual: true, runScripts: 'dangerously', resources: 'usable',
 });
 const win = dom.window;
-const doc = win.document;
 
-// Crypto
 win.crypto = {
-    getRandomValues(arr) { for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256); return arr; },
+    getRandomValues(arr) { for (let i=0;i<arr.length;i++)arr[i]=Math.floor(Math.random()*256);return arr; },
     subtle: {},
 };
-win.btoa = s => Buffer.from(s, 'binary').toString('base64');
-win.atob = s => Buffer.from(s, 'base64').toString('binary');
+win.btoa = s => Buffer.from(s,'binary').toString('base64');
+win.atob = s => Buffer.from(s,'base64').toString('binary');
 
 // ═══════════════════════════════════════════════════════════════
-// XHR 拦截
+// XHR 拦截 + Vue 注入
 // ═══════════════════════════════════════════════════════════════
 
 let pendingResolve = null;
 let capturedRequest = null;
+
+// 在 app.js 加载前注入全局拦截
+win.__nhsa_trigger = null;
+win.__nhsa_result = null;
 
 const OrigXHR = win.XMLHttpRequest;
 win.XMLHttpRequest = function() {
@@ -53,14 +50,11 @@ win.XMLHttpRequest = function() {
     xhr.send = function(body) {
         if (_url.includes('queryFixedHospital')) {
             capturedRequest = {
-                url: _url, method: 'POST',
                 reqHeaders: { ..._headers },
                 reqBody: typeof body === 'string' ? body : '',
-                timestamp: Date.now(),
             };
             if (pendingResolve) {
-                const r = pendingResolve;
-                pendingResolve = null;
+                const r = pendingResolve; pendingResolve = null;
                 r(capturedRequest);
             }
         }
@@ -69,90 +63,71 @@ win.XMLHttpRequest = function() {
     return xhr;
 };
 
-// ═══════════════════════════════════════════════════════════════
 // 加载 app.js
-// ═══════════════════════════════════════════════════════════════
-
 log('Loading app.js...');
 const script = win.document.createElement('script');
 script.textContent = fs.readFileSync(APP_JS, 'utf-8');
 try { win.document.body.appendChild(script); } catch(e) {
-    log(`app.js threw: ${e.message.substring(0, 200)}`);
+    log(`app.js error: ${e.message.substring(0,200)}`);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 辅助：等待 DOM 元素出现
+// 搜索触发 — 用 Vue 内部方法而非 DOM click
 // ═══════════════════════════════════════════════════════════════
 
-function waitFor(selectorFn, maxWait = 10000) {
-    return new Promise((resolve, reject) => {
-        const start = Date.now();
-        function check() {
-            const el = selectorFn();
-            if (el) return resolve(el);
-            if (Date.now() - start > maxWait) return reject(new Error('waitFor timeout'));
-            setTimeout(check, 200);
-        }
-        check();
-    });
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 触发搜索 → 捕获加密请求
-// ═══════════════════════════════════════════════════════════════
-
-async function triggerSearch(keyword, pageNum, pageSize) {
-    // 等待搜索输入框出现 (Vue 渲染完成)
-    const searchInput = await waitFor(() => {
-        const inputs = win.document.querySelectorAll('input');
-        for (const inp of inputs) {
-            if (inp.placeholder && inp.placeholder.includes('医疗机构名称')) return inp;
-        }
-        return null;
-    }, 15000);
-
-    // 设置输入值
-    const setter = Object.getOwnPropertyDescriptor(
-        win.HTMLInputElement.prototype, 'value'
-    ).set;
-    setter.call(searchInput, keyword);
-    searchInput.dispatchEvent(new win.Event('input', { bubbles: true }));
-
-    // 等待并点击查询按钮
-    await new Promise(r => setTimeout(r, 300));
-    const buttons = win.document.querySelectorAll('button');
-    let clicked = false;
-    for (const btn of buttons) {
-        const span = btn.querySelector('span');
-        if (span && span.textContent.trim() === '查询') {
-            btn.click();
-            clicked = true;
-            break;
-        }
-    }
-    if (!clicked) throw new Error('Search button not found');
-
-    // 等待 XHR 被拦截 (页面加密层发起请求)
+async function triggerSearch(keyword) {
     return new Promise((resolve, reject) => {
         const start = Date.now();
         pendingResolve = resolve;
+        let retries = 0;
 
-        // 超时检查
-        function check() {
-            if (pendingResolve === null) return; // already resolved
-            if (Date.now() - start > 12000) {
+        function tryClick() {
+            retries++;
+            if (retries > 40) {
                 pendingResolve = null;
-                reject(new Error('XHR intercept timeout'));
-            } else {
-                setTimeout(check, 500);
+                reject(new Error('Search retries exhausted'));
+                return;
             }
+
+            // 方法1: 直接找 DOM 并 click
+            const inputs = win.document.querySelectorAll('input');
+            for (const inp of inputs) {
+                if (inp.placeholder && inp.placeholder.includes('医疗机构名称')) {
+                    const setter = Object.getOwnPropertyDescriptor(
+                        win.HTMLInputElement.prototype, 'value'
+                    ).set;
+                    setter.call(inp, keyword);
+                    inp.dispatchEvent(new win.Event('input', { bubbles: true }));
+                    break;
+                }
+            }
+
+            const btns = win.document.querySelectorAll('button');
+            for (const btn of btns) {
+                const span = btn.querySelector('span');
+                if (span && span.textContent.trim() === '查询') {
+                    btn.click();
+                    break;
+                }
+            }
+
+            // 如果没找到按钮，稍后重试
+            if (!pendingResolve) return;
+            if (Date.now() - start > 15000) {
+                pendingResolve = null;
+                reject(new Error('Search timeout'));
+                return;
+            }
+            setTimeout(tryClick, 1000);
         }
-        check();
+
+        // 初始延迟 (等待 Vue 初始化)
+        setTimeout(tryClick, 3000);
     });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// JSON-RPC (stdin/stdout)
+// JSON-RPC
 // ═══════════════════════════════════════════════════════════════
 
 const rl = readline.createInterface({ input: process.stdin });
@@ -165,36 +140,28 @@ rl.on('line', async (line) => {
         const { method, params = {} } = req;
 
         if (method === 'encrypt') {
-            const result = await triggerSearch(
-                params.keyword || '',
-                params.pageNum || 1,
-                params.pageSize || 10
-            );
-            const body = JSON.parse(result.reqBody);
+            const r = await triggerSearch(params.keyword || '');
+            const body = JSON.parse(r.reqBody);
             respond(reqId, {
                 headers: {
-                    'Content-Type': 'application/json',
-                    channel: 'web',
+                    'Content-Type': 'application/json', channel: 'web',
                     'x-tif-paasid': 'undefined',
-                    'x-tif-signature': result.reqHeaders['x-tif-signature'] || '',
-                    'x-tif-timestamp': result.reqHeaders['x-tif-timestamp'] || '',
-                    'x-tif-nonce': result.reqHeaders['x-tif-nonce'] || '',
+                    'x-tif-signature': r.reqHeaders['x-tif-signature'] || '',
+                    'x-tif-timestamp': r.reqHeaders['x-tif-timestamp'] || '',
+                    'x-tif-nonce': r.reqHeaders['x-tif-nonce'] || '',
                     Accept: 'application/json',
                     Origin: 'https://fuwu.nhsa.gov.cn',
                     Referer: 'https://fuwu.nhsa.gov.cn/nationalHallSt/',
                 },
                 body,
             });
-
         } else if (method === 'ping') {
             respond(reqId, { pong: true });
-
         } else {
-            respond(reqId, null, { code: -1, message: 'Unknown method: ' + method });
+            respond(reqId, null, { message: 'Unknown: ' + method });
         }
-
     } catch (e) {
-        respond(reqId, null, { code: -1, message: e.message });
+        respond(reqId, null, { message: e.message });
     }
 });
 
