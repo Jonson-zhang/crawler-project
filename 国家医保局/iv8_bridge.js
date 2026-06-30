@@ -220,33 +220,70 @@
     window.cancelAnimationFrame = function(){};
 
     // ═══════════════════════════════════════════════════════════
-    // 4. 全局 null 保护 (用 Proxy)
+    // 4. 预填所有常见浏览器 API (防止 null 访问崩溃)
     // ═══════════════════════════════════════════════════════════
-    if (typeof Proxy !== 'undefined') {
-        var windowProxy = new Proxy(window, {
-            get: function(target, prop) {
-                if (prop in target) {
-                    var v = target[prop];
-                    return v === null || v === undefined ? safeStub : v;
-                }
-                return safeStub;
-            },
-            set: function(target, prop, value) {
-                target[prop] = value;
-                return true;
-            }
-        });
-        // Replace window with proxy
-        try { window = windowProxy; } catch(e) {}
+    var BROWSER_APIS = [
+        // Events
+        'onmessage', 'onerror', 'onpopstate', 'onhashchange', 'onload', 'onbeforeunload',
+        'onunload', 'onresize', 'onscroll', 'onclick', 'onchange', 'oninput', 'onfocus',
+        'onblur', 'onkeydown', 'onkeyup', 'onmousemove', 'onmousedown', 'onmouseup',
+        'ontouchstart', 'ontouchend', 'onpointerdown', 'onpointerup',
+        // Objects that might be null
+        'frames', 'frameElement', 'external', 'sidebar', 'opener',
+        'chrome', 'visualViewport', 'styleMedia', 'trustedTypes',
+        // Storage
+        'caches', 'indexedDB', 'cookieStore',
+        // Navigation
+        'navigation', 'history',
+        // Other common
+        'applicationCache', 'clientInformation', 'clipboardData',
+        'devicePixelRatio', 'matchMedia',
+    ];
+
+    for (var i = 0; i < BROWSER_APIS.length; i++) {
+        var name = BROWSER_APIS[i];
+        if (!(name in window) || window[name] === null || window[name] === undefined) {
+            window[name] = (name.charAt(0) === 'o' && name.charAt(1) === 'n') ? null : safeStub;
+        }
     }
 
-    // null-safe for common patterns
-    window.onmessage = null;
-    window.onerror = null;
-    window.onpopstate = null;
-    window.onhashchange = null;
-    window.onload = null;
-    window.onbeforeunload = null;
+    // history
+    if (!window.history) {
+        window.history = {
+            pushState: function(){}, replaceState: function(){},
+            go: function(){}, back: function(){}, forward: function(){},
+            length: 1, state: null,
+        };
+    }
+
+    // navigation
+    if (!window.navigation) {
+        window.navigation = {
+            addEventListener: function(){},
+            removeEventListener: function(){},
+        };
+    }
+
+    // matchMedia
+    window.matchMedia = function() {
+        return { matches: false, media: '', addListener: function(){}, removeListener: function(){}, addEventListener: function(){}, removeEventListener: function(){} };
+    };
+
+    // devicePixelRatio
+    if (!('devicePixelRatio' in window)) window.devicePixelRatio = 1;
+
+    // postMessage
+    window.postMessage = function(){};
+
+    // indexedDB stub
+    window.indexedDB = {
+        open: function(){ return { onerror: null, onsuccess: null, onupgradeneeded: null, result: {} }; },
+    };
+
+    // caches stub
+    window.caches = {
+        open: function(){ return Promise.resolve({ add: function(){}, match: function(){ return Promise.resolve(null); } }); },
+    };
 
     // ═══════════════════════════════════════════════════════════
     // 5. 加密模块拦截
