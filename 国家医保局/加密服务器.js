@@ -1,138 +1,148 @@
 /**
- * 国家医保局 — jsdom 加密服务器 (JSON-RPC stdin/stdout)
+ * 国家医保局 — 加密服务器 (纯 sm-crypto npm)
+ * ============================================
  *
- * 原理:
- *   加载 app.js 后，通过拦截 XHR.prototype.send 捕获加密请求。
- *   然后注入脚本修改 Vue 数据 → 触发 API 调用 → 捕获加密后的 body。
+ * 使用 sm-crypto 库 + 从 app.js 字符串表解码的密钥直接构造请求。
+ * 不需要 jsdom。
+ *
+ * 密钥来源: app.js OB 字符串表 XOR 解码
  */
 
-const fs = require('fs');
-const path = require('path');
+const sm2 = require('sm-crypto').sm2;
+const sm3 = require('sm-crypto').sm3;
+const sm4 = require('sm-crypto').sm4;
+const crypto = require('crypto');
 const readline = require('readline');
-const { JSDOM } = require('jsdom');
 
-const APP_JS = path.join(__dirname, 'config', 'app.js');
-function log(msg) { process.stderr.write(`[nhsa] ${msg}\n`); }
+const APP_CODE = 'T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ';
+const VERSION = '1.0.0';
+const SM4_IV = '00000000000000000000000000000000';
 
-// jsdom
-const dom = new JSDOM('<html><body><div id="app"></div></body></html>', {
-    url: 'https://fuwu.nhsa.gov.cn/nationalHallSt/#/search/medical',
-    pretendToBeVisual: true, runScripts: 'dangerously', resources: 'usable',
-});
-const win = dom.window;
+// 从 XOR 解码得到的密钥材料:
+// a = NMVFVILMKT13GEMD3BKPKCTBOQBPZR2P (疑似 base32 公钥)
+// c = base64 SM2 私钥 (65 bytes = 04 + private)
+// d = base64 SM4 key 材料 (33 bytes)
+// e = APP_CODE
 
-win.crypto = {
-    getRandomValues(arr) { for (let i=0;i<arr.length;i++)arr[i]=Math.floor(Math.random()*256);return arr; },
-    subtle: {},
-};
-win.btoa = s => Buffer.from(s,'binary').toString('base64');
-win.atob = s => Buffer.from(s,'base64').toString('binary');
+// 尝试多种 SM4 密钥派生方式
+function deriveSm4Key() {
+    const candidates = [];
 
-// ═══════════════════════════════════════════════════════════════
-// XHR 拦截 + Vue 注入
-// ═══════════════════════════════════════════════════════════════
+    // d_val base64 → bytes
+    const dB64 = 'AJxKNdmspMaPGj+onJNoQ0cgWk2E3CYFWKBJhpcJrAtC';
+    const dBytes = Buffer.from(dB64, 'base64');
+    candidates.push({ name: 'd[0:16]', key: dBytes.slice(0, 16) });
+    candidates.push({ name: 'd[1:17]', key: dBytes.slice(1, 17) });
+    candidates.push({ name: 'd[17:33]', key: dBytes.slice(17, 33) });
 
-let pendingResolve = null;
-let capturedRequest = null;
+    // SM3(appCode)[:16] as bytes
+    const sm3Bytes = Buffer.from(sm3(APP_CODE), 'hex');
+    candidates.push({ name: 'sm3(appCode)[0:16]', key: sm3Bytes.slice(0, 16) });
 
-// 在 app.js 加载前注入全局拦截
-win.__nhsa_trigger = null;
-win.__nhsa_result = null;
+    // MD5(appCode) as bytes
+    candidates.push({ name: 'md5(appCode)', key: crypto.createHash('md5').update(APP_CODE).digest() });
 
-const OrigXHR = win.XMLHttpRequest;
-win.XMLHttpRequest = function() {
-    const xhr = new OrigXHR();
-    const oo = xhr.open, os = xhr.send, osr = xhr.setRequestHeader;
-    let _url = '', _headers = {};
+    // SHA256(appCode)[0:16]
+    candidates.push({ name: 'sha256(appCode)[0:16]', key: crypto.createHash('sha256').update(APP_CODE).digest().slice(0, 16) });
 
-    xhr.open = function(m, u) { _url = u; return oo.apply(this, arguments); };
-    xhr.setRequestHeader = function(k, v) { _headers[k] = v; return osr.apply(this, arguments); };
-    xhr.send = function(body) {
-        if (_url.includes('queryFixedHospital')) {
-            capturedRequest = {
-                reqHeaders: { ..._headers },
-                reqBody: typeof body === 'string' ? body : '',
-            };
-            if (pendingResolve) {
-                const r = pendingResolve; pendingResolve = null;
-                r(capturedRequest);
-            }
-        }
-        try { os.call(this, body); } catch(e) {}
-    };
-    return xhr;
-};
-
-// 加载 app.js
-log('Loading app.js...');
-const script = win.document.createElement('script');
-script.textContent = fs.readFileSync(APP_JS, 'utf-8');
-try { win.document.body.appendChild(script); } catch(e) {
-    log(`app.js error: ${e.message.substring(0,200)}`);
+    return candidates;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 搜索触发 — 用 Vue 内部方法而非 DOM click
-// ═══════════════════════════════════════════════════════════════
+const SM4_KEY = deriveSm4Key()[2].key; // d[17:33]
+const SM4_KEY_HEX = SM4_KEY.toString('hex');
 
-async function triggerSearch(keyword) {
-    return new Promise((resolve, reject) => {
-        const start = Date.now();
-        pendingResolve = resolve;
-        let retries = 0;
+// SM2 keypair (from decoded c_val = private key)
+const C_B64 = 'BEKaw3Qtc31LG/hTPHFPlriKuAn/nzTWl8LiRxLw4iQiSUIyuglptFxNkdCiNXcXvkqTH79Rh/A2sEFU6hjeK3k=';
+const C_RAW = Buffer.from(C_B64, 'base64');
+const PRIVATE_KEY = C_RAW.slice(1, 33).toString('hex');
 
-        function tryClick() {
-            retries++;
-            if (retries > 40) {
-                pendingResolve = null;
-                reject(new Error('Search retries exhausted'));
-                return;
-            }
+function genNonce(len = 8) {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let r = '';
+    for (let i = 0; i < len; i++) r += chars[Math.floor(Math.random() * chars.length)];
+    return r;
+}
 
-            // 方法1: 直接找 DOM 并 click
-            const inputs = win.document.querySelectorAll('input');
-            for (const inp of inputs) {
-                if (inp.placeholder && inp.placeholder.includes('医疗机构名称')) {
-                    const setter = Object.getOwnPropertyDescriptor(
-                        win.HTMLInputElement.prototype, 'value'
-                    ).set;
-                    setter.call(inp, keyword);
-                    inp.dispatchEvent(new win.Event('input', { bubbles: true }));
-                    break;
-                }
-            }
+/**
+ * 加密查询参数并构造完整请求
+ */
+function encrypt(params) {
+    const ts = Math.floor(Date.now() / 1000);
+    const nonce = genNonce(8);
 
-            const btns = win.document.querySelectorAll('button');
-            for (const btn of btns) {
-                const span = btn.querySelector('span');
-                if (span && span.textContent.trim() === '查询') {
-                    btn.click();
-                    break;
-                }
-            }
+    // 1. 构造查询明文
+    const plainJson = JSON.stringify(params);
 
-            // 如果没找到按钮，稍后重试
-            if (!pendingResolve) return;
-            if (Date.now() - start > 15000) {
-                pendingResolve = null;
-                reject(new Error('Search timeout'));
-                return;
-            }
-            setTimeout(tryClick, 1000);
+    // 2. SM4-CBC 加密
+    let encData;
+    try {
+        encData = sm4.encrypt(plainJson, SM4_KEY_HEX, {
+            mode: 'cbc', iv: SM4_IV
+        });
+    } catch (e) {
+        return { error: 'SM4 encrypt failed: ' + e.message };
+    }
+
+    // 3. 构造内层数据
+    const inner = {
+        data: { encData },
+        appCode: APP_CODE, version: VERSION,
+        encType: 'SM4', signType: 'SM2', timestamp: ts
+    };
+    const innerJson = JSON.stringify(inner);
+
+    // 4. SM2 签名
+    let signData;
+    try {
+        signData = sm2.doSignature(innerJson, PRIVATE_KEY, { hash: true });
+    } catch (e) {
+        return { error: 'SM2 sign failed: ' + e.message };
+    }
+
+    // 5. 完整请求体
+    const body = {
+        data: {
+            data: { encData },
+            appCode: APP_CODE, version: VERSION,
+            encType: 'SM4', signType: 'SM2',
+            timestamp: ts, signData,
         }
+    };
+    const bodyJson = JSON.stringify(body);
 
-        // 初始延迟 (等待 Vue 初始化)
-        setTimeout(tryClick, 3000);
-    });
+    // 6. x-tif-signature
+    const xTifSig = crypto.createHash('sha256')
+        .update(APP_CODE + ts + nonce + bodyJson).digest('hex');
+
+    return {
+        headers: {
+            'Content-Type': 'application/json', channel: 'web',
+            'x-tif-paasid': 'undefined',
+            'x-tif-signature': xTifSig,
+            'x-tif-timestamp': String(ts),
+            'x-tif-nonce': nonce,
+            Accept: 'application/json',
+            Origin: 'https://fuwu.nhsa.gov.cn',
+            Referer: 'https://fuwu.nhsa.gov.cn/nationalHallSt/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+        },
+        body,
+        _debug: {
+            sm4Key: SM4_KEY_HEX,
+            sm4Len: SM4_KEY.length,
+            privateKey: PRIVATE_KEY,
+        },
+    };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // JSON-RPC
 // ═══════════════════════════════════════════════════════════════
 
-const rl = readline.createInterface({ input: process.stdin });
+function log(msg) { process.stderr.write(`[nhsa] ${msg}\n`); }
 
-rl.on('line', async (line) => {
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
     let reqId = 0;
     try {
         const req = JSON.parse(line);
@@ -140,21 +150,8 @@ rl.on('line', async (line) => {
         const { method, params = {} } = req;
 
         if (method === 'encrypt') {
-            const r = await triggerSearch(params.keyword || '');
-            const body = JSON.parse(r.reqBody);
-            respond(reqId, {
-                headers: {
-                    'Content-Type': 'application/json', channel: 'web',
-                    'x-tif-paasid': 'undefined',
-                    'x-tif-signature': r.reqHeaders['x-tif-signature'] || '',
-                    'x-tif-timestamp': r.reqHeaders['x-tif-timestamp'] || '',
-                    'x-tif-nonce': r.reqHeaders['x-tif-nonce'] || '',
-                    Accept: 'application/json',
-                    Origin: 'https://fuwu.nhsa.gov.cn',
-                    Referer: 'https://fuwu.nhsa.gov.cn/nationalHallSt/',
-                },
-                body,
-            });
+            const result = encrypt(params);
+            respond(reqId, result);
         } else if (method === 'ping') {
             respond(reqId, { pong: true });
         } else {
@@ -172,5 +169,14 @@ function respond(id, result, error) {
     process.stdout.write(JSON.stringify(resp) + '\n');
 }
 
+// Self-test
+async function selfTest() {
+    const r = encrypt({ keyword: '', pageNum: 1, pageSize: 10 });
+    log(`Self-test: encData=${r.body?.data?.data?.encData?.substring(0, 40) || 'FAILED'}`);
+    log(`Sign: ${r.body?.data?.signData?.substring(0, 20) || 'FAILED'}`);
+    log(`Keys: sm4=${SM4_KEY_HEX}, priv=${PRIVATE_KEY.substring(0,16)}...`);
+}
+
+selfTest();
 log('Ready');
 respond(0, { status: 'ready' });
