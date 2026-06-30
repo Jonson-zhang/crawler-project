@@ -8,7 +8,12 @@
     "extract": "node extract_crypto.js"
   },
   "dependencies": {
-    "sm-crypto": "^0.3.13",
-    "axios": "^1.7.0"
-  }
+    "axios": "^1.7.0",
+    "jsdom": "^29.1.1",
+    "sm-crypto": "^0.3.14"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
 }
