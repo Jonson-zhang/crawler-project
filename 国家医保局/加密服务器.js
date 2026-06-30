@@ -76,6 +76,7 @@ function genNonce(len = 8) {
  * 加密查询参数并构造完整请求
  */
 function encrypt(params) {
+    init();
     const ts = Math.floor(Date.now() / 1000);
     const nonce = genNonce(8);
 
