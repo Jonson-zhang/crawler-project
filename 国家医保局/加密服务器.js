@@ -51,10 +51,19 @@ function deriveSm4Key() {
 const SM4_KEY = deriveSm4Key()[2].key; // d[17:33]
 const SM4_KEY_HEX = SM4_KEY.toString('hex');
 
-// SM2 keypair (from decoded c_val = private key)
-const C_B64 = 'BEKaw3Qtc31LG/hTPHFPlriKuAn/nzTWl8LiRxLw4iQiSUIyuglptFxNkdCiNXcXvkqTH79Rh/A2sEFU6hjeK3k=';
-const C_RAW = Buffer.from(C_B64, 'base64');
-const PRIVATE_KEY = C_RAW.slice(1, 33).toString('hex');
+// 每会话动态生成 SM2 密钥对 (匹配 app.js 的 sm2.generateKeyPairHex)
+let _keypair = null;
+let _sm4Key = null;
+
+function init() {
+    if (!_keypair) {
+        _keypair = sm2.generateKeyPairHex();
+        // SM4 密钥 = SM3(APP_CODE) 的原始 bytes[:16]
+        const sm3Full = sm3(APP_CODE);
+        _sm4Key = Buffer.from(sm3Full, 'hex').slice(0, 16).toString('hex');
+        log(`SM4 key: ${_sm4Key}, pubkey: ${_keypair.publicKey.substring(0,24)}...`);
+    }
+}
 
 function genNonce(len = 8) {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
