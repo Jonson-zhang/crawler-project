@@ -86,8 +86,20 @@ bridge = r"""
     var _chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
     window.atob=function(s){var o='',i=0;while(i<s.length){var e=_chars.indexOf(s[i++]),n=_chars.indexOf(s[i++]),h=_chars.indexOf(s[i++]),r=_chars.indexOf(s[i++]);o+=String.fromCharCode(e<<2|n>>4);if(h!==64)o+=String.fromCharCode((15&n)<<4|h>>2);if(r!==64)o+=String.fromCharCode((3&h)<<6|r);}return o;};
     window.btoa=function(s){var o='',i=0;while(i<s.length){var a=s.charCodeAt(i++),b=s.charCodeAt(i++),d=s.charCodeAt(i++);o+=_chars[a>>2]+_chars[(3&a)<<4|b>>4];o+=isNaN(b)?'=':_chars[(15&b)<<2|d>>6];o+=isNaN(d)?'=':_chars[63&d];}return o;};
+    // UTF-8 encoder (proper implementation)
+    window.__utf8_encode = function(str) {
+        var utf8 = [];
+        for (var i = 0; i < str.length; i++) {
+            var c = str.charCodeAt(i);
+            if (c < 0x80) { utf8.push(c); }
+            else if (c < 0x800) { utf8.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
+            else if (c < 0xd800 || c >= 0xe000) { utf8.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+            else { i++; var c2 = str.charCodeAt(i); c = 0x10000 + (((c & 0x3ff) << 10) | (c2 & 0x3ff)); utf8.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)); }
+        }
+        return new Uint8Array(utf8);
+    };
     window.TextEncoder=function(){};
-    window.TextEncoder.prototype.encode=function(s){var a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a;};
+    window.TextEncoder.prototype.encode=function(s){return window.__utf8_encode(s);};
     var XHR=window.XMLHttpRequest=function(){this.readyState=0;this.status=0;this.responseText='';this.onreadystatechange=null;};
     XHR.prototype.open=function(m,u){this._url=u;this.readyState=1;};
     XHR.prototype.setRequestHeader=function(){};
@@ -155,7 +167,9 @@ with iv8.JSContext(mode="prod") as ctx:
 
                 var plain = JSON.stringify({keyword:'医院',pageNum:1,pageSize:10});
                 var pb = [];
-                for(var i = 0; i < plain.length; i++) pb.push(plain.charCodeAt(i));
+                var te = new TextEncoder();
+                var utf8 = te.encode(plain);
+                for(var i = 0; i < utf8.length; i++) pb.push(utf8[i]);
                 var pad = 16 - (pb.length % 16);
                 for(var i = 0; i < pad; i++) pb.push(pad);
                 var encArr = sm4Enc(pb, k);
@@ -194,12 +208,17 @@ with iv8.JSContext(mode="prod") as ctx:
                 var arr = [];
                 for(var i = 0; i < h.length; i += 2) arr.push(parseInt(h.substr(i,2), 16));
                 var decArr = d(arr, k);
-                var s = '';
-                for(var i = 0; i < decArr.length; i++) s += String.fromCharCode(decArr[i]);
-                var pad = s.charCodeAt(s.length - 1);
-                return s.substring(0, s.length - pad);
+                var hex = '';
+                for(var i = 0; i < decArr.length; i++) hex += ('0' + (decArr[i] & 0xFF).toString(16)).slice(-2);
+                return hex;
             })()
         """)
+        # Decode hex → bytes → unpadded UTF-8
+        dec_bytes = bytes.fromhex(rt)
+        pad_byte = dec_bytes[-1]
+        if 1 <= pad_byte <= 16:
+            dec_bytes = dec_bytes[:-pad_byte]
+        rt = dec_bytes.decode('utf-8')
         print(f"  SM4 round-trip: {rt}", flush=True)
     else:
         print(f"[iv8] Missing modules for full pipeline", flush=True)
