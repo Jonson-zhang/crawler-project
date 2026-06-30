@@ -103,18 +103,33 @@ class NhsaClient:
         regn_code: str = "110000",
         page_num: int = 1,
         page_size: int = 10,
+        *,
+        addr: str = "",
+        medins_lv_code: str = "",
+        medins_type_code: str = "",
+        open_elec: str = "",
+        query_data_source: str = "es",
     ) -> dict:
-        """查询医疗机构 (单页)"""
+        """查询医疗机构 (单页)
+
+        参数说明:
+          medins_name:    医疗机构名称 (支持模糊搜索)
+          regn_code:      行政区划代码 (110000=北京, 310000=上海, 440100=广州)
+          medins_lv_code: 等级代码 (空=全部)
+          medins_type_code: 类型代码 (空=全部)
+          open_elec:      是否开通电子凭证 (空=全部, 1=已开通)
+          query_data_source: 数据源 (默认 "es")
+        """
         params: dict[str, object] = {
-            "addr": "",
+            "addr": addr,
             "regnCode": regn_code,
             "medinsName": medins_name,
-            "medinsLvCode": "",
-            "medinsTypeCode": "",
-            "openElec": "",
+            "medinsLvCode": medins_lv_code,
+            "medinsTypeCode": medins_type_code,
+            "openElec": open_elec,
             "pageNum": page_num,
             "pageSize": page_size,
-            "queryDataSource": "es",
+            "queryDataSource": query_data_source,
         }
 
         # 调用 JS 加密
@@ -170,11 +185,12 @@ class NhsaClient:
         regn_code: str = "110000",
         pages: int = 1,
         page_size: int = 10,
+        **kwargs: object,
     ) -> list[dict]:
-        """查询医疗机构 (多页)"""
+        """查询医疗机构 (多页)，kwargs 透传 search 的全部参数"""
         all_results: list[dict] = []
         for p in range(1, pages + 1):
-            result = self.search(medins_name, regn_code, p, page_size)
+            result = self.search(medins_name, regn_code, p, page_size, **kwargs)
             all_results.append(result)
         return all_results
 
@@ -192,15 +208,40 @@ def main() -> None:
     )
     parser.add_argument(
         "--pages", "-P", type=int, default=1,
-        help="获取页数 (默认1页, 例: --pages 5 获取5页数据)"
+        help="获取页数 (默认1页)"
     )
     parser.add_argument("--size", "-s", type=int, default=10, help="每页条数")
+    parser.add_argument(
+        "--addr", default="", help="地址 (可选筛选)"
+    )
+    parser.add_argument(
+        "--level", "-l", default="", help="医疗机构等级代码 (空=全部)"
+    )
+    parser.add_argument(
+        "--type", "-t", default="", help="医疗机构类型代码 (空=全部)"
+    )
+    parser.add_argument(
+        "--elec", "-e", default="", help="电子凭证 (空=全部, 1=已开通)"
+    )
     parser.add_argument("--json", action="store_true", help="JSON output")
+    args = parser.parse_args()
+
+    extra: dict[str, str] = {}
+    if args.addr:
+        extra["addr"] = args.addr
+    if args.level:
+        extra["medins_lv_code"] = args.level
+    if args.type:
+        extra["medins_type_code"] = args.type
+    if args.elec:
+        extra["open_elec"] = args.elec
     args = parser.parse_args()
 
     client = NhsaClient()
     try:
-        results = client.search_pages(args.keyword, args.regn, args.pages, args.size)
+        results = client.search_pages(
+            args.keyword, args.regn, args.pages, args.size, **extra
+        )
 
         if args.json:
             output: dict[str, object] = {
