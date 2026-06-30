@@ -123,3 +123,114 @@ python crawler.py 杭州 北京    # CLI 覆盖
 ```
 
 Cookie 自动保鲜（过期自动刷新），无需手动操作。
+
+## 八、iv8 方案研究（2026-06-29）
+
+### 目标
+
+用 iv8（Python C++ V8 引擎）替代 Node.js 子进程 **和** 浏览器自动化工具，
+实现纯 Python 端到端方案。
+
+### 已成功部分
+
+#### 8.1 WASM 加解密（✅ 完全替代 Node.js）
+
+| 验证项 | 结果 |
+|--------|------|
+| wbsk_Wbox.js (wasm2js) 在 iv8 WEB 模式下加载 | ✅ 零补丁 |
+| Module.asm exports (17 个 AES 函数) | ✅ |
+| encrypt/decrypt 与 Node.js sign.js 互操作 | ✅ 双向交叉兼容 |
+| 速度 (iv8 vs Node.js subprocess) | ~70ms vs ~67ms，持平 |
+
+关键发现: `wbsk_Wbox.js` 是 wasm2js（自带 `var WebAssembly = {...}` polyfill），
+无需真实 WASM 引擎。`__iv8__.eventLoop.drain()` 推进 Promise 链后 `runtimeInitialized=true`。
+
+文件: [iv8/ceair_iv8.py](iv8/ceair_iv8.py) — `CeairWasm` context manager
+
+#### 8.2 iv8 API 探索
+
+| iv8 API | 用途 | 状态 |
+|---------|------|------|
+| `page.load({baseURL, html, resources})` | 流式加载 HTML + 执行 `<script>` | ✅ 达到目的 |
+| `netLog.entries` | 捕获 JS 发起的全部 XHR/fetch | ✅ 准确捕获 |
+| `add_resource(url, body, status, headers)` | 注入离线响应到请求队列 | ✅ 需先 page.load 初始化 |
+| `expose(data, name)` | Python→JS 数据桥接 | ✅ |
+| `eventLoop.sleep(ms)` | 推进虚拟时间 | ✅ |
+| `eventLoop.drain()` | 排空任务队列 | ✅ |
+
+#### 8.3 Tongdun SDK 在 iv8 中运行
+
+**链**: `monitor.js` → `fm.js` (TrustDeviceJs Pro v4.2.4) → `new Blob([workerCode])` → `URL.createObjectURL` → `new Worker(blobUrl)` → postMessage 指纹收集 → XHR 上报
+
+| 步骤 | 结果 | 关键问题 |
+|------|------|---------|
+| fm.js (510KB) 加载 | ✅ | 需预先设置 `window._fmOpt` |
+| URL.createObjectURL | ❌ iv8 CE 缺失 | → 写了 polyfill |
+| Blob Worker 执行 | ❌ iv8 CE Worker 不支持 blob URL | → 写了 polyfill |
+| Worker postMessage 双向通信 | ✅ polyfill 生效 | `["ECHO:HELLO","ECHO:WORLD"]` |
+| 指纹收集 (Canvas/WebGL/Audio) | ⚠️ stub 返回空值 | 非真实设备指纹 |
+| **blackbox token 生成** | ✅ | `tddfeyJ2IjoiNC4yLjQi...` |
+| POST 到 `fp.tongdun.net` | ✅ | Python 实际发 HTTP 拿到 200 |
+| Tongdun 服务器验证 | ❌ `code:074` "数据伪造" | **瓶颈所在** |
+| `ssxmod_itna` Cookie | ❌ | 需服务器验证通过后才下发 |
+
+**关键发现**: Tongdun 不在 JS 层检测环境（无 `navigator.webdriver` 检查、无原型链检测）。
+它在**服务器端**分析上报的指纹数据 `data=CAQSkAzLx...`（Protocol Buffers）。
+iv8 stub 返回的 Canvas/WebGL/Audio 值为随机/空值，被服务器 AI 识别为"伪造"。
+
+Polyfill 文件: [iv8/iv8_polyfills.js](iv8/iv8_polyfills.js) — Blob Worker 完整 shim
+测试脚本: [iv8/test_tongdun.py](iv8/test_tongdun.py) — 完整的 Tongdun SDK 在 iv8 中执行
+
+### 三个后续路径
+
+| 路径 | 可行性 | 说明 |
+|------|--------|------|
+| **A. iv8 Pro Edition** | 理论上 ✅ | Pro 版声称有真实 Canvas/WebGL/Audio 渲染。需购买、未验证。 |
+| **B. 逆向 blackbox → Python 自签发** | 理论可行 | blackbox 格式 `tddf<base64>.protobuf`，其中可能含 ECC 签名。逆向后可 Python 自算。 |
+| **C. 混合方案（推荐）** | ✅ 已验证 | iv8 做加解密（去 Node.js）+ DrissionPage 做 HTTP（留浏览器）。39 flights / 9.4s。 |
+
+### 当前最佳实践: iv8 + DrissionPage 混合
+
+```bash
+# iv8 加密 + DrissionPage HTTP — 去掉 Node.js，保留浏览器
+python iv8/test_hybrid.py 上海 北京 20260630
+```
+
+文件: [iv8/test_hybrid.py](iv8/iv8_test_hybrid.py) — iv8 做 encrypt/decrypt，dp/v1.0/api_bridge.py 做 HTTP
+
+**与 dp/v1.0/test_drission.py 的区别**: 仅替换了 `_node()` 函数（`subprocess: node sign.js` → `CeairWasm.encrypt()`）。省去 Node.js 进程启动开销（~50ms/次），其他完全相同。
+
+### 文件索引
+
+```
+东航/
+├── cloak/v1.0/                  # CloakBrowser 方案
+│   ├── test_cloak.py            # 入口（CloakBrowser）
+│   ├── cloak_bridge.py          # Cookie 保鲜 + API 桥接
+│   ├── sign.js                  # WASM AES — Node.js
+│   ├── wbsk_Wbox.js             # Emscripten wasm2js 运行时
+│   ├── wbsk_skb_orig.js         # AES CBC/ECB 包装器
+│   └── config.json
+│
+├── dp/v1.0/                     # DrissionPage 方案
+│   ├── test_drission.py         # 入口（DrissionPage + Node.js sign.js）
+│   ├── api_bridge.py            # Cookie 保鲜 + API 桥接
+│   ├── sign.js                  # WASM AES — Node.js（同 cloak）
+│   ├── wbsk_Wbox.js / wbsk_skb_orig.js
+│   └── config.json
+│
+├── iv8/                         # ⭐ iv8 方案（本次研究）
+│   ├── ceair_iv8.py             # CeairWasm — iv8 加解密（替代 Node.js）
+│   ├── test_iv8.py              # 纯 Python 尝试（curl_cffi HTTP，TLS 指纹被拦）
+│   ├── test_hybrid.py           # ⭐ 混合方案（iv8 + DrissionPage，推荐）
+│   ├── test_tongdun.py          # Tongdun SDK 在 iv8 中直接执行（blackbox ✅）
+│   ├── iv8_polyfills.js         # URL.createObjectURL + Blob Worker polyfill
+│   ├── config.json
+│   └── README.md
+│
+├── browser_cookies.txt          # 手动维护的 Cookie（供 iv8 方案）
+├── NOTES.md                     # 本文件
+├── README.md
+├── TUTORIAL.md
+└── 02 逆向东航机票信息爬取的技术报告.md
+```
