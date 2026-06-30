@@ -21,6 +21,12 @@
 - [env_patch 天花板判定](env-patch-iv8-ceiling.md) — 3 轮法则 + 引擎层差异信号 + iv8 可行性数据（Boss直聘 13 轮→iv8 一次过）
 - [iv8 社区版天花板 — Tongdun 指纹 SDK](iv8-tongdun-ceiling.md) — **新 (2026-06-29)**：iv8 CE 可加载运行 Tongdun SDK 但不能通过服务器端 AI 指纹验证。包含 polyfill 方案、blackbox token 结构、三条路径分析。
 
+## JS 逆向核心方法论
+
+> ⚠️ **最高优先级规则** — 国家医保局逆向的核心教训。
+
+- [优先使用站点内部 JS 代码](js-reverse-priority.md) — **内部加密函数 > webpack 模块扣取 > iv8/jsdom 补环境 > 外部库重建**。npm sm-crypto 与站点内部 SM2 不兼容，所有外部重建尝试全部失败。
+
 ## 其他经验
 
 - [env.js / sign.js 分离架构](env-sign-separation.md) — 补环境与签名逻辑分离的目录结构规范
