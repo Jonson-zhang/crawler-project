@@ -15,7 +15,7 @@
 
 用法:
   python nhsa_client_final.py "北京协和医院"
-  python nhsa_client_final.py --regn 110000 --page 1 --size 10
+  python nhsa_client_final.py --regn 110000 --pages 5 --size 10
 """
 
 import argparse
@@ -104,7 +104,7 @@ class NhsaClient:
         page_num: int = 1,
         page_size: int = 10,
     ) -> dict:
-        """查询医疗机构"""
+        """查询医疗机构 (单页)"""
         params: dict[str, object] = {
             "addr": "",
             "regnCode": regn_code,
@@ -119,7 +119,7 @@ class NhsaClient:
 
         # 调用 JS 加密
         print(
-            f"[Nhsa] Encrypting: medinsName='{medins_name}', regnCode={regn_code}",
+            f"[Nhsa] Encrypting page {page_num}: medinsName='{medins_name}', regnCode={regn_code}",
             file=sys.stderr,
         )
         encrypted = js_call(
@@ -150,7 +150,7 @@ class NhsaClient:
 
         code = result.get("code", -1)
         msg = result.get("message", "")
-        print(f"[Nhsa] Response: code={code} msg={msg}", file=sys.stderr)
+        print(f"[Nhsa] Page {page_num} response: code={code} msg={msg}", file=sys.stderr)
 
         # 解密响应
         if code == 0:
@@ -158,11 +158,25 @@ class NhsaClient:
                 decrypted = js_call("DecryptedData", result)
                 result["_decrypted"] = decrypted
                 total = decrypted.get("total", len(decrypted.get("list", [])))
-                print(f"[Nhsa] Decrypted: {total} results", file=sys.stderr)
+                print(f"[Nhsa] Page {page_num} decrypted: {total} results", file=sys.stderr)
             except RuntimeError as e:
                 print(f"[Nhsa] Decrypt error: {e}", file=sys.stderr)
 
         return result
+
+    def search_pages(
+        self,
+        medins_name: str = "",
+        regn_code: str = "110000",
+        pages: int = 1,
+        page_size: int = 10,
+    ) -> list[dict]:
+        """查询医疗机构 (多页)"""
+        all_results: list[dict] = []
+        for p in range(1, pages + 1):
+            result = self.search(medins_name, regn_code, p, page_size)
+            all_results.append(result)
+        return all_results
 
     def close(self) -> None:
         self.session.close()
@@ -176,33 +190,55 @@ def main() -> None:
     parser.add_argument(
         "--regn", "-r", default="110000", help="行政区划代码 (默认110000=北京市)"
     )
-    parser.add_argument("--page", "-p", type=int, default=1)
-    parser.add_argument("--size", "-s", type=int, default=10)
+    parser.add_argument(
+        "--pages", "-P", type=int, default=1,
+        help="获取页数 (默认1页, 例: --pages 5 获取5页数据)"
+    )
+    parser.add_argument("--size", "-s", type=int, default=10, help="每页条数")
     parser.add_argument("--json", action="store_true", help="JSON output")
     args = parser.parse_args()
 
     client = NhsaClient()
     try:
-        result = client.search(args.keyword, args.regn, args.page, args.size)
+        results = client.search_pages(args.keyword, args.regn, args.pages, args.size)
 
         if args.json:
-            output = {k: v for k, v in result.items() if k not in ("_decrypted",)}
-            output["decrypted"] = result.get("_decrypted")
+            output: dict[str, object] = {
+                "pages": len(results),
+                "results": [],
+            }
+            for r in results:
+                output["results"].append({
+                    k: v for k, v in r.items() if k not in ("_decrypted",)
+                })
+                if r.get("_decrypted"):
+                    output["results"][-1]["decrypted"] = r["_decrypted"]
             print(json.dumps(output, ensure_ascii=False, indent=2))
             return
 
-        if result.get("code") != 0:
-            print(
-                f"\nAPI 错误: code={result.get('code')}, {result.get('message')}"
-            )
+        # 汇总所有页的结果
+        all_items: list[dict] = []
+        grand_total = 0
+        errors = 0
+
+        for i, r in enumerate(results, 1):
+            if r.get("code") != 0:
+                print(f"第 {i} 页失败: code={r.get('code')}, {r.get('message')}")
+                errors += 1
+                continue
+            dec: dict = r.get("_decrypted", {})
+            items: list = dec.get("list", [])
+            all_items.extend(items)
+            if grand_total == 0:
+                grand_total = dec.get("total", len(items))
+
+        if errors == len(results):
+            print("\n所有页面请求均失败")
             return
 
-        dec: dict = result.get("_decrypted", {})
-        items: list = dec.get("list", [])
-        total = dec.get("total", len(items))
-        print(f"\n查询成功! 共 {total} 条结果，显示 {len(items)} 条\n")
+        print(f"\n查询完成! 共 {grand_total} 条结果，实际获取 {len(all_items)} 条 (跨越 {args.pages} 页)\n")
 
-        for item in items:
+        for item in all_items:
             name = item.get("medinsName", item.get("medName", "?"))
             addr = item.get("addr", "")
             lv = item.get("medinsLvName", item.get("medLevelName", ""))
