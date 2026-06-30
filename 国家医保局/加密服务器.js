@@ -56,7 +56,8 @@ function encrypt(params) {
     };
 
     // SM2 签名
-    const signData = sm2.doSignature(JSON.stringify(inner), _keypair.privateKey, { hash: true });
+    // SM2 签名: 用 APP_CODE bytes 作为私钥
+    const signData = sm2.doSignature(JSON.stringify(inner), SM2_PRIVATE_KEY, { hash: true });
 
     const body = {
         data: { ...inner, signData },
