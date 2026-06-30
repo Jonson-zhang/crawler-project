@@ -1,19 +1,14 @@
 """
-国家医保局 — iv8 加密引擎
-==========================
+国家医保局 — iv8 加密引擎 (纯 V8，无 jsdom)
+=============================================
 
-使用 iv8 (C++ V8) 加载 app.js，从浏览器环境中提取 SM2/SM4 加密模块。
-
-策略:
-  1. iv8 提供 Web 环境 → 加载 nhsa_bridge.js (环境补丁 + 模块拦截)
-  2. 加载 app.js → 拦截 sm2/sm3/sm4 模块 → 导出为 Python 可调用函数
-  3. 如果 iv8 加载失败 → 降级到 Node.js + sm-crypto
+使用 iv8 (C++ V8 引擎) 加载 app.js，提取 SM2/SM4 加密模块。
 
 用法:
     from nhsa_iv8 import NhsaCrypto
     with NhsaCrypto() as c:
-        enc = c.encrypt({"keyword": "北京协和医院"})
-        data = c.decrypt("encData_hex")
+        result = c.encrypt({"keyword": "北京协和医院", "pageNum": 1, "pageSize": 10})
+        # → {"headers": {...}, "body": {...}}
 """
 
 import json
@@ -23,80 +18,29 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 APP_JS = HERE / "config" / "app.js"
-BRIDGE_JS = HERE / "nhsa_bridge.js"
+BRIDGE_JS = HERE / "iv8_bridge.js"
 
 APP_CODE = "T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ"
 
 
 # ═══════════════════════════════════════════════════════════════
-# Node.js 加密引擎 (sm-crypto + 已知密钥)
+# Node.js 加密引擎 (sm-crypto npm, 稳定可靠)
 # ═══════════════════════════════════════════════════════════════
 
-NODE_CRYPTO_JS = r"""
+NODE_ENCRYPT_JS = r"""
 const sm2 = require('sm-crypto').sm2;
 const sm3 = require('sm-crypto').sm3;
 const sm4 = require('sm-crypto').sm4;
 const crypto = require('crypto');
 
 const APP_CODE = 'T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ';
-const SM4_KEY = null;  // 待从 iv8 提取
+const VERSION = '1.0.0';
 const SM4_IV = '00000000000000000000000000000000';
 
-let _keypair = null;
-
-function init() {
-    if (!_keypair) {
-        _keypair = sm2.generateKeyPairHex();
-    }
-    return _keypair;
-}
-
-function encrypt(params) {
-    // 使用标准 sm-crypto 实现
-    const kp = init();
-    const ts = Math.floor(Date.now() / 1000);
-    const nonce = genNonce(8);
-    const plainjson = JSON.stringify(params);
-
-    // SM4 加密 (需要正确的 sm4_key)
-    const encData = sm4.encrypt(plainjson, SM4_KEY, {
-        mode: 'cbc', iv: SM4_IV
-    });
-
-    const inner = {
-        data: { encData },
-        appCode: APP_CODE, version: '1.0.0',
-        encType: 'SM4', signType: 'SM2', timestamp: ts
-    };
-    const innerJson = JSON.stringify(inner);
-
-    // SM2 签名
-    const signData = sm2.doSignature(innerJson, kp.privateKey, { hash: true });
-
-    const body = { data: { ...inner, signData } };
-    const bodyJson = JSON.stringify(body);
-
-    const xTifSig = crypto.createHash('sha256')
-        .update(APP_CODE + ts + nonce + bodyJson).digest('hex');
-
-    return {
-        headers: {
-            'Content-Type': 'application/json', channel: 'web',
-            'x-tif-paasid': 'undefined',
-            'x-tif-signature': xTifSig,
-            'x-tif-timestamp': String(ts),
-            'x-tif-nonce': nonce,
-        },
-        body,
-    };
-}
-
-function decrypt(encDataHex) {
-    const plain = sm4.decrypt(encDataHex, SM4_KEY, {
-        mode: 'cbc', iv: SM4_IV
-    });
-    return JSON.parse(plain);
-}
+// SM2 签名密钥 = APP_CODE bytes → hex
+const SM2_KEY = Buffer.from(APP_CODE, 'ascii').toString('hex');
+// SM4 密钥 = SM3(APP_CODE) bytes[:16] → hex
+const SM4_KEY = Buffer.from(sm3(APP_CODE), 'hex').slice(0, 16).toString('hex');
 
 function genNonce(len) {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -105,131 +49,144 @@ function genNonce(len) {
     return r;
 }
 
-// CLI
+function encrypt(params) {
+    const ts = Math.floor(Date.now() / 1000);
+    const nonce = genNonce(8);
+    const plainJson = JSON.stringify(params);
+
+    const encData = sm4.encrypt(plainJson, SM4_KEY, { mode: 'cbc', iv: SM4_IV });
+    const inner = {
+        data: { encData },
+        appCode: APP_CODE, version: VERSION,
+        encType: 'SM4', signType: 'SM2', timestamp: ts,
+    };
+    const signData = sm2.doSignature(JSON.stringify(inner), SM2_KEY, { hash: true });
+    const body = { data: { data: { encData }, appCode: APP_CODE, version: VERSION, encType: 'SM4', signType: 'SM2', timestamp: ts, signData } };
+    const bodyJson = JSON.stringify(body);
+    const xTifSig = crypto.createHash('sha256').update(APP_CODE + ts + nonce + bodyJson).digest('hex');
+
+    return {
+        headers: {
+            'Content-Type': 'application/json', channel: 'web',
+            'x-tif-paasid': 'undefined',
+            'x-tif-signature': xTifSig,
+            'x-tif-timestamp': String(ts),
+            'x-tif-nonce': nonce,
+            Accept: 'application/json',
+            Origin: 'https://fuwu.nhsa.gov.cn',
+            Referer: 'https://fuwu.nhsa.gov.cn/nationalHallSt/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+        },
+        body,
+        _debug: { sm4Key: SM4_KEY, sm2Key: SM2_KEY.substring(0, 16) + '...' },
+    };
+}
+
 const cmd = process.argv[2];
 const input = process.argv[3] || '{}';
-try {
-    init();
-    switch (cmd) {
-        case 'encrypt':
-            console.log(JSON.stringify(encrypt(JSON.parse(input))));
-            break;
-        case 'decrypt':
-            console.log(JSON.stringify(decrypt(input)));
-            break;
-        case 'keys':
-            console.log(JSON.stringify({
-                publicKey: _keypair.publicKey,
-                privateKey: _keypair.privateKey,
-            }));
-            break;
-        default:
-            console.log(JSON.stringify({error: 'unknown cmd: ' + cmd}));
-    }
-} catch(e) {
-    console.log(JSON.stringify({error: e.message}));
-}
+const result = cmd === 'encrypt' ? encrypt(JSON.parse(input)) : { error: 'unknown cmd' };
+process.stdout.write(JSON.stringify({ id: 1, result }) + '\n');
 """
 
 
-class NodeCryptoEngine:
-    """Node.js 子进程加密引擎"""
-
-    def _run_node(self, cmd, input_data=None):
-        args = ["node", "-e", NODE_CRYPTO_JS, cmd]
-        if input_data:
-            args.append(input_data)
-        r = subprocess.run(args, capture_output=True, text=True,
-                           cwd=str(HERE), timeout=30)
-        if r.returncode != 0:
-            raise RuntimeError(f"Node error: {r.stderr}")
-        return json.loads(r.stdout.strip())
+class NodeCrypto:
+    """Node.js 加密引擎 (sm-crypto, 可靠降级方案)"""
 
     def encrypt(self, params: dict) -> dict:
-        return self._run_node("encrypt", json.dumps(params, ensure_ascii=False))
-
-    def decrypt(self, enc_hex: str) -> dict:
-        return self._run_node("decrypt", enc_hex)
-
-    def keys(self) -> dict:
-        return self._run_node("keys")
+        r = subprocess.run(
+            ["node", "-e", NODE_ENCRYPT_JS, "encrypt",
+             json.dumps(params, ensure_ascii=False)],
+            capture_output=True, timeout=15, cwd=str(HERE),
+        )
+        stdout = r.stdout.decode("utf-8", errors="replace").strip()
+        for line in stdout.split("\n"):
+            try:
+                resp = json.loads(line)
+                if resp.get("result", {}).get("headers"):
+                    return resp["result"]
+            except Exception:
+                pass
+        raise RuntimeError(f"Node encrypt failed: {stdout[:200]}")
 
 
 # ═══════════════════════════════════════════════════════════════
-# iv8 方案: 直接加载完整 app.js
+# iv8 加密引擎 (直接加载 app.js)
 # ═══════════════════════════════════════════════════════════════
 
-def _load_app_in_iv8():
-    """在 iv8 中加载 app.js, 尝试提取加密模块
-
-    返回 sm2/sm3/sm4 的导出函数的 Python 包装。
-    """
-    import iv8
-
-    ctx = iv8.JSContext(
-        environment={
-            "navigator": {
-                "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "platform": "Win32", "language": "zh-CN",
-            },
-        },
-        mode="prod",
-    )
-    ctx.__enter__()
-
-    try:
-        # 1. 加载环境补丁
-        bridge_src = BRIDGE_JS.read_text("utf-8")
-        ctx.eval(bridge_src, name="nhsa_bridge.js")
-
-        # 2. 加载 app.js
-        print("[iv8] Loading app.js (3.7MB)...", file=sys.stderr)
-        app_src = APP_JS.read_text("utf-8")
-        try:
-            ctx.eval(app_src, name="app.js")
-        except Exception as e:
-            print(f"[iv8] app.js eval error: {e}", file=sys.stderr)
-            # Even if app.js throws, the crypto module may have been captured
-            pass
-
-        # 3. 尝试 drain 事件循环（处理任何 pending promises）
-        try:
-            ctx.eval("__iv8__.eventLoop.drain()")
-        except Exception:
-            pass
-
-        # 4. 检查是否捕获到加密模块
-        captured = ctx.eval(
-            "window.__nhsa_sm_crypto ? "
-            "JSON.stringify(Object.keys(window.__nhsa_sm_crypto)) : "
-            "'null'"
-        )
-        print(f"[iv8] Captured crypto: {captured}", file=sys.stderr)
-
-        # 5. 查看 window 上的全局变量
-        global_keys = ctx.eval(
-            "JSON.stringify(Object.keys(window).filter(k => "
-            "typeof window[k] === 'function' && "
-            "(k.includes('sm') || k.includes('encrypt') || k.includes('sign'))"
-            ").slice(0, 20))"
-        )
-        print(f"[iv8] Global crypto fns: {global_keys}", file=sys.stderr)
-
-        return ctx
-
-    except Exception as e:
-        ctx.__exit__(None, None, None)
-        raise
-
-
-class Iv8CryptoEngine:
-    """iv8 加密引擎 (实验性)"""
+class Iv8Crypto:
+    """iv8 加密上下文 — 加载 app.js 提取加密模块"""
 
     def __init__(self):
         self._ctx = None
+        self._sm_module = None
+        self._loaded = False
 
     def __enter__(self):
-        self._ctx = _load_app_in_iv8()
+        import iv8
+
+        self._ctx = iv8.JSContext(
+            environment={
+                "navigator": {
+                    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "platform": "Win32",
+                },
+            },
+            mode="prod",
+        )
+        self._ctx.__enter__()
+
+        # 1. 加载桥接脚本
+        bridge_src = BRIDGE_JS.read_text("utf-8")
+        self._ctx.eval(bridge_src, name="iv8_bridge.js")
+        print("[iv8] Bridge loaded", file=sys.stderr)
+
+        # 2. 加载 app.js
+        app_src = APP_JS.read_text("utf-8")
+        print(f"[iv8] Loading app.js ({len(app_src)/1024/1024:.1f}MB)...", file=sys.stderr)
+        try:
+            self._ctx.eval(app_src, name="app.js")
+            print("[iv8] app.js loaded successfully", file=sys.stderr)
+        except Exception as e:
+            print(f"[iv8] app.js eval error (non-fatal): {e}", file=sys.stderr)
+
+        # 3. Drain event loop
+        try:
+            self._ctx.eval("__iv8__.eventLoop.drain()")
+        except Exception:
+            pass
+
+        # 4. 检查捕获结果
+        captured = self._ctx.eval(
+            "window.__nhsa_captured ? JSON.stringify(window.__nhsa_captured) : 'null'"
+        )
+        print(f"[iv8] Captured: {captured}", file=sys.stderr)
+
+        all_exports = self._ctx.eval(
+            "JSON.stringify(window.__nhsa_all_exports || [])"
+        )
+        print(f"[iv8] All exports: {all_exports}", file=sys.stderr)
+
+        # 5. 搜索全局作用域中的加密对象
+        search = self._ctx.eval("""
+            (function() {
+                var found = [];
+                for (var k in window) {
+                    try {
+                        var v = window[k];
+                        if (typeof v === 'object' && v && v !== window && v !== window.document) {
+                            var ks = Object.keys(v).slice(0, 15);
+                            if (ks.indexOf('generateKeyPairHex') >= 0 || ks.indexOf('doSignature') >= 0) {
+                                found.push({ key: k, ks: ks });
+                            }
+                        }
+                    } catch(e) {}
+                }
+                return JSON.stringify(found);
+            })()
+        """)
+        print(f"[iv8] Global search: {search}", file=sys.stderr)
+
+        self._loaded = True
         return self
 
     def __exit__(self, *args):
@@ -237,9 +194,14 @@ class Iv8CryptoEngine:
             self._ctx.__exit__(*args)
             self._ctx = None
 
+    def _call_module(self, expr: str) -> str:
+        if not self._loaded:
+            raise RuntimeError("iv8 context not loaded")
+        return self._ctx.eval(f"(function(){{ return {expr}; }})()")
+
 
 # ═══════════════════════════════════════════════════════════════
-# 统一接口
+# 统一接口 (自动选择 iv8 → Node.js)
 # ═══════════════════════════════════════════════════════════════
 
 class NhsaCrypto:
@@ -251,33 +213,34 @@ class NhsaCrypto:
 
     def __enter__(self):
         if self._mode == "auto":
-            # 先尝试 iv8（提取真正的密钥），降级到 Node
+            # 优先 iv8，降级 Node.js
             try:
-                print("[NhsaCrypto] Trying iv8...", file=sys.stderr)
-                self._engine = Iv8CryptoEngine()
-                self._engine.__enter__()
+                print("[Nhsa] Trying iv8...", file=sys.stderr)
+                engine = Iv8Crypto()
+                engine.__enter__()
+                self._engine = engine
                 self._mode = "iv8"
-                return self
             except Exception as e:
-                print(f"[NhsaCrypto] iv8 failed: {e}", file=sys.stderr)
-                print("[NhsaCrypto] Falling back to Node.js", file=sys.stderr)
-
-            self._engine = NodeCryptoEngine()
+                print(f"[Nhsa] iv8 failed: {e}", file=sys.stderr)
+                print("[Nhsa] Falling back to Node.js", file=sys.stderr)
+                self._engine = NodeCrypto()
+                self._mode = "node"
+        elif self._mode == "node":
+            self._engine = NodeCrypto()
             self._mode = "node"
+        else:
+            raise ValueError(f"Unknown mode: {self._mode}")
         return self
 
     def __exit__(self, *args):
-        if self._engine and hasattr(self._engine, '__exit__'):
+        if hasattr(self._engine, '__exit__'):
             self._engine.__exit__(*args)
+        self._engine = None
 
     def encrypt(self, params: dict) -> dict:
+        if isinstance(self._engine, Iv8Crypto):
+            raise NotImplementedError("iv8 app.js extraction not yet complete — use mode='node'")
         return self._engine.encrypt(params)
-
-    def decrypt(self, enc_hex: str) -> dict:
-        return self._engine.decrypt(enc_hex)
-
-    def keys(self) -> dict:
-        return self._engine.keys() if hasattr(self._engine, 'keys') else {}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -287,27 +250,23 @@ class NhsaCrypto:
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "help"
 
-    if cmd == "test":
-        print("=== Testing iv8 load ===")
-        try:
-            with NhsaCrypto(mode="auto") as c:
-                print("Keys:", json.dumps(c.keys(), indent=2))
-        except Exception as e:
-            print(f"Error: {e}")
-            import traceback
-            traceback.print_exc()
+    if cmd == "extract":
+        # 尝试从 iv8 中提取密钥
+        with Iv8Crypto() as iv8:
+            print("Extraction complete — check stderr for captured modules")
 
     elif cmd == "encrypt":
         params = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {
             "keyword": "北京协和医院", "pageNum": 1, "pageSize": 10
         }
-        engine = NodeCryptoEngine()
-        print(json.dumps(engine.encrypt(params), ensure_ascii=False, indent=2))
+        engine = NodeCrypto()
+        result = engine.encrypt(params)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
 
-    elif cmd == "decrypt":
-        enc = sys.argv[2] if len(sys.argv) > 2 else ""
-        engine = NodeCryptoEngine()
-        print(json.dumps(engine.decrypt(enc), ensure_ascii=False, indent=2))
+    elif cmd == "test":
+        print("=== Testing iv8 app.js loading ===")
+        with NhsaCrypto(mode="auto") as c:
+            print(f"Mode: {c._mode}")
 
     else:
-        print("Usage: python nhsa_iv8.py test|encrypt|decrypt [input]")
+        print("Usage: python nhsa_iv8.py extract|encrypt|test")
