@@ -110,6 +110,21 @@ function respond(id, result, error) {
     process.stdout.write(JSON.stringify(resp) + '\n');
 }
 
+// CLI mode (node 加密服务器.js encrypt '{"keyword":"医院"}')
+if (process.argv.length > 2) {
+    const cmd = process.argv[2];
+    const input = process.argv[3] || '{}';
+    init();
+    if (cmd === 'encrypt') {
+        const result = encrypt(JSON.parse(input));
+        respond(1, result);
+    } else {
+        respond(1, null, { message: 'Unknown CLI: ' + cmd });
+    }
+    process.exit(0);
+}
+
+// JSON-RPC stdin mode
 init();
 log('Ready');
 respond(0, { status: 'ready' });
