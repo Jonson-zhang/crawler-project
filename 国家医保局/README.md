@@ -2,73 +2,109 @@
 
 ## 目标
 
-- **目标网站**: https://fuwu.nhsa.gov.cn/nationalHallSt/#/search/medical
-- **API 接口**: `POST https://fuwu.nhsa.gov.cn/ebus/fuwu/api/nthl/api/CommQuery/queryFixedHospital`
-- **加密方式**: SM4-CBC 加密 + SM2 签名 (国密算法)
-- **请求头签名**: x-tif-signature (SHA-256) + x-tif-nonce + x-tif-timestamp
+- **网站**: https://fuwu.nhsa.gov.cn/nationalHallSt/#/search/medical
+- **API**: `POST /ebus/fuwu/api/nthl/api/CommQuery/queryFixedHospital`
+- **加密**: SM4-CBC + SM2 签名 (国密算法), app.js 经 OB 混淆 (3.7MB)
+
+## 🔑 密钥发现
+
+在 app.js (字符串表索引 10224) 中通过 XOR 解码提取:
+
+| 字段 | 解码值 |
+|------|--------|
+| `_0x3d8a47['a']` | SM2 公钥 (32 chars, 类似 base32 编码) |
+| `_0x3d8a47['b']` | `"1.0.0"` (version) |
+| `_0x3d8a47['c']` | SM2 私钥 (base64, 65 bytes = SM2 private key DER) |
+| `_0x3d8a47['d']` | SM4 密钥/IV 材料 (base64, 33 bytes) |
+| `_0x3d8a47['e']` | `T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ` (appCode) |
+
+**关键发现**: 加密密钥通过 `sm2.generateKeyPairHex()` **每次会话动态生成**，已从字符串表解码确认密钥材料在 JS 中以 XOR 混淆存储。
+
+模块引用链:
+```
+_0x144871[_0x4aaf71("sm2")]  → sm2.generateKeyPairHex()
+_0x144871[_0x4aaf71("sm4")]  → sm4.encrypt()
+_0x144871[_0x4aaf71("sm3")]  → sm3.hash()
+```
+
+## 运行方式
+
+### CDP 桥接 (推荐 — 利用页面自身加密)
+
+```bash
+python cdp_bridge.py                    # 默认查询"北京协和医院"
+python cdp_bridge.py "北京大学第一医院"    # 指定关键词
+python cdp_bridge.py 医院 --page 2 --size 5
+```
+
+### 纯协议 (需先配置密钥)
+
+```bash
+# 1. 确保 config/keys.json 配置了正确的密钥
+# 2. 运行
+python main.py 北京协和医院
+```
 
 ## 项目结构
 
 ```
 国家医保局/
-├── main.py              # Python 入口 (使用 gmssl)
-├── main.js              # Node.js 入口 (使用 sm-crypto)
-├── verify_keys.py       # 密钥验证脚本
-├── key_extract.py       # 密钥提取分析器
-├── extract_crypto.js    # Node.js 密钥提取
+├── cdp_bridge.py         # CDP 桥接方案 (推荐)
+├── main.py               # Python 纯协议入口
+├── main.js               # Node.js 入口
+├── decode_key.py         # XOR 密钥解码器
+├── decode_strings.py     # OB 字符串表解码器
+├── verify_keys.py        # 密钥验证
+├── brute_keys.py         # 批量密钥测试
+├── key_extract.py        # 密钥分析
 ├── config/
-│   ├── samples.json     # 抓包样本数据
-│   ├── app.js           # 页面主 JS (3.7MB, OB混淆)
-│   ├── keys.example.json # 密钥配置模板
-│   └── keys.json        # 实际密钥配置
+│   ├── samples.json      # 4组完整请求/响应样本
+│   ├── app.js            # 页面主 JS (3.7MB)
+│   └── keys.example.json # 密钥配置模板
 ├── utils/
-│   ├── sm_crypto.py     # SM2/SM3/SM4 国密封装
-│   └── signer.py        # 请求签名器
+│   ├── sm_crypto.py      # SM2/SM3/SM4 封装
+│   └── signer.py         # 请求签名器
+├── extract_from_browser.md
 ├── package.json
 └── README.md
 ```
 
-## 加密方案分析
+## 加密协议分析
 
-### 请求加密
+### 请求格式
 
 ```
 POST /ebus/fuwu/api/nthl/api/CommQuery/queryFixedHospital
 
 Headers:
-  x-tif-signature: SHA-256 (64 hex chars)
-  x-tif-timestamp: Unix timestamp (秒)
+  x-tif-signature: SHA-256 (64 hex)        # 待确认算法
+  x-tif-timestamp: Unix秒时间戳
   x-tif-nonce:      8位随机字母数字
-  channel:          web
   x-tif-paasid:     undefined
+  channel:          web
 
 Body:
 {
   "data": {
-    "data": {
-      "encData": "<SM4-CBC 加密的查询参数 (hex)>"
-    },
+    "data": {"encData": "<SM4-CBC 加密的查询参数>"},
     "appCode": "T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ",
     "version": "1.0.0",
     "encType": "SM4",
     "signType": "SM2",
-    "timestamp": <Unix时间戳>,
+    "timestamp": <Unix秒>,
     "signData": "<SM2 签名 (base64)>"
   }
 }
 ```
 
-### 响应解密
+### 响应格式
 
-```
+```json
 {
   "code": 0,
   "data": {
-    "data": {
-      "encData": "<SM4-CBC 加密的响应数据 (hex)>"
-    },
-    "encType": "SM4",
-    "signType": "SM2",
+    "data": {"encData": "<SM4-CBC 加密数据>"},
+    "encType": "SM4", "signType": "SM2",
     "appCode": "T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ",
     "version": "1.0.0",
     "timestamp": "<服务器时间戳>",
@@ -78,72 +114,43 @@ Body:
 }
 ```
 
-### 加密算法详情
+### 解密后的数据 (示例)
 
-| 组件 | 算法 | 说明 |
-|------|------|------|
-| 请求体加密 | SM4-CBC | 16字节密钥, 全零IV, PKCS7填充 |
-| 请求体签名 | SM2 | 标准国密SM2签名 |
-| 请求头签名 | SHA-256 | 64位hex |
-| 响应体加密 | SM4-CBC | 与请求使用相同密钥 |
-
-## 快速开始
-
-### Python 版本
-
-前置条件已安装在项目虚拟环境中。
-
-### Node.js 版本
-
-```bash
-npm install
+```json
+{
+  "list": [
+    {
+      "seq": 1,
+      "medName": "北京协和医院",
+      "medTypeName": "综合医院",
+      "medLevelName": "三级",
+      "addr": "北京协和医院东单院区..."
+    }
+  ],
+  "total": 10
+}
 ```
 
-### 待完成: 密钥提取
+## 技术细节
 
-主 JS 文件 (`config/app.js`, 3.7MB) 经过 OB 混淆，无法直接提取密钥。
+### OB 混淆分析
+- 10,224 个字符串在表中, 通过 `_0x7e206d(idx)` 函数查找
+- XOR 密钥: `[0x13,0x07,0x1f,0x2b,0x0b,0x1d,0x25]`
+- SM2/SM4 模块 ID 映射: `0x372`→sm2, `0x7e4`→sm3, `0x2080`→sm4
+- 函数映射: `0x2650`→generateKeyPairHex, `0x19ac`→doEncrypt, `0xf8c`→doSignature
 
-**提取密钥的方法**:
-
-1. 通过浏览器 MCP 工具提取 (见 `extract_from_browser.md`)
-2. 将提取到的密钥写入 `config/keys.json`
-
-**已知参数**:
-- `appCode`: `T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ`
-- `version`: `1.0.0`
-- `encType`: `SM4`, `signType`: `SM2`
-- `encData` 格式: hex (大写)
-- `signData` 格式: base64
-- `x-tif-signature` 格式: SHA-256 hex (64字符)
-
-**待提取参数**:
-- `sm4_key`: 16字节 SM4 密钥 (32字符 hex)
-- `sm4_iv`: 全零 (已验证)
-- `x-tif-signature 算法`: SHA-256 的精确输入组合
-
-## 技术分析记录
-
-### JS 文件分析
-- 主文件: `app.1781684502962.js` (3.7MB)
-- 混淆方式: OB 混淆 (obfuscator.io)
-- 模块系统: 自定义 IIFE 模块加载
-- 加密库: `sm-crypto` (内嵌)
-
-### SM4 加密细节
-- 模式: CBC
-- IV: 全零 `00000000000000000000000000000000`
+### SM4-CBC
+- IV: `00000000000000000000000000000000` (全零)
 - 填充: PKCS7
-- 输出: 大写 hex
+- 密钥: 每会话动态生成 (sm2.generateKeyPairHex → SM2 公钥加密 SM4 会话密钥)
 
 ### SM2 签名
-- 曲线: 标准 SM2 曲线
-- 哈希: SM3
-- 私钥: 动态生成 (每会话)
-- 输出: base64 编码的 DER 签名
+- 曲线参数内嵌 (P/A/B 从字符串表解码)
+- 输出: base64 DER 编码
 
-### 请求头签名 (x-tif-signature)
-- 长度: 64 hex chars (32 bytes = SHA-256)
-- 输入: 待确认 (包含 appCode + timestamp + nonce + 可能的 body)
+### x-tif-signature
+- 长度: 64 hex (SHA-256)
+- 输入组合: 待确认 (包含 appCode + timestamp + nonce + body 或其部分)
 
 ## 参考
 
