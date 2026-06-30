@@ -7,6 +7,28 @@ metadata:
 
 以下规则在 CHECK-2 未命中任何 case 时生效，Phase 0 侦察阶段就必须执行判定。
 
+## 规则 0：禁止 jsdom — 每次逆向的强制启动检查 ⚠️
+
+**jsdom 是最高优先级禁用项。** 除非站点内部代码已明确只在 jsdom 中可运行且无其他方案，否则任何逆向任务的 Phase 0 都不得创建 jsdom 脚本。
+
+**触发信号**：在代码中 `require('jsdom')` 或 `from jsdom import`。
+
+**判定**：jsdom 有三个致命缺陷，无一例外会浪费大量时间：
+1. **容易被检测** — VMP/风控 SDK 通过检查 `navigator` 原型链、构造函数 name、`instanceof` 等 20+ 种方式识别 jsdom，iv8 类真 V8 引擎无法区分
+2. **不适合加密模块提取** — jsdom 无法替换已运行的原生函数，Hook 总是比模块加载晚，source patch 语法错误率极高（本次国家医保局 patch 6 次全部失败）
+3. **产出不能交付** — 最终方案必须纯算或补环境，jsdom 重量级依赖不可部署
+
+**国家医保局案例**：12 个 jsdom 脚本（`capture_*.js`、`export_all.js`、`jsdom_server.js`、`*_encrypt_server.js` 等）全部白费，最终 webpack 提取方案完全不依赖 jsdom。
+
+**正确做法**：
+- 搜索 `EncryptedData` / `signData` 等函数名直接定位 → 扣 webpack 模块
+- 如必须运行完整 app.js，用 iv8（C++ V8）而非 jsdom
+- 参照 [[js-reverse-priority]] 优先级链
+
+**Why**: 国家医保局实战中，通过 jsdom hook 尝试 6 次 source patch SHA256 全部语法错误失败，hook setRequestHeader 因 jsdom 先于代码执行而无法拦截。最终 webpack 提取 30 分钟完成。
+
+**How to apply**: 每次启动新逆向任务时，首个动作是检查是否在写 `require('jsdom')`。如果在写，停止并切换到 iv8 或 webpack 扣取。
+
 ## 规则 1：指纹 SDK = 不可纯 Node.js 复现，5 分钟内判死
 
 **触发信号**：navigate 后 redirect_chain 中出现以下任一域名的脚本：
