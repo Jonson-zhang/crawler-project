@@ -220,25 +220,53 @@ jsdom → app.js → selectByKeys API 调用
 - `hook_function` 和 `inject_hook_preset` 兼容性有问题
 - **结论**: js-reverse MCP (CDP-based) 更可靠
 
-## 下一步行动清单
+## 2026-06-30 突破: SM4 密钥成功提取
 
-1. [x] 浏览器 MCP Hook + break_on_xhr 获取实时请求样本 ✅
-2. [x] jsdom 加载 app.js 验证加密正确性 ✅
-3. [ ] 在 jsdom 中 hook webpack require 提取 sm-crypto 模块 → 获取 SM4 密钥
-4. [ ] 正向追踪: 从 webpack 源码定位 x-tif-signature 计算函数
-5. [ ] 确认 SM4 密钥 → 解密已知 response encData 验证
-6. [ ] 补全 x-tif-signature 算法 → API 调用成功 (纯协议)
-7. [ ] 实现响应 SM4 解密
-8. [ ] 最终交付: 纯协议 Python main.py，无浏览器依赖
+### 10. SM4 密钥捕获 ✅🎉
+
+通过 patch app.js 中 SM4 内部函数 `_0x32a5f1`，成功捕获加密参数：
+
+| 字段 | 值 |
+|------|-----|
+| **SM4 密钥** | `C3AE5873D08418DA` (16字节ASCII) |
+| **密钥来源** | app.js 运行时动态传入 (非来自 FIELD_D) |
+| **验证方式** | `sm4.encrypt({"keys":""}, key)` → `4A8E4673...` ✅ 精确匹配 |
+| **encData 明文** | `{"keys":""}` (PKCS7 padded) |
+| **SM2 私钥** | APP_CODE bytes → hex (`54393848...`) |
+| **SM4 模式** | CBC, IV = `00000000000000000000000000000000` |
+| **兼容性** | 标准 `sm-crypto` npm 库 ✅ |
+
+### 11. Patch 方案验证 ✅
+
+```
+app.js 源码
+  → Patch 1: module "68b2" → window.__c = {sm2, sm3, sm4} ✅
+  → Patch 2: module SM4 → hook _0x32a5f1 → 捕获 key/plaintext ✅
+  → Patch 3: module "6c27" (SHA256) → 语法错误 (三元表达式内) ❌
+```
+
+### 12. x-tif-signature 状态
+
+**穷举测试**: 对 ts, nonce, AC, body, encData, signData, SM4 key, SM2 pubkey 的所有排列/组合做 SHA256/SM3/HMAC — **全部不匹配**。
+
+**可能原因**:
+1. SHA256 输入格式不是简单的字符串拼接 (可能是二进制/ArrayBuffer)
+2. 包含未捕获的字段 (session ID, internal state)
+3. 使用了非标准哈希 (自定义SHA256变体)
+
+**下一步**: 修复 Patch 3，正确 hook SHA256 模块捕获输入。
 
 ## 当前可用方案
 
-### CDP Bridge (已验证可用)
+### 选项 A: CDP Bridge (立即可用)
 
 ```bash
 python nhsa_client.py encrypt --keyword "医院"
-# 输出加密请求 (headers + body)，可直接用 curl/requests 发送
-
-python nhsa_client.py search "北京大学第一医院"
-# 完整搜索流程
+# 完整加密请求，包括 x-tif-signature
 ```
+
+### 选项 B: jsdom 加密服务器 (SM4+SM2 完整)
+
+SM4 加密和 SM2 签名已在 `nhsa_server.js` 中实现，仅缺 x-tif-signature。
+
+### 选项 C: 纯协议 Python (待补全 x-tif-sig)
