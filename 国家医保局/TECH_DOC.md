@@ -382,7 +382,6 @@ d = "009c4a35d9aca4c68f1a3fa89c93684347205a4d84dc260558a049869709ac0b42"
 | `package.json` | npm 依赖声明 |
 | `config/app.js` | 原始 app.js 源码 (3.7MB，仅供参考) |
 | `reference/` | 参考实现 (victory-volunteer/fuwu_nhsa) |
-| `PROGRESS.md` | 逆向过程记录 |
 | `README.md` | 快速入门 |
 
 ---
