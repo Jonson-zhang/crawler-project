@@ -220,7 +220,36 @@
     window.cancelAnimationFrame = function(){};
 
     // ═══════════════════════════════════════════════════════════
-    // 4. 预填所有常见浏览器 API (防止 null 访问崩溃)
+    // 4. 确保 JS 内置类型可用
+    // ═══════════════════════════════════════════════════════════
+    // iv8 可能不在 window 上暴露 TypeError/RangeError 等
+    if (typeof TypeError === 'undefined') window.TypeError = TypeError;
+    if (typeof RangeError === 'undefined') window.RangeError = RangeError;
+    if (typeof SyntaxError === 'undefined') window.SyntaxError = SyntaxError;
+    if (typeof ReferenceError === 'undefined') window.ReferenceError = ReferenceError;
+    if (typeof URIError === 'undefined') window.URIError = URIError;
+    if (typeof EvalError === 'undefined') window.EvalError = EvalError;
+    if (typeof AggregateError === 'undefined') window.AggregateError = AggregateError;
+
+    // 把 window 上所有内置 constructor 暴露到全局
+    var _globals = [TypeError, RangeError, SyntaxError, ReferenceError, URIError,
+        Array, Object, Function, String, Number, Boolean, Date, RegExp, Math,
+        JSON, parseInt, parseFloat, isNaN, isFinite, encodeURIComponent, decodeURIComponent,
+        encodeURI, decodeURI, Error, EvalError, Map, Set, WeakMap, WeakSet,
+        Promise, Proxy, Reflect, Symbol, BigInt, ArrayBuffer, Uint8Array, Int8Array,
+        Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array,
+        DataView, Intl];
+    for (var gi = 0; gi < _globals.length; gi++) {
+        if (_globals[gi] && _globals[gi].name && !(_globals[gi].name in window)) {
+            window[_globals[gi].name] = _globals[gi];
+        }
+    }
+    // 手动确保
+    if (typeof TypeError !== 'undefined') window.TypeError = TypeError;
+    if (typeof RangeError !== 'undefined') window.RangeError = RangeError;
+
+    // ═══════════════════════════════════════════════════════════
+    // 5. 预填常见浏览器 API (防止 null 访问)
     // ═══════════════════════════════════════════════════════════
     var BROWSER_APIS = [
         // Events
