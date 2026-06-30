@@ -20,15 +20,17 @@ const SM4_IV = '00000000000000000000000000000000';
 function log(msg) { process.stderr.write(`[nhsa] ${msg}\n`); }
 
 // 每会话密钥
-let _keypair = null;
+// APP_CODE bytes as hex → 64 hex chars → valid SM2 private key
+const SM2_PRIVATE_KEY = Buffer.from(APP_CODE, 'ascii').toString('hex');
 let _sm4Key = null;
 
 function init() {
-    if (_keypair) return;
-    _keypair = sm2.generateKeyPairHex();
+    if (_sm4Key) return;
+    // SM4 key candidates — try each:
+    // 1. SM3(APP_CODE) bytes[:16]
     const sm3Full = sm3(APP_CODE);
     _sm4Key = Buffer.from(sm3Full, 'hex').slice(0, 16).toString('hex');
-    log(`Init: sm4Key=${_sm4Key}, pubKey=${_keypair.publicKey.substring(0,20)}...`);
+    log(`Init: sm4Key=${_sm4Key}, sm2Key=${SM2_PRIVATE_KEY.substring(0,16)}...`);
 }
 
 function genNonce(len = 8) {
