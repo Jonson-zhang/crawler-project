@@ -3,22 +3,10 @@
 ======================================
 已验证通过: 2026-06-30 返回 code:0, 解密出医院数据
 
-原理:
-  通过 subprocess 调用 gov_nhsa_encrypt.js (webpack提取版) 生成加密请求
-  Python requests 发送 HTTP 请求 + 解析响应
-
-密钥来源 (均硬编码在 JS 中):
-  - appCode: T98HPCGN5ZVVQBS8LZQNOAEXVI9GYHKQ
-  - SM4 key: 运行时动态生成 (C3AE5873D08418DA)
-  - SM2 privateKey: AJxKNdmspMaPGj+onJNoQ0cgWk2E3CYFWKBJhpcJrAtC (base64)
-  - x-tif-signature: SHA256(timestamp + nonce + timestamp)
-
-用法:
-  python nhsa_client_final.py "北京协和医院"
-  python nhsa_client_final.py --regn 110000 --pages 5 --size 10
+用法: 直接修改下方 CONFIG 中的参数，然后运行:
+      python nhsa_client_final.py
 """
 
-import argparse
 import json
 import subprocess
 import sys
@@ -36,6 +24,22 @@ API_URL = "https://fuwu.nhsa.gov.cn/ebus/fuwu/api/nthl/api/CommQuery/queryFixedH
 
 JS_BOOTSTRAP = ENCRYPT_JS.read_text("utf-8")
 
+# ═══════════════════════════════════════════════════════════════
+# 配置区 — 修改这里即可，无需命令行参数
+# ═══════════════════════════════════════════════════════════════
+CONFIG: dict[str, object] = {
+    "keyword": "",          # 医疗机构名称，空=全部
+    "regn_code": "110000",  # 行政区划 (110000=北京, 310000=上海)
+    "pages": 5,             # 获取页数
+    "page_size": 10,        # 每页条数
+    "addr": "",             # 地址筛选 (空=全部)
+    "level": "",            # 等级代码 (空=全部)
+    "type": "",             # 类型代码 (空=全部)
+    "elec": "",             # 电子凭证 (空=全部, 1=已开通)
+    "json_output": False,   # True=JSON输出, False=表格输出
+}
+# ═══════════════════════════════════════════════════════════════
+
 
 def js_call(func_name: str, *args: object) -> dict:
     """调用 gov_nhsa_encrypt.js 中的函数"""
@@ -45,19 +49,13 @@ def js_call(func_name: str, *args: object) -> dict:
         f"var _result = {func_name}.apply(null, JSON.parse({json.dumps(args_json)}));\n"
         "console.log(JSON.stringify(_result));\n"
     )
-
-    # 写入临时文件避缩 Windows 命令行长度限制
     tmp_file = HERE / "_nhsa_tmp.js"
     tmp_file.write_text(node_script, encoding="utf-8")
     try:
         r = subprocess.run(
             ["node", str(tmp_file)],
-            capture_output=True,
-            text=True,
-            cwd=str(HERE),
-            timeout=30,
-            encoding="utf-8",
-            errors="replace",
+            capture_output=True, text=True, cwd=str(HERE), timeout=30,
+            encoding="utf-8", errors="replace",
         )
         for line in r.stdout.strip().split("\n"):
             line = line.strip()
@@ -105,7 +103,7 @@ class NhsaClient:
         self,
         medins_name: str = "",
         regn_code: str = "110000",
-        page_num: int = 5,
+        page_num: int = 1,
         page_size: int = 10,
         *,
         addr: str = "",
@@ -114,16 +112,7 @@ class NhsaClient:
         open_elec: str = "",
         query_data_source: str = "es",
     ) -> dict:
-        """查询医疗机构 (单页)
-
-        参数说明:
-          medins_name:    医疗机构名称 (支持模糊搜索)
-          regn_code:      行政区划代码 (110000=北京, 310000=上海, 440100=广州)
-          medins_lv_code: 等级代码 (空=全部)
-          medins_type_code: 类型代码 (空=全部)
-          open_elec:      是否开通电子凭证 (空=全部, 1=已开通)
-          query_data_source: 数据源 (默认 "es")
-        """
+        """查询医疗机构 (单页)"""
         params: dict[str, object] = {
             "addr": addr,
             "regnCode": regn_code,
@@ -135,10 +124,8 @@ class NhsaClient:
             "pageSize": page_size,
             "queryDataSource": query_data_source,
         }
-
-        # 调用 JS 加密
         print(
-            f"[Nhsa] Encrypting page {page_num}: medinsName='{medins_name}', regnCode={regn_code}",
+            f"[Nhsa] Page {page_num}: medinsName='{medins_name}', regn={regn_code}",
             file=sys.stderr,
         )
         encrypted = js_call(
@@ -163,26 +150,19 @@ class NhsaClient:
             file=sys.stderr,
         )
 
-        # 发送请求
         resp = self.session.post(API_URL, headers=headers, data=body, timeout=30)
         result: dict = resp.json()
 
         code = result.get("code", -1)
         msg = result.get("message", "")
-        print(
-            f"[Nhsa] Page {page_num} response: code={code} msg={msg}", file=sys.stderr
-        )
+        print(f"[Nhsa] Response: code={code} msg={msg}", file=sys.stderr)
 
-        # 解密响应
         if code == 0:
             try:
                 decrypted = js_call("DecryptedData", result)
                 result["_decrypted"] = decrypted
                 total = decrypted.get("total", len(decrypted.get("list", [])))
-                print(
-                    f"[Nhsa] Page {page_num} decrypted: {total} results",
-                    file=sys.stderr,
-                )
+                print(f"[Nhsa] Decrypted: {total} results", file=sys.stderr)
             except RuntimeError as e:
                 print(f"[Nhsa] Decrypt error: {e}", file=sys.stderr)
 
@@ -208,54 +188,35 @@ class NhsaClient:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="国家医保局 医疗机构查询")
-    parser.add_argument(
-        "keyword", nargs="?", default="", help="医疗机构名称 (留空查询全部)"
-    )
-    parser.add_argument(
-        "--regn", "-r", default="110000", help="行政区划代码 (默认110000=北京市)"
-    )
-    parser.add_argument("--pages", "-P", type=int, default=1, help="获取页数 (默认1页)")
-    parser.add_argument("--size", "-s", type=int, default=10, help="每页条数")
-    parser.add_argument("--addr", default="", help="地址 (可选筛选)")
-    parser.add_argument("--level", "-l", default="", help="医疗机构等级代码 (空=全部)")
-    parser.add_argument("--type", "-t", default="", help="医疗机构类型代码 (空=全部)")
-    parser.add_argument("--elec", "-e", default="", help="电子凭证 (空=全部, 1=已开通)")
-    parser.add_argument("--json", action="store_true", help="JSON output")
-    args = parser.parse_args()
+    kw = str(CONFIG["keyword"])
+    regn = str(CONFIG["regn_code"])
+    pages = int(CONFIG["pages"])
+    size = int(CONFIG["page_size"])
+    json_out = bool(CONFIG["json_output"])
 
     extra: dict[str, str] = {}
-    if args.addr:
-        extra["addr"] = args.addr
-    if args.level:
-        extra["medins_lv_code"] = args.level
-    if args.type:
-        extra["medins_type_code"] = args.type
-    if args.elec:
-        extra["open_elec"] = args.elec
-    args = parser.parse_args()
+    for key in ("addr", "level", "type", "elec"):
+        val = str(CONFIG.get(key, ""))
+        if val:
+            mapping = {"level": "medins_lv_code", "type": "medins_type_code", "elec": "open_elec"}
+            extra[mapping.get(key, key)] = val
 
     client = NhsaClient()
     try:
-        results = client.search_pages(
-            args.keyword, args.regn, args.pages, args.size, **extra
-        )
+        results = client.search_pages(kw, regn, pages, size, **extra)
 
-        if args.json:
+        if json_out:
             output: dict[str, object] = {
-                "pages": len(results),
-                "results": [],
+                "pages": len(results), "results": [],
             }
             for r in results:
-                output["results"].append(
-                    {k: v for k, v in r.items() if k not in ("_decrypted",)}
-                )
+                item = {k: v for k, v in r.items() if k not in ("_decrypted",)}
                 if r.get("_decrypted"):
-                    output["results"][-1]["decrypted"] = r["_decrypted"]
+                    item["decrypted"] = r["_decrypted"]
+                output["results"].append(item)
             print(json.dumps(output, ensure_ascii=False, indent=2))
             return
 
-        # 汇总所有页的结果
         all_items: list[dict] = []
         grand_total = 0
         errors = 0
@@ -276,7 +237,8 @@ def main() -> None:
             return
 
         print(
-            f"\n查询完成! 共 {grand_total} 条结果，实际获取 {len(all_items)} 条 (跨越 {args.pages} 页)\n"
+            f"\n查询完成! 共 {grand_total} 条结果，实际获取 {len(all_items)} 条"
+            f" (跨越 {pages} 页)\n"
         )
 
         for item in all_items:
