@@ -32,7 +32,6 @@ python nhsa_client_final.py --regn 110000 --page 1 --size 10
 ├── package.json              # npm 依赖 (sm-crypto)
 ├── config/app.js             # 原始 JS 源码 (3.7MB, 参考)
 ├── reference/                # 参考实现 (victory-volunteer/fuwu_nhsa)
-├── PROGRESS.md               # 逆向过程记录
 └── README.md
 ```
 
