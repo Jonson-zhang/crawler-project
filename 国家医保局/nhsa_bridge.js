@@ -234,6 +234,11 @@
     window.onunload = null;
     window.onbeforeunload = null;
 
+    // window.parent / window.top (防止 null.onmessage 或 null.postMessage)
+    if (!window.parent) window.parent = window;
+    if (!window.top) window.top = window;
+    if (!window.self) window.self = window;
+
     // 额外的 DOM 安全垫
     if (!document.documentElement) {
         document.documentElement = document.createElement('html');
