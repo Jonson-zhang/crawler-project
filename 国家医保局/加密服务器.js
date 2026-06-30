@@ -138,9 +138,8 @@ function encrypt(params) {
         },
         body,
         _debug: {
-            sm4Key: SM4_KEY_HEX,
-            sm4Len: SM4_KEY.length,
-            privateKey: PRIVATE_KEY,
+            sm4Key: _sm4Key,
+            publicKey: _keypair.publicKey.substring(0, 24) + '...',
         },
     };
 }
