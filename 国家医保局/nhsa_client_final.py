@@ -4,7 +4,7 @@
 已验证通过: 2026-06-30 返回 code:0, 解密出医院数据
 
 原理:
-  execjs 调用 gov_nhsa_encrypt.js (webpack提取版) 生成 SM4/SM2/SHA256 加密请求
+  通过 subprocess 调用 gov_nhsa_encrypt.js (webpack提取版) 生成加密请求
   Python requests 发送 HTTP 请求 + 解析响应
 
 密钥来源 (均硬编码在 JS 中):
@@ -18,14 +18,10 @@
   python nhsa_client_final.py --regn 110000 --page 1 --size 10
 """
 
-import json
-import sys
-import time
-import random
-import string
-import hashlib
-import base64
 import argparse
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 try:
@@ -38,19 +34,18 @@ HERE = Path(__file__).parent
 ENCRYPT_JS = HERE / "gov_nhsa_encrypt.js"
 API_URL = "https://fuwu.nhsa.gov.cn/ebus/fuwu/api/nthl/api/CommQuery/queryFixedHospital"
 
-# 通过 subprocess 直接调用 Node.js (避免 execjs 的 GBK 编码问题)
-import subprocess
-
 JS_BOOTSTRAP = ENCRYPT_JS.read_text("utf-8")
 
-def js_call(func_name, *args):
+
+def js_call(func_name: str, *args: object) -> dict:
     """调用 gov_nhsa_encrypt.js 中的函数"""
     args_json = json.dumps(list(args), ensure_ascii=False)
-    node_script = f"""
-{JS_BOOTSTRAP}
-var _result = {func_name}.apply(null, JSON.parse({json.dumps(args_json)}));
-console.log(JSON.stringify(_result));
-"""
+    node_script = (
+        f"{JS_BOOTSTRAP}\n"
+        f"var _result = {func_name}.apply(null, JSON.parse({json.dumps(args_json)}));\n"
+        "console.log(JSON.stringify(_result));\n"
+    )
+
     # 写入临时文件避缩 Windows 命令行长度限制
     tmp_file = HERE / "_nhsa_tmp.js"
     tmp_file.write_text(node_script, encoding="utf-8")
@@ -65,12 +60,13 @@ console.log(JSON.stringify(_result));
             if line.startswith("{"):
                 try:
                     return json.loads(line)
-                except Exception:
+                except json.JSONDecodeError:
                     pass
-        raise RuntimeError(f"JS call failed: {r.stderr[:200] if r.stderr else r.stdout[:200]}")
+        err = r.stderr or r.stdout or ""
+        raise RuntimeError(f"JS call failed: {err[:200]}")
     finally:
-        try: tmp_file.unlink()
-        except: pass
+        tmp_file.unlink(missing_ok=True)
+
 
 print("[Nhsa] Encryption JS ready.", file=sys.stderr)
 
@@ -78,7 +74,7 @@ print("[Nhsa] Encryption JS ready.", file=sys.stderr)
 class NhsaClient:
     """国家医保局 API 客户端"""
 
-    BASE_HEADERS = {
+    BASE_HEADERS: dict[str, str] = {
         "Connection": "keep-alive",
         "Pragma": "no-cache",
         "Cache-Control": "no-cache",
@@ -88,19 +84,28 @@ class NhsaClient:
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua": '"Chromium";v="21", " Not;A Brand";v="99"',
         "sec-ch-ua-platform": '"Windows"',
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36"
+        ),
         "Origin": "https://fuwu.nhsa.gov.cn",
         "Referer": "https://fuwu.nhsa.gov.cn/nationalHallSt/",
         "X-Tingyun": "c=B|4Nl_NnGbjwY;x=dbaf776fd2154ec1",
         "Accept-Language": "zh-CN,zh;q=0.9",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.session = requests.Session()
 
-    def search(self, medins_name="", regn_code="110000", page_num=1, page_size=10):
+    def search(
+        self,
+        medins_name: str = "",
+        regn_code: str = "110000",
+        page_num: int = 1,
+        page_size: int = 10,
+    ) -> dict:
         """查询医疗机构"""
-        params = {
+        params: dict[str, object] = {
             "addr": "",
             "regnCode": regn_code,
             "medinsName": medins_name,
@@ -113,24 +118,35 @@ class NhsaClient:
         }
 
         # 调用 JS 加密
-        print(f"[Nhsa] Encrypting: medinsName='{medins_name}', regnCode={regn_code}", file=sys.stderr)
-        encrypted = js_call("EncryptedData", params,
-                            "/nthl/api/CommQuery/queryFixedHospital")
+        print(
+            f"[Nhsa] Encrypting: medinsName='{medins_name}', regnCode={regn_code}",
+            file=sys.stderr,
+        )
+        encrypted = js_call(
+            "EncryptedData", params, "/nthl/api/CommQuery/queryFixedHospital"
+        )
 
         headers = {**self.BASE_HEADERS}
         headers["x-tif-timestamp"] = str(encrypted["headers"]["x-tif-timestamp"])
-        headers["x-tif-nonce"] = encrypted["headers"]["x-tif-nonce"]
-        headers["x-tif-signature"] = encrypted["headers"]["x-tif-signature"]
-        headers["x-tif-paasid"] = encrypted["headers"].get("x-tif-paasid", "undefined")
-        headers["contentType"] = encrypted["headers"].get("contentType", "application/x-www-form-urlencoded")
+        headers["x-tif-nonce"] = str(encrypted["headers"]["x-tif-nonce"])
+        headers["x-tif-signature"] = str(encrypted["headers"]["x-tif-signature"])
+        headers["x-tif-paasid"] = str(
+            encrypted["headers"].get("x-tif-paasid", "undefined")
+        )
+        headers["contentType"] = str(
+            encrypted["headers"].get("contentType", "application/x-www-form-urlencoded")
+        )
 
         body = json.dumps({"data": encrypted["data"]}, separators=(",", ":"))
 
-        print(f"[Nhsa] x-tif-sig: {headers['x-tif-signature'][:16]}...", file=sys.stderr)
+        print(
+            f"[Nhsa] x-tif-sig: {headers['x-tif-signature'][:16]}...",
+            file=sys.stderr,
+        )
 
         # 发送请求
         resp = self.session.post(API_URL, headers=headers, data=body, timeout=30)
-        result = resp.json()
+        result: dict = resp.json()
 
         code = result.get("code", -1)
         msg = result.get("message", "")
@@ -143,21 +159,23 @@ class NhsaClient:
                 result["_decrypted"] = decrypted
                 total = decrypted.get("total", len(decrypted.get("list", [])))
                 print(f"[Nhsa] Decrypted: {total} results", file=sys.stderr)
-            except Exception as e:
+            except RuntimeError as e:
                 print(f"[Nhsa] Decrypt error: {e}", file=sys.stderr)
 
         return result
 
-    def close(self):
+    def close(self) -> None:
         self.session.close()
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="国家医保局 医疗机构查询")
-    parser.add_argument("keyword", nargs="?", default="",
-                        help="医疗机构名称 (留空查询全部)")
-    parser.add_argument("--regn", "-r", default="110000",
-                        help="行政区划代码 (默认110000=北京市)")
+    parser.add_argument(
+        "keyword", nargs="?", default="", help="医疗机构名称 (留空查询全部)"
+    )
+    parser.add_argument(
+        "--regn", "-r", default="110000", help="行政区划代码 (默认110000=北京市)"
+    )
     parser.add_argument("--page", "-p", type=int, default=1)
     parser.add_argument("--size", "-s", type=int, default=10)
     parser.add_argument("--json", action="store_true", help="JSON output")
@@ -174,11 +192,13 @@ def main():
             return
 
         if result.get("code") != 0:
-            print(f"\nAPI 错误: code={result.get('code')}, {result.get('message')}")
+            print(
+                f"\nAPI 错误: code={result.get('code')}, {result.get('message')}"
+            )
             return
 
-        dec = result.get("_decrypted", {})
-        items = dec.get("list", [])
+        dec: dict = result.get("_decrypted", {})
+        items: list = dec.get("list", [])
         total = dec.get("total", len(items))
         print(f"\n查询成功! 共 {total} 条结果，显示 {len(items)} 条\n")
 
