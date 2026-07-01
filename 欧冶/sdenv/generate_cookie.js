@@ -183,42 +183,26 @@ async function main() {
       console.error(`[sdenv] 引擎 JS: ${(engineJs.length / 1024).toFixed(1)} KB`);
 
       // 在 jsdom window 中执行引擎 JS
+      // Engine starts with (function(_$bu,_$a$){ ... })(...)
+      // _$bu is some context, _$a$ has this value
       window.eval(engineJs);
       console.error('[sdenv] 引擎 JS 执行完成');
     } catch(e) {
-      console.error(`[sdenv] 引擎错误: ${e.message}`);
+      console.error(`[sdenv] 引擎错误: ${e.message.substring(0, 150)}`);
     }
   }
 
-  // ── 执行尾部 _$h7() 调用 ──
-  // The 202 HTML has: <script>_$h7();</script> at the end
-  const tailMatch = html.match(/<script[^>]*>\s*_?\$?\w+\(\);\s*<\/script>\s*$/);
-  if (tailMatch) {
-    try {
-      window.eval(tailMatch[0].replace(/<\/?script[^>]*>/g, ''));
-      console.error('[sdenv] 尾部脚本已执行');
-    } catch(e) {}
-  } else {
-    // Try to find any remaining script in the HTML
-    const allScripts = html.match(/<script[^>]*>([\s\S]*?)<\/script>/g);
-    if (allScripts) {
-      for (const s of allScripts) {
-        const code = s.replace(/<script[^>]*>/, '').replace('</script>', '').trim();
-        if (code && !code.includes('$_ts') && !code.includes('r=\'m\'')) {
-          try { window.eval(code); } catch(e) {}
-        }
-      }
-    }
-  }
-
-  // ── 尝试调用 $_ts.lcd (如果引擎设置了) ──
+  // ── 调用 $_ts.lcd (如果引擎设置了) ──
   try {
     if (typeof window.$_ts?.lcd === 'function') {
       console.error('[sdenv] 调用 $_ts.lcd()...');
-      window.$_ts.lcd();
+      const lcdResult = window.$_ts.lcd();
+      console.error(`[sdenv] $_ts.lcd() 返回: ${typeof lcdResult === 'string' ? lcdResult.substring(0, 50) : typeof lcdResult}`);
+    } else {
+      console.error(`[sdenv] $_ts.lcd 类型: ${typeof window.$_ts?.lcd}`);
     }
   } catch(e) {
-    console.error(`[sdenv] $_ts.lcd 调用错误: ${e.message}`);
+    console.error(`[sdenv] $_ts.lcd 调用错误: ${e.message.substring(0, 150)}`);
   }
 
   // ── 等待挑战完成 ──
