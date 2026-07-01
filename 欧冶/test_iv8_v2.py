@@ -15,11 +15,11 @@ ENV_JS = r"""
     var noop = function() {};
 
     // ── navigator ──
-    navigator.__defineGetter__('vendor', function(){ return ''; });
-    navigator.__defineGetter__('plugins', function(){ return []; });
-    navigator.__defineGetter__('mimeTypes', function(){ return []; });
-    navigator.__defineGetter__('hardwareConcurrency', function(){ return 8; });
-    navigator.__defineGetter__('maxTouchPoints', function(){ return 0; });
+    try { Object.defineProperty(Navigator.prototype, 'vendor', { get: function(){ return ''; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(Navigator.prototype, 'plugins', { get: function(){ return []; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(Navigator.prototype, 'mimeTypes', { get: function(){ return []; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: function(){ return 8; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: function(){ return 0; }, configurable: true }); } catch(e) {}
     navigator.__defineGetter__('deviceMemory', function(){ return undefined; });
     navigator.__defineGetter__('languages', function(){ return ['zh-CN', 'zh']; });
     navigator.__defineGetter__('language', function(){ return 'zh-CN'; });
