@@ -71,27 +71,20 @@
 | 文件 | 类型 | 用途 |
 |------|------|------|
 | `main.py` | **入口** | Python CLI + curl_cffi API 调用 |
-| `env.js` | 补环境 | Node.js 环境补丁（瑞数引擎执行尝试） |
-| `sign.js` | 补环境 | Node.js 挑战求解器 |
+| `env.js` | 补环境 | Node.js 环境补丁配置 |
+| `sign.js` | 补环境 | Node.js 挑战求解入口 |
 | `cookies.json` | 数据 | 保存的有效 Cookie |
-| `cookie_fetcher.py` | 工具 | Cookie 管理 |
+| `cookie_fetcher.py` | 工具 | Cookie 管理和 API 测试 |
 | `README.md` | 文档 | 本文件 |
 
-### 分析文件
+### 分析/参考文件
 
 | 文件 | 用途 |
 |------|------|
-| `202_fresh.html` | 202 挑战响应示例 |
-| `202_response.html` | 原始 202 响应 |
+| `202_response.html` | 瑞数 202 挑战响应（含 $_ts.cd / meta 结构） |
 | `sample_response.json` | API 成功响应示例 |
-| `ruishu_fresh.js` | 最新瑞数引擎 JS（175KB）|
-| `ruishu_engine_1.js` | 瑞数 JS 文件 1（202KB） |
-| `ruishu_engine_2.js` | 瑞数 JS 文件 2（152KB） |
-| `ruishu_js_1.js` | （旧）瑞数 JS 1 |
-| `ruishu_js_2.js` | （旧）瑞数 JS 2 |
-| `202_headers.txt` | 202 响应头 |
-| `solver.py` | 旧版浏览器 MCP 求解器（放弃） |
-| `test_ruishu.js` | 补环境测试脚本 |
+| `ruishu_engine_1.js` | 瑞数引擎 JS 文件 1（202KB，while+switch 解释器） |
+| `ruishu_engine_2.js` | 瑞数引擎 JS 文件 2（152KB） |
 
 ---
 
