@@ -4,6 +4,7 @@
   "private": true,
   "description": "欧冶钢材网 — sdenv 瑞数 Cookie 生成",
   "dependencies": {
+    "jsdom": "^29.1.1",
     "sdenv": "^1.1.3",
     "sdenv-jsdom": "^2.1.0"
   }
