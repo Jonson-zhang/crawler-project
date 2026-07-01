@@ -46,17 +46,15 @@ ENV_JS = r"""
     history.__defineGetter__('scrollRestoration', function(){ return 'auto'; });
 
     // ── location ──
-    location.__defineGetter__('href', function() {
-        return 'https://www.ouyeel.com/steel/search?channel=RJ&pageIndex=1&pageSize=50';
-    });
-    location.__defineGetter__('origin', function(){ return 'https://www.ouyeel.com'; });
-    location.__defineGetter__('host', function(){ return 'www.ouyeel.com'; });
-    location.__defineGetter__('hostname', function(){ return 'www.ouyeel.com'; });
-    location.__defineGetter__('port', function(){ return ''; });
-    location.__defineGetter__('protocol', function(){ return 'https:'; });
-    location.__defineGetter__('pathname', function(){ return '/steel/search'; });
-    location.__defineGetter__('search', function(){ return '?channel=RJ&pageIndex=1&pageSize=50'; });
-    location.__defineGetter__('hash', function(){ return ''; });
+    // location properties may be read-only in iv8, skip redefine
+    // Set them via Object.defineProperty if possible
+    try { Object.defineProperty(location, 'href', { get: function() { return 'https://www.ouyeel.com/steel/search?channel=RJ&pageIndex=1&pageSize=50'; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(location, 'origin', { get: function(){ return 'https://www.ouyeel.com'; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(location, 'host', { get: function(){ return 'www.ouyeel.com'; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(location, 'hostname', { get: function(){ return 'www.ouyeel.com'; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(location, 'protocol', { get: function(){ return 'https:'; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(location, 'pathname', { get: function(){ return '/steel/search'; }, configurable: true }); } catch(e) {}
+    try { Object.defineProperty(location, 'search', { get: function(){ return '?channel=RJ&pageIndex=1&pageSize=50'; }, configurable: true }); } catch(e) {}
 
     // ── document ──
     // Cookie
