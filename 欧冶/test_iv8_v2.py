@@ -94,7 +94,7 @@ ENV_JS = r"""
     document.__defineGetter__('hidden', function(){ return false; });
     document.__defineGetter__('visibilityState', function(){ return 'visible'; });
     document.__defineGetter__('designMode', function(){ return 'off'; });
-    document.__defineGetter__('all', function(){ return undefined; });
+    try { Object.defineProperty(document, 'all', { get: function(){ return undefined; }, configurable: true }); } catch(e) {}
 
     document.addEventListener = noop;
     document.removeEventListener = noop;
