@@ -30,8 +30,8 @@ python nhsa_client_final.py --regn 110000 --page 1 --size 10
 ├── nhsa_client_final.py     # 纯协议客户端 ← 直接使用
 ├── gov_nhsa_encrypt.js      # webpack 加密模块
 ├── package.json              # npm 依赖 (sm-crypto)
+├── package-lock.json         # npm 锁文件
 ├── config/app.js             # 原始 JS 源码 (3.7MB, 参考)
-├── reference/                # 参考实现 (victory-volunteer/fuwu_nhsa)
 └── README.md
 ```
 
