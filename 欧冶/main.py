@@ -56,8 +56,13 @@ main.py — 欧冶钢材网 API 查询工具（纯算/补环境方案）
 import json
 import sys
 import time
+import io
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+
+# ── 修复 Windows GBK 编码 ──
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # ── 依赖检查 ──
 try:
@@ -199,11 +204,11 @@ def query_commodity(
             result = resp.json()
             count = result.get("count", 0)
             result_list = json.loads(result.get("resultList", "[]"))
-            print(f"[✓] 查询成功: 总数={count}, 本页={len(result_list)}")
+            print(f"[OK] 查询成功: 总数={count}, 本页={len(result_list)}")
             return result
         elif resp.status_code == 202:
             print(
-                f"[✗] 收到 202 挑战响应 - Cookie 无效/已过期"
+                "[FAIL] 收到 202 挑战响应 - Cookie 无效/已过期"
             )
             # 检查新 Cookie
             new_cookies = dict(resp.cookies) if hasattr(resp, 'cookies') else {}
@@ -212,11 +217,11 @@ def query_commodity(
                 save_cookies(new_cookies)
             return None
         else:
-            print(f"[✗] API 失败: HTTP {resp.status_code}")
+            print(f"[FAIL] API 失败: HTTP {resp.status_code}")
             return None
 
     except Exception as e:
-        print(f"[✗] 请求异常: {e}")
+        print(f"[FAIL] 请求异常: {e}")
         return None
 
 
@@ -270,7 +275,7 @@ def fetch_challenge() -> Optional[Dict]:
         return result
 
     except Exception as e:
-        print(f"[✗] 挑战请求失败: {e}")
+        print(f"[FAIL] 挑战请求失败: {e}")
         return None
 
 
