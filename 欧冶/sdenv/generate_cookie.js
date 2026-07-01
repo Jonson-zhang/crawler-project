@@ -1,32 +1,48 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────
- *  欧冶钢材网 — sdenv 瑞数 Cookie 生成器
+ *  欧冶钢材网 — RuiShu Cookie 生成器
+ *
+ *  jsdom + 纯JS环境补丁方案。无需C++原生扩展。
  *
  *  工作流:
- *    1. Python 发起 POST → 获得 202 挑战 HTML + S Cookie
- *    2. generate_cookie.js 通过 sdenv 创建浏览器环境，
- *       加载挑战 HTML，自动获取并执行引擎 JS
- *    3. 等待瑞数 VM 完成挑战 → 生成 P Cookie
+ *    1. Python 从 POST 响应获取 202 HTML + S Cookie
+ *    2. create jsdom with browser env patches
+ *    3. Load + execute engine JS → RuiShu 挑战完成
  *    4. 返回所有 Cookie 给 Python
  *
  *  输入(stdin JSON):
  *    {
- *      "html": "<!DOCTYPE html>...",       // 202 挑战 HTML
- *      "cookies": { "T0k1m0u5AfREO": "..." },  // 初始 S Cookie
+ *      "html": "<!DOCTYPE html>...",             // 202 响应 HTML
+ *      "cookies": { "T0k1m0u5AfREO": "..." },   // 初始 S Cookie
+ *      "engineUrl": "/vdGfdDb5PQO5/...js",      // 引擎 JS URL
  *      "baseUrl": "https://www.ouyeel.com"
  *    }
  *
  *  输出(stdout JSON):
- *    { "success": true/false, "cookies": {...}, "error": null/msg }
+ *    {
+ *      "success": true/false,
+ *      "cookies": { "name": "value", ... },
+ *      "error": null/错误信息,
+ *      "nsd": 数字
+ *    }
  * ────────────────────────────────────────────────────────────
  */
 'use strict';
 
-const { jsdomFromText } = require('sdenv');
+const { JSDOM } = require('jsdom');
 const https = require('https');
+const { injectEnv } = require('./ouyeel_env');
 
-// ── 提取 $_ts 初始值（仅用于日志） ──
+const PAGE_URL = 'https://www.ouyeel.com/steel/search?channel=RJ&pageIndex=1&pageSize=50';
+
+// ── 提取 engine JS URL ──
+function extractEngineUrl(html) {
+  const m = html.match(/src="([^"]*\.js)"\s*r=['"]m['"]/);
+  return m ? m[1] : null;
+}
+
+// ── 提取 $_ts ──
 function extractTs(html) {
   const nsdM = html.match(/nsd=(\d+)/);
   const cdM = html.match(/\$_ts\.cd="([^"]+)"/);
@@ -36,9 +52,10 @@ function extractTs(html) {
   };
 }
 
-// ── 下载远程 JS（备用：当自动加载失败时手动 eval） ──
+// ── 下载远程 JS ──
 function fetchJs(url) {
   return new Promise((resolve, reject) => {
+    console.error(`[sdenv] 下载: ${url}`);
     https.get(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -72,131 +89,177 @@ function readStdin() {
 
 // ════════════════════════════════════════════════════════════
 
-const PAGE_URL = 'https://www.ouyeel.com/steel/search?channel=RJ&pageIndex=1&pageSize=50';
-
 async function main() {
   const input = await readStdin() || {};
   const html = input.html || '';
   const baseUrl = input.baseUrl || 'https://www.ouyeel.com';
   const initialCookies = input.cookies || {};
 
-  if (!html) {
-    throw new Error('请通过 stdin 传入 202 挑战 HTML');
-  }
-
-  // 提取引擎 JS URL（从 HTML 中）
-  const srcM = html.match(/src="([^"]*\.js)"\s*r=['"]m['"]/);
-  const engineUrl = srcM ? (srcM[1].startsWith('http') ? srcM[1] : baseUrl + srcM[1]) : null;
+  if (!html) throw new Error('请通过 stdin 传入 202 挑战 HTML');
 
   const ts = extractTs(html);
+  let engineUrl = input.engineUrl || extractEngineUrl(html);
+  if (engineUrl && !engineUrl.startsWith('http')) engineUrl = baseUrl + engineUrl;
+
   console.error(`[sdenv] nsd=${ts.nsd}, cd_len=${ts.cd.length}, engine=${engineUrl ? engineUrl.split('/').pop() : 'none'}`);
 
-  // ── 创建 sdenv 浏览器环境 ──
-  console.error('[sdenv] 创建浏览器环境...');
+  // ── Cookie 存储 (手动管理，因为 jsdom cookieJar 有 CORS 限制) ──
+  const _cookieStore = {};
+  if (initialCookies.T0k1m0u5AfREO) _cookieStore['T0k1m0u5AfREO'] = initialCookies.T0k1m0u5AfREO;
+  if (initialCookies.cookiesession1) _cookieStore['cookiesession1'] = initialCookies.cookiesession1;
+  const _cookieGet = () => Object.entries(_cookieStore).map(([k,v]) => `${k}=${v}`).join('; ');
 
-  const dom = await jsdomFromText(html, {
-    // 设置页面 URL 让 jsdom 能解析相对路径脚本
+  // ── 创建 JSDOM ──
+  console.error('[sdenv] 创建 jsdom...');
+  const dom = new JSDOM(html, {
     url: PAGE_URL,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    consoleConfig: {
-      log: (...a) => { const m = a.join(' '); if (m.length < 200) console.error('[sdenv:log]', m); },
-      warn: (...a) => console.error('[sdenv:warn]', ...a),
-      error: () => {},   // 静默瑞数的"正常"错误
-    },
-    beforeParse(window, sdenvEnv) {
-      // ── 注入初始 Cookie 到 document.cookie ──
-      if (initialCookies.T0k1m0u5AfREO) {
-        try {
-          window.document.cookie = `T0k1m0u5AfREO=${initialCookies.T0k1m0u5AfREO}; path=/; domain=.ouyeel.com`;
-        } catch(e) {}
-      }
-      if (initialCookies.cookiesession1) {
-        try {
-          window.document.cookie = `cookiesession1=${initialCookies.cookiesession1}; path=/; domain=.ouyeel.com`;
-        } catch(e) {}
-      }
+    contentType: 'text/html',
+    pretendToBeVisual: true,
+    runScripts: 'outside-only',  // Scripts run via manual eval, not auto
+    beforeParse(window) {
+      // ── 注入浏览器环境 ──
+      injectEnv(window, { url: PAGE_URL });
+
+      // ── 覆盖 document.cookie 使用我们的存储 ──
+      Object.defineProperty(window.document, 'cookie', {
+        get: () => _cookieGet(),
+        set: (v) => {
+          if (v && v.indexOf('=') > 0) {
+            const eq = v.indexOf('=');
+            const semi = v.indexOf(';');
+            const val = semi > 0 ? v.substring(0, semi) : v;
+            const name = v.substring(0, eq).trim();
+            const value = val.substring(eq + 1).trim();
+            _cookieStore[name] = value;
+            console.error(`[cookie] ${name}=${value.substring(0, 40)}...`);
+          }
+        },
+        configurable: true,
+      });
+
       console.error('[sdenv] 环境就绪');
     },
   });
 
-  const { cookieJar, window } = dom;
+  const window = dom.window;
 
-  // ── 等待瑞数挑战完成 ──
-  console.error('[sdenv] 等待瑞数挑战完成...');
+  // ── 预初始化 $_ts ──
+  window.$_ts = {};
 
-  let completed = false;
-  const result = await new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      console.error('[sdenv] ⏰ 超时（25秒）');
-      resolve('timeout');
-    }, 25000);
+  // ── 手动执行内联脚本 (在环境中执行) ──
+  // jsdom with runScripts:'outside-only' won't auto-execute <script> tags
+  // Extract and execute the $_ts initialization script
+  // We need to prepend "window." to the script to run in global scope
+  const scriptTags = html.match(/<script[^>]*>([\s\S]*?)<\/script>/g) || [];
+  let initJsDone = false;
+  let tailJsDone = false;
 
-    // 轮询 Cookie
-    const cookiePoller = setInterval(() => {
-      const ck = cookieJar.getCookieStringSync(PAGE_URL);
+  for (const tag of scriptTags) {
+    const code = tag.replace(/<script[^>]*>/, '').replace('<\/script>', '').trim();
+    if (!code) continue;
+
+    // Check if it's the external script (has src attribute)
+    if (tag.includes('src=') && !code) continue;
+
+    // Execute in a wrapper that handles window context
+    const wrappedCode = `(function() { ${code} }).call(window);`;
+    try {
+      window.eval(wrappedCode);
+      if (code.includes('$_ts')) {
+        initJsDone = true;
+        console.error('[sdenv] $_ts 初始化脚本已执行');
+      }
+    } catch(e) {
+      console.error(`[sdenv] 脚本错误: ${e.message.substring(0, 100)}`);
+    }
+  }
+
+  console.error(`[sdenv] $_ts: nsd=${window.$_ts?.nsd}, cd长度=${window.$_ts?.cd?.length || 0}`);
+
+  // ── 加载并执行引擎 JS ──
+  if (engineUrl) {
+    try {
+      const engineJs = await fetchJs(engineUrl);
+      console.error(`[sdenv] 引擎 JS: ${(engineJs.length / 1024).toFixed(1)} KB`);
+
+      // 在 jsdom window 中执行引擎 JS
+      window.eval(engineJs);
+      console.error('[sdenv] 引擎 JS 执行完成');
+    } catch(e) {
+      console.error(`[sdenv] 引擎错误: ${e.message}`);
+    }
+  }
+
+  // ── 执行尾部 _$h7() 调用 ──
+  // The 202 HTML has: <script>_$h7();</script> at the end
+  const tailMatch = html.match(/<script[^>]*>\s*_?\$?\w+\(\);\s*<\/script>\s*$/);
+  if (tailMatch) {
+    try {
+      window.eval(tailMatch[0].replace(/<\/?script[^>]*>/g, ''));
+      console.error('[sdenv] 尾部脚本已执行');
+    } catch(e) {}
+  } else {
+    // Try to find any remaining script in the HTML
+    const allScripts = html.match(/<script[^>]*>([\s\S]*?)<\/script>/g);
+    if (allScripts) {
+      for (const s of allScripts) {
+        const code = s.replace(/<script[^>]*>/, '').replace('</script>', '').trim();
+        if (code && !code.includes('$_ts') && !code.includes('r=\'m\'')) {
+          try { window.eval(code); } catch(e) {}
+        }
+      }
+    }
+  }
+
+  // ── 尝试调用 $_ts.lcd (如果引擎设置了) ──
+  try {
+    if (typeof window.$_ts?.lcd === 'function') {
+      console.error('[sdenv] 调用 $_ts.lcd()...');
+      window.$_ts.lcd();
+    }
+  } catch(e) {
+    console.error(`[sdenv] $_ts.lcd 调用错误: ${e.message}`);
+  }
+
+  // ── 等待挑战完成 ──
+  console.error('[sdenv] 等待挑战完成...');
+
+  await new Promise((resolve) => {
+    const pollInterval = setInterval(() => {
+      const ck = _cookieGet();
       if (ck && ck.includes('T0k1m0u5AfREP')) {
-        console.error('[sdenv] ✅ P Cookie 已生成');
+        console.error('[sdenv] ✅ P Cookie 已生成!');
+        clearInterval(pollInterval);
         clearTimeout(timeout);
-        clearInterval(cookiePoller);
-        completed = true;
-        resolve('cookie_found');
+        resolve();
       }
     }, 300);
 
-    // sdenv:exit 事件
-    window.addEventListener('sdenv:exit', () => {
-      if (!completed) {
-        console.error('[sdenv] sdenv:exit 事件');
-        clearTimeout(timeout);
-        clearInterval(cookiePoller);
-        completed = true;
-        resolve('sdenv_exit');
-      }
-    });
-    window.addEventListener('sdenv:location.replace', () => {});
+    const timeout = setTimeout(() => {
+      console.error('[sdenv] ⏰ 等待超时');
+      clearInterval(pollInterval);
+      resolve();
+    }, 20000);
   });
 
-  // ── 提取 Cookie ──
-  const cookieStr = cookieJar.getCookieStringSync(PAGE_URL);
-  const parsed = {};
-  if (cookieStr) {
-    cookieStr.split(';').forEach(pair => {
-      const eq = pair.indexOf('=');
-      if (eq > 0) parsed[pair.substring(0, eq).trim()] = pair.substring(eq + 1).trim();
-    });
-  }
-
-  // 也检查 document.cookie
-  try {
-    const docCk = window.document?.cookie;
-    if (docCk) {
-      docCk.split(';').forEach(pair => {
-        const eq = pair.indexOf('=');
-        if (eq > 0) parsed[pair.substring(0, eq).trim()] = pair.substring(eq + 1).trim();
-      });
-    }
-  } catch(e) {}
-
+  // ── 结果 ──
   try { window.close(); } catch(e) {}
 
-  const hasP = !!parsed.T0k1m0u5AfREP;
-  const hasO = !!parsed.T0k1m0u5AfREO;
+  const hasP = !!_cookieStore['T0k1m0u5AfREP'];
+  const hasO = !!_cookieStore['T0k1m0u5AfREO'];
 
   process.stdout.write(JSON.stringify({
-    success: hasP || hasO,
-    cookies: parsed,
-    // 即使没有 P Cookie，如果有 O Cookie 也算部分成功
-    error: (!hasP && !hasO) ? 'sdenv 未生成任何瑞数 Cookie' :
-           hasP ? null : '有 O Cookie 但未生成 P Cookie（挑战可能被重定向）',
+    success: hasP,
+    cookies: { ..._cookieStore },
+    error: hasP ? null : hasO ? 'O Cookie 存在但未生成 P Cookie' : '未生成任何瑞数 Cookie',
+    nsd: ts.nsd || window.$_ts?.nsd,
   }));
   setTimeout(() => process.exit(0), 300);
 }
 
 main().catch(err => {
   process.stdout.write(JSON.stringify({
-    success: false,
-    cookies: {},
-    error: err.message,
+    success: false, cookies: {}, error: err.message,
   }));
   setTimeout(() => process.exit(1), 300);
 });
