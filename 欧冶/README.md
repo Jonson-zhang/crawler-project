@@ -5,147 +5,159 @@
 - **网站**: https://www.ouyeel.com
 - **搜索页**: https://www.ouyeel.com/steel/search?channel=RJ&pageIndex=1&pageSize=50
 - **API**: `POST https://www.ouyeel.com/search-ng/commoditySearch/queryCommodityResult`
-- **加密**: 瑞数反爬系统（4/5代）
-- **动态参数**: `K5nOZLud`（URL 查询参数），`T0k1m0u5AfREO/T0k1m0u5AfREP`（Cookie）
+- **加密**: 瑞数 v4 反爬系统
+- **动态参数**: K5nOZLud（URL 查询参数），T0k1m0u5AfREO/T0k1m0u5AfREP（Cookie）
 
 ---
 
-## 分析结论
+## 逆向结论
 
-### 瑞数版本
+### 瑞数版本：v4
 
-根据以下特征确定为 **瑞数 4/5 代**：
+特征：
+- 初始请求返回 **202**，包含 `<meta>` 标签 + `$_ts` 全局对象
+- 动态 JS 路径：`/vdGfdDb5PQO5/xxxxxxxx.6771a74.js`
+- `$_ts.cd` — 自定义 base64 编码的挑战 bytecode（~2200 字符）
+- `$_ts.nsd` — 种子值，每请求不同
+- 引擎 JS 使用 `while(1)+switch` 控制流平化 + 虚拟字节码解释器
+- 变量名模式：`_$bu`, `_$a$`, `_$_r`, `$_ts`, `_$kD`, `_$f9`
 
-- 初始请求返回 202 状态码
-- 包含 `<meta>` 标签的挑战值
-- 动态 JS 路径格式：`/vdGfdDb5PQO5/JlwbhPfc3stb.6771a74.js`
-- 变量命名模式：`_$bu`, `_$a$`, `$_r`, `$_ts`, `$_kD` 等
-- 使用 while(1)+switch 控制流平化混淆
-
-### 已知结论
-
-| 发现 | 说明 |
-|------|------|
-| K5nOZLud 首次请求必须 | 首次请求需要 K5nOZLud 参数，否则返回 202 |
-| Cookie 是关键认证 | T0k1m0u5AfREO（httpOnly）+ T0k1m0u5AfREP（非 httpOnly） |
-| HTTP/2 连接复用 | 浏览器已验证的连接不需要 K5nOZLud，后续请求直接 200 |
-| curl/httpx 外部请求 | 即使携带相同 Cookie，因无共享 HTTPS 连接仍返回 202 |
-| 浏览器内 XHR 可绕过 | 从 Camoufox 页面上下文中发起的 XHR 请求直接 200 |
-
-### API 请求格式
+### 挑战流程
 
 ```
-POST /search-ng/commoditySearch/queryCommodityResult
-Content-Type: application/x-www-form-urlencoded
-
-criteriaJson={"pageSize":50,"channel":"RJ","pageIndex":0,"maxPage":50,"jsonParam":{"channel":"RJ","keywordAnalyseResult":null}}
+客户端                          欧冶服务器
+  │                                │
+  │── POST /api (无Cookie) ──────→ │
+  │←──── 202 + 挑战HTML ────────── │  (设 T0k1m0u5AfREO + cookiesession1)
+  │    ├─ <meta content="...">     │
+  │    ├─ $_ts.cd = "..."          │
+  │    ├─ $_ts.nsd = N             │
+  │    └─ <script src="engine.js"> │
+  │                                │
+  │── GET engine.js ─────────────→ │
+  │←──── engine JS (202KB) ─────── │
+  │                                │
+  │  浏览器执行引擎 JS：             │
+  │  1. 检查 $_ts.cd 存在          │
+  │  2. 解码 bytecode（while+switch│
+  │     虚拟解释器）                │
+  │  3. 执行环境检测：              │
+  │     - navigator.userAgent      │
+  │     - screen 属性               │
+  │     - document.cookie          │
+  │     - 时间偏差                  │
+  │     - canvas 指纹               │
+  │  4. 计算结果 → $_ts.lcd()      │
+  │  5. 设置 T0k1m0u5AfREP        │
+  │  6. 清理痕迹                    │
+  │                                │
+  │── 自动重试原API (带 Cookie) ──→ │
+  │←──── 200 + 业务数据 ─────────── │
 ```
 
-**分页参数**: `pageIndex` 从 0 开始（0=第一页），`pageSize` 每页数量
+### 最终方案
 
-**频道代码**:
-| 代码 | 频道 | 代码 | 频道 |
-|------|------|------|------|
-| RJ | 热卷 | LC | 冷轧 |
-| ZX | 中厚板 | GX | 管材 |
-| TP | 特钢 | PZ | 盘条/棒线 |
-
----
-
-## 使用方式
-
-### 方式 1: Claude Code MCP（推荐，当前方式）
-
-Camoufox 浏览器已启动，可直接从浏览器上下文调用 API。
-
-```javascript
-// 在 evaluate_js 中执行:
-var xhr = new XMLHttpRequest();
-xhr.open('POST', '/search-ng/commoditySearch/queryCommodityResult', true);
-xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-xhr.onload = function() {
-    console.log('Status:', xhr.status);
-    console.log('Count:', JSON.parse(xhr.responseText).count);
-    // 处理数据...
-};
-xhr.send('criteriaJson=' + encodeURIComponent(JSON.stringify({
-    pageSize: 50, channel: 'RJ', pageIndex: 0, maxPage: 50,
-    jsonParam: {channel: 'RJ', keywordAnalyseResult: null}
-})));
-```
-
-### 方式 2: 浏览器代理服务
-
-保持 Camoufox 浏览器运行，通过 WebSocket 或 HTTP 代理转发请求。
-
-```
-Camoufox Browser (已验证会话)
-       ↓
-API 请求通过 evaluate_js/XHR 发出
-       ↓
-返回数据直接可用
-```
-
-### 方式 3: 使用 curl_cffi + 有效 Cookie
-
-```python
-from curl_cffi import requests
-# 携带 Cookie 和 Firefox 指纹
-resp = requests.post('https://...', impersonate='firefox135', cookies={...})
-```
-
-注意：curl_cffi 在部分配置下仍可能返回 202，需要完整模拟浏览器指纹。
+| 组件 | 方式 | 说明 |
+|------|------|------|
+| **Cookie 获取** | **浏览器辅助**（首次需要） | 需通过真实浏览器（Firefox/Chrome）完成首次瑞数挑战 |
+| **API 调用** | **curl_cffi**（纯 HTTP） | `impersonate='firefox135'` 匹配 Firefox TLS 指纹 |
+| **TLS 指纹** | **纯算** | curl_cffi 自动处理 JA3/JA4 指纹匹配 |
+| **分页** | **纯算** | 修改 criteriaJson 中的 pageIndex/pageSize |
 
 ---
 
 ## 文件说明
 
+| 文件 | 类型 | 用途 |
+|------|------|------|
+| `main.py` | **入口** | Python CLI + curl_cffi API 调用 |
+| `env.js` | 补环境 | Node.js 环境补丁（瑞数引擎执行尝试） |
+| `sign.js` | 补环境 | Node.js 挑战求解器 |
+| `cookies.json` | 数据 | 保存的有效 Cookie |
+| `cookie_fetcher.py` | 工具 | Cookie 管理 |
+| `README.md` | 文档 | 本文件 |
+
+### 分析文件
+
 | 文件 | 用途 |
 |------|------|
-| `solver.py` | 主求解器（浏览器代理模式） |
-| `cookie_fetcher.py` | Cookie 获取和管理工具 |
-| `cookies.json` | 保存的 Cookie 文件 |
-| `ruishu_js_1.js` | 瑞数 JS 文件 1（用于分析） |
-| `ruishu_js_2.js` | 瑞数 JS 文件 2（用于分析） |
-| `sample_response.json` | API 返回的示例响应数据 |
+| `202_fresh.html` | 202 挑战响应示例 |
+| `202_response.html` | 原始 202 响应 |
+| `sample_response.json` | API 成功响应示例 |
+| `ruishu_fresh.js` | 最新瑞数引擎 JS（175KB）|
+| `ruishu_engine_1.js` | 瑞数 JS 文件 1（202KB） |
+| `ruishu_engine_2.js` | 瑞数 JS 文件 2（152KB） |
+| `ruishu_js_1.js` | （旧）瑞数 JS 1 |
+| `ruishu_js_2.js` | （旧）瑞数 JS 2 |
+| `202_headers.txt` | 202 响应头 |
+| `solver.py` | 旧版浏览器 MCP 求解器（放弃） |
+| `test_ruishu.js` | 补环境测试脚本 |
 
 ---
 
-## 瑞数 JS 逆向要点（后续
+## 使用方式
 
-### 完全逆向方案
+### 方式 A: Python CLI（推荐）
 
-如需实现无浏览器的独立求解，需要：
+```bash
+# 交互模式
+python main.py --interactive
 
-1. **分析 RuiShu JS 算法**
-   - 破解 `while(1)+switch` 控制流平化
-   - 提取 K5nOZLud 生成函数
-   - 理解 `$_ts` 对象和 cookie 生成逻辑
+# 查询第一页热卷
+python main.py --page 0 --size 50 --channel RJ
 
-2. **生成初始 Cookie**
-   - 解析 202 响应中的 meta content
-   - 执行 RuiShu JS 计算验证值
-   - 设置 T0k1m0u5AfREO/T0k1m0u5AfREP Cookie
+# 查询冷轧第二页
+python main.py --page 1 --size 50 --channel LC
+```
 
-3. **K5nOZLud 动态生成**
-   - 每请求生成一次
-   - 与时间戳/会话绑定
-   - 可能包含请求路径/参数的签名
+**前置条件**: `cookies.json` 中有有效 Cookie。
 
-### TLS 指纹匹配
+### 方式 B: 获取 Cookie
 
-外部请求必须匹配浏览器指纹：
-- JA3/JA4 指纹
-- HTTP/2 设置帧参数
-- 支持的密码套件
-- 扩展头顺序
+如果 Cookie 过期，通过 Camoufox/Chrome/Firefox 访问：
+1. 打开 https://www.ouyeel.com/steel/search?channel=RJ&pageIndex=1&pageSize=50
+2. 等待页面加载完成（瑞数挑战自动解决）
+3. F12 → Application → Cookies → 复制 `www.ouyeel.com` 下所有 Cookie
+4. 保存到 `cookies.json`
 
-可使用 `curl_cffi` (Python) 或 `curl-impersonate` (命令行)。
+### 方式 C: curl 直接调用
+
+```bash
+curl -s -X POST 'https://www.ouyeel.com/search-ng/commoditySearch/queryCommodityResult' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0' \
+  -H 'Cookie: T0k1m0u5AfREP=xxx; T0k1m0u5AfREO=xxx; cookiesession1=xxx' \
+  -d 'criteriaJson={"pageSize":50,"channel":"RJ","pageIndex":0,"jsonParam":{"channel":"RJ"}}'
+```
 
 ---
 
-## 版本历史
+## 已知限制
 
-| 版本 | 日期 | 变更 |
-|------|------|------|
-| 1.0 | 2026-07-01 | 初始逆向完成，浏览器代理方案可用 |
+1. **RuiShu v4 引擎无法在纯 Node.js 环境下执行完成**
+   - 原因：字节码解释器的 `while(1)+switch` 循环在缺少真实浏览器属性时进入无限循环
+   - 缓解：使用 curl_cffi 指纹 + 有效 Cookie 直接调用 API
+
+2. **Cookie 会过期**
+   - T0k1m0u5AfREO: 长期有效（2036年过期）
+   - T0k1m0u5AfREP: 短期有效（数小时内）
+   - 过期需要重新通过浏览器获取
+
+3. **curl_cffi 需要特定版本**
+   - 需要支持 `impersonate='firefox135'` 参数
+   - 后续 Firefox 版本升级可能需要调整
+
+---
+
+## 后续优化方向
+
+1. **iv8 方案**：使用 iv8（Python V8 绑定）执行瑞数引擎
+   - iv8 是真正的 V8 C++ 引擎，与 Chrome 行为一致
+   - 有望绕过字节码解释器的环境检测
+   - 参考：`.claude/memory/iv8-nodejs-workflow.md`
+
+2. **RuiShu 纯算**：逆向 `$_ts.cd` 解码算法 + 自定义 base64 表
+   - 直接实现 bytecode 解释器
+   - 需大量人力时间
+
+3. **自动化 Cookie 刷新**：使用 Camoufox SDK 定时刷新 Cookie
