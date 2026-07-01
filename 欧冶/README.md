@@ -142,15 +142,43 @@ curl -s -X POST 'https://www.ouyeel.com/search-ng/commoditySearch/queryCommodity
 
 ---
 
-## 后续优化方向
+## iv8 继续完善
 
-1. **iv8 方案**：使用 iv8（Python V8 绑定）执行瑞数引擎
-   - iv8 是真正的 V8 C++ 引擎，与 Chrome 行为一致
-   - 有望绕过字节码解释器的环境检测
-   - 参考：`.claude/memory/iv8-nodejs-workflow.md`
+### 当前状态
 
-2. **RuiShu 纯算**：逆向 `$_ts.cd` 解码算法 + 自定义 base64 表
-   - 直接实现 bytecode 解释器
-   - 需大量人力时间
+iv8 已成功加载并启动瑞数引擎 JS（175KB），引擎解码 `$_ts.cd` 字节码后开始执行挑战，
+但字节码中的环境检查需要精确匹配浏览器 DOM。
 
-3. **自动化 Cookie 刷新**：使用 Camoufox SDK 定时刷新 Cookie
+### 已定位的瓶颈
+
+引擎启动后在 `_$eQ()` 函数处抛出：
+```
+TypeError: Cannot read properties of undefined (reading 'getAttribute')
+```
+
+问题根源：iv8 的 C++ 类型 DOM 与 POJO stub 之间存在差异。瑞数字节码访问 DOM 元素
+时获取到 `undefined`。
+
+### 解决思路
+
+1. **完善 DOM stubs**（当前 `test_iv8.py` 中的方案）
+   - 使用 iv8 C++ 原生 DOM + `Object.defineProperty` 逐属性覆盖
+   - 关键属性：`document.body` / `document.documentElement` / `getAttribute` / `removeChild`
+   - 参考 `.claude/memory/iv8-dom-stubs.md`
+
+2. **启用 trace\_property\_access 精确采集**
+   - 在 Camoufox 中启用 `enable_trace=True` 启动浏览器
+   - 导航到目标页面采集瑞数 JS 实际访问的所有 DOM 属性
+   - 将采集结果逐条映射到 iv8 environment
+
+3. **切换 Firefox 指纹**
+   - iv8 默认使用 Chrome 124 UA，瑞数可能基于 UA 切换验证逻辑
+   - 通过 `Object.defineProperty` 覆盖 `navigator.userAgent` 为 Firefox 135
+
+### 参考
+
+- `.claude/memory/iv8-nodejs-workflow.md` — iv8 工作流总纲
+- `.claude/memory/iv8-dom-stubs.md` — DOM stub 方案
+- `.claude/memory/iv8-doc-cookie.md` — document.cookie 处理
+- `.claude/memory/iv8-navigator-plugins.md` — navigator 属性覆盖
+- `欧冶/test_iv8.py` — 当前 iv8 测试脚本
