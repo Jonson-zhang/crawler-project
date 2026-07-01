@@ -27,7 +27,7 @@
 
 > ⚠️ **最高优先级规则** — 国家医保局逆向的核心教训。
 
-- [优先使用站点内部 JS 代码](js-reverse-priority.md) — **内部加密函数 > webpack 模块扣取 > iv8/jsdom 补环境 > 外部库重建**。npm sm-crypto 与站点内部 SM2 不兼容，所有外部重建尝试全部失败。
+- [优先使用站点内部 JS 代码](js-reverse-priority.md) — **Webpack 硬约束：必须扣内部模块，禁止跑完整 bundle**。内部加密函数 > webpack 模块扣取 > iv8 补环境 > 外部库重建。jsdom 永远禁止。
 
 ## 其他经验
 
