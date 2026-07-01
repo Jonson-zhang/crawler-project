@@ -182,3 +182,51 @@ TypeError: Cannot read properties of undefined (reading 'getAttribute')
 - `.claude/memory/iv8-doc-cookie.md` — document.cookie 处理
 - `.claude/memory/iv8-navigator-plugins.md` — navigator 属性覆盖
 - `欧冶/test_iv8.py` — 当前 iv8 测试脚本
+
+---
+
+## sdenv / jsdom 补环境方案
+
+### 当前状态
+
+sdenv（npm 包 v1.1.3）的 C++ 原生扩展（documentAll.node）在当前 Windows 环境下无法编译（缺少 VS Build Tools）。改用纯 jsdom 方案：
+
+- `欧冶/sdenv/ouyeel_env.js` — 纯 JS 浏览器环境补丁（替代 sdenv C++ 扩展）
+- `欧冶/sdenv/generate_cookie.js` — 基于 jsdom 的 Cookie 生成器
+- `欧冶/sdenv/package.json` — 依赖声明
+
+已完成的补丁：document.all、navigator、screen、location、document、performance、
+window 方法、Canvas 2D、WebGL、AudioContext、WebSocket、Storage 等。
+
+### 已知问题
+
+jsdom 环境下瑞数引擎执行到 `_$kD` 内部时出错：
+
+```
+Cannot read properties of undefined (reading 'length')
+```
+
+原因：瑞数 6 代引擎 JS 的字节码解释器中，环境检测逐项比对对象属性，
+任一缺失的属性值（undefined）会在后续计算中导致 `Array(length)` 构造异常。
+需要精确匹配所有被访问的属性。
+
+### 三条路径对比
+
+| 方案 | 状态 | 优势 | 劣势 |
+|------|------|------|------|
+| **curl_cffi + 人工 Cookie** | ✅ 可用 | 简单、快速 | Cookie 过期需手动刷新 |
+| **Camoufox 自动获取 Cookie** | ✅ 可用 | 全自动 | 需启动浏览器（~3s） |
+| **jsdom/sdenv 纯算** | ❌ 不完整 | 无需浏览器、最快 | 环境补丁需逐项调试 |
+
+### 推荐使用流程
+
+```
+Camoufox 浏览器（自动过瑞数）
+  → 提取 T0k1m0u5AfREP 等 Cookie
+  → 保存到 cookies.json
+  → curl_cffi Firefox 135 指纹调用 API
+  → Cookie 过期时自动重启 Camoufox
+```
+
+见 `main_sdenv.py`。
+
