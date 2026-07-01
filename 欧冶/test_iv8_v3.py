@@ -185,8 +185,8 @@ nsd_m = re.search(r'nsd=(\d+)', html)
 cd = cd_m.group(1) if cd_m else ""
 nsd = int(nsd_m.group(1)) if nsd_m else 0
 # Write cd to a var in iv8 to avoid escaping hell
-ctx.eval("window.$_ts = {}; window.$_ts.nsd = {}; window.$_ts.scj = 0; window.$_ts.aebi = 0;".format(nsd))
-ctx.eval('window.$_ts_cd_str = "PLACEHOLDER";')
+ctx.eval("window.$_ts = {}; window.$_ts.nsd = 0; window.$_ts.scj = 0; window.$_ts.aebi = 0;")
+ctx.eval(f"window.$_ts.nsd = {nsd};")
 # Use a different approach - set cd via Python
 import json as _j
 cd_json = _j.dumps(cd)
