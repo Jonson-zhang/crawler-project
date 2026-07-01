@@ -59,8 +59,8 @@ ENV_JS = r"""
     });
     document.__defineSetter__('cookie', function(v) {
         if (v && v.indexOf('=') > 0) {
-            var eq = v.indexOf('='');
-            var semi = v.indexOf('';');
+            var eq = v.indexOf('=');
+            var semi = v.indexOf(';');
             var val = semi > 0 ? v.substring(0, semi) : v;
             _ck[v.substring(0, eq).trim()] = val.substring(eq + 1).trim();
         }
