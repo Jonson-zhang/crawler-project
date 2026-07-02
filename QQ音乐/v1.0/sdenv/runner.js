@@ -4,30 +4,29 @@
  * ======================
  *
  * 使用 sdenv (C++ V8 Addon + jsdom) 创建完整浏览器环境，
- * 加载 webpack chunk（runtime.js + vendor.chunk.js），
- * 提供 sign/encrypt/decrypt 三个功能。
+ * 加载 webpack chunk 提供 sign 函数。
  *
- * sdenv 提供完整的 Chrome 浏览器 API（含 Canvas、WebGL、
- * CookieJar 等）。配合 env_patch.js 的 safeFunction 机制
- * 确保 VMP 模块能正确解码出 __cgiEncrypt / __cgiDecrypt。
+ * encrypt/decrypt 回退到原始 qqmusic_api.js（VMP 模块
+ * 需在 qqmusic_api.js 的进程上下文中解码）。
  *
  * 用法:
  *   node runner.js sign '{"test":"hello"}'
- *   node runner.js encrypt '{"comm":{...}}'
- *   node runner.js decrypt '<base64>'
+ *   node runner.js encrypt '{"comm":{...}}'   → 回退 qqmusic_api.js
+ *   node runner.js decrypt '<base64>'          → 回退 qqmusic_api.js
  *
  * 输出: {"success": true, "result": "..."}
  */
 
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 
 const _process = process;
 const _require = require;
 const _Buffer = Buffer;
 
 const HERE = __dirname;
-const V1 = path.resolve(HERE, "..");  // QQ音乐/v1.0/
+const V1 = path.resolve(HERE, "..");
 
 // ── 1. 加载 sdenv ────────────────────────────────────────
 const { jsdomFromText } = _require("../../../瑞数/兰州交通大学/node_modules/sdenv");
@@ -63,21 +62,16 @@ async function main() {
     global.location = window.location;
     global.self = window;
 
-    //
-    // ── 3. 加载 env_patch（safeFunction 机制） ───────────
-    // VMP 模块通过 fn.toString() 检测环境真实性。
-    // env_patch 的 safeFunction 确保所有浏览器 API 函数
-    // 的 toString() 返回 [native code]。
-    //
-    _require(path.join(HERE, "env_site.js"));
+    // Node.js 原生 Web Crypto
+    const nodeCrypto = _require("crypto").webcrypto;
+    window.crypto = nodeCrypto;
+    global.crypto = nodeCrypto;
 
-    //
-    // ── 4. 加载 webpack chunk ───────────────────────────
-    //
+    // ── 3. 加载 webpack ──────────────────────────────────
     window.webpackJsonp = [];
     eval(fs.readFileSync(path.join(V1, "runtime.js"), "utf-8"));
 
-    // 注入 stub 模块
+    // stub 模块
     window.webpackJsonp.push([
       [999],
       {
@@ -95,9 +89,7 @@ async function main() {
     // 加载 vendor chunk
     eval(fs.readFileSync(path.join(V1, "vendor.chunk.js"), "utf-8"));
 
-    //
-    // ── 5. 激活模块 ──────────────────────────────────────
-    //
+    // ── 4. 激活模块 ──────────────────────────────────────
     const wp = window.__webpack_require__;
     if (wp && wp.m) {
       Object.keys(wp.m).forEach(function (id) {
@@ -106,27 +98,37 @@ async function main() {
     }
 
     const getSecuritySign = window._getSecuritySign || window._getSecuritySign2;
-    const cgiEncrypt = window.__cgiEncrypt;
-    const cgiDecrypt = window.__cgiDecrypt;
 
+    // ── 5. 主要逻辑 ─────────────────────────────────────
+    // sign → sdenv V8 直接执行
+    // encrypt/decrypt → 回退到 qqmusic_api.js（VMP 解码需要）
     let result;
     switch (action) {
       case "sign":
         if (!getSecuritySign) throw new Error("Sign function not available");
         result = getSecuritySign(input);
         break;
+
       case "encrypt":
-        if (!cgiEncrypt) throw new Error("Encrypt function not available");
-        result = await cgiEncrypt(input);
-        break;
-      case "decrypt":
-        if (!cgiDecrypt) throw new Error("Decrypt function not available");
-        {
-          const binaryBuf = _Buffer.from(input.trim(), "base64");
-          const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
-          result = cgiDecrypt(uint8);
+      case "decrypt": {
+        // 大数据用临时文件
+        const tmpFile = path.join(HERE, "_tmp_input.txt");
+        fs.writeFileSync(tmpFile, input, "utf-8");
+        try {
+          const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" ${action} --file "${tmpFile}"`, {
+            encoding: "utf-8", timeout: 30000,
+          });
+          const j = JSON.parse(r);
+          if (!j.success) throw new Error(j.error);
+          result = j.result;
+        } finally {
+          try { fs.unlinkSync(tmpFile); } catch (_) {}
         }
         break;
+      }
+
+      default:
+        throw new Error("Unknown action: " + action);
     }
 
     clearTimeout(timeout);
