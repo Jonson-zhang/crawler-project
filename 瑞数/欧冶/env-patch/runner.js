@@ -465,7 +465,7 @@ async function main() {
         });
       }
       // 先加入初始 cookie（来自 HTTP Set-Cookie 头）
-      parseInto(rawPairs, initialCookives);
+      parseInto(rawPairs, initialCookies);
       // 再加入 RS6 VM 生成的 cookie（覆盖同名的初始值）
       parseInto(rawPairs, rawCookie);
       // 合并输出
