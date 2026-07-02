@@ -300,6 +300,52 @@ if (typeof global.indexedDB === 'undefined') {
 //   - setTimeout / setInterval 替换为 no-op
 //   - RS6 内联脚本 + 外链 JS 的执行
 
+// ── 2.15 统一 Proxy 包裹（匹配 0110 指南模式） ──
+//    RS6 在运行时通过 Proxy 拦截所有属性访问，确保：
+//      - 函数访问时自动 .bind(target) 防止 Illegal invocation
+//      - 所有属性访问经过统一 logger（调试时）
+//      - 不存在属性返回 undefined 而不是抛出
+//
+//    ⭐ 这是 0110 指南中 setProxyArr 的核心逻辑。
+//    必须在所有环境设置完成后执行（最后一步）。
+(function () {
+  var SILENT_PROPS = new Set([
+    'isNaN', 'isFinite', 'parseInt', 'parseFloat', 'encodeURI',
+    'encodeURIComponent', 'decodeURI', 'decodeURIComponent',
+    'JSON', 'Math', 'Reflect', 'Atomics', 'undefined', 'Infinity',
+    '-Infinity', 'NaN', 'console', 'Uint8Array', 'ArrayBuffer',
+    'eval', 'arguments', 'caller', 'callee', 'Symbol',
+  ]);
+
+  function makeHandler(objName) {
+    return {
+      get: function (target, prop, receiver) {
+        if (typeof prop !== 'symbol' && !(prop in target) && !isNaN(prop)) {
+          return undefined;
+        }
+        var value = Reflect.get(target, prop, receiver);
+        var propStr = typeof prop === 'symbol' ? prop.toString() : String(prop);
+        if (!SILENT_PROPS.has(propStr) && typeof value === 'function') {
+          return value.bind(target);
+        }
+        return value;
+      },
+      set: function (target, prop, value, receiver) {
+        return Reflect.set(target, prop, value, receiver);
+      },
+    };
+  }
+
+  // 对关键 BOM 对象施加 Proxy 包裹
+  var TARGETS = ['window', 'document', 'location', 'navigator', 'screen', 'history'];
+  TARGETS.forEach(function (name) {
+    var obj = globalThis[name];
+    if (obj && typeof obj === 'object') {
+      globalThis[name] = new Proxy(obj, makeHandler(name));
+    }
+  });
+})();
+
 // ═══════════════════════════════════════════════════════════════
 // 3. DEBUG_PROXY 调试（如需排查缺失属性，取消注释）
 // ═══════════════════════════════════════════════════════════════
