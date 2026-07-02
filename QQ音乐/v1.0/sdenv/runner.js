@@ -117,12 +117,18 @@ async function main() {
           const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
           result = cgiDecrypt(uint8);
         } else {
-          // 回退到原始 qqmusic_api.js
+          // 回退到原始 qqmusic_api.js（大数据用临时文件）
           const { execSync } = require("child_process");
-          const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" decrypt "${input}"`, { encoding: "utf-8", timeout: 30000 });
-          const j = JSON.parse(r);
-          if (!j.success) throw new Error(j.error);
-          result = j.result;
+          const tmpFile = path.join(HERE, "_decrypt_input.txt");
+          fs.writeFileSync(tmpFile, input, "utf-8");
+          try {
+            const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" decrypt --file "${tmpFile}"`, { encoding: "utf-8", timeout: 30000 });
+            const j = JSON.parse(r);
+            if (!j.success) throw new Error(j.error);
+            result = j.result;
+          } finally {
+            try { fs.unlinkSync(tmpFile); } catch(_) {}
+          }
         }
         break;
     }
