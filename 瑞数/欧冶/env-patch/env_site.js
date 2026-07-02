@@ -197,6 +197,24 @@ document.createElement = function (tagName) {
 };
 sn(document.createElement, 'createElement');
 
+// ── 2.13 补充 env_patch 未提供的浏览器全局 API ──
+//    RS6 环境指纹检测可能检查这些 API 的存在性。
+//    indexedDB 在 Chrome 中始终存在，env_patch 未提供。
+if (typeof global.indexedDB === 'undefined') {
+  function IDBFactory() {}
+  IDBFactory.prototype.open = function () {
+    var req = { result: null, error: null, readyState: 'done',
+      onupgradeneeded: null, onsuccess: null, onerror: null };
+    return req;
+  };
+  IDBFactory.prototype.deleteDatabase = function () {};
+  IDBFactory.prototype.cmp = function () { return 0; };
+  Object.defineProperty(global, 'indexedDB', {
+    value: new IDBFactory(),
+    writable: true, configurable: true, enumerable: false,
+  });
+}
+
 // ⚠️ 以下内容在 run-time 由 runner.js 动态设置 ──
 //   - document.getElementsByTagName('META') → meta content
 //   - document.cookie 初始值
