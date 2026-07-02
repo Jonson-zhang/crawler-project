@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * QQ音乐 sdenv 签名器（jsdom 环境）
- * ====================================
+ * QQ音乐 sdenv 签名器
+ * ======================
  *
- * 使用 jsdom 创建完整 DOM 环境，加载 webpack chunk，
- * 提供 sign/encrypt/decrypt 功能。encrypt/decrypt 回退到
- * 原始 qqmusic_api.js（VMP 模块需额外条件）。
+ * 使用 sdenv (C++ V8 Addon + jsdom) 创建完整浏览器环境，
+ * 加载 webpack chunk（runtime.js + vendor.chunk.js），
+ * 提供 sign/encrypt/decrypt 三个功能。
+ *
+ * sdenv 提供完整的 Chrome 浏览器 API（含 Canvas、WebGL、
+ * CookieJar 等），VMP 模块在 sdenv 环境下可直接解码。
  *
  * 用法:
  *   node runner.js sign '{"test":"hello"}'
@@ -17,12 +20,16 @@
 
 const fs = require("fs");
 const path = require("path");
-const { JSDOM } = require("jsdom");
 
 const _process = process;
+const _require = require;
 const _Buffer = Buffer;
+
 const HERE = __dirname;
 const V1 = path.resolve(HERE, "..");  // QQ音乐/v1.0/
+
+// ── 1. 加载 sdenv ────────────────────────────────────────
+const { jsdomFromText } = _require("../../兰州交通大学/node_modules/sdenv");
 
 async function main() {
   const action = _process.argv[2];
@@ -31,7 +38,7 @@ async function main() {
     input = fs.readFileSync(_process.argv[4], "utf-8");
   }
   if (!action || !input) {
-    _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt> <data>" }));
+    _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt> <data>"));
     _process.exit(1);
   }
 
@@ -41,12 +48,15 @@ async function main() {
   }, 30000);
 
   try {
-    // ── 1. 创建 jsdom 环境 ────────────────────────────────
-    const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
-      url: "https://y.qq.com/",
+    // ── 2. 创建 sdenv 浏览器环境 ──────────────────────────
+    // sdenv 的 jsdomFromText 创建 JSDOM 环境并施用
+    // chrome 浏览器扩展（完整的 DOM/BOM API + Canvas + CookieJar）
+    const dom = await jsdomFromText('<!DOCTYPE html><html><head></head><body></body></html>', {
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-      runScripts: "dangerously",
+      browserType: "chrome",
+      consoleConfig: { error: () => {} },
     });
+
     const window = dom.window;
     global.window = window;
     global.document = window.document;
@@ -54,12 +64,12 @@ async function main() {
     global.location = window.location;
     global.self = window;
 
-    // 提供 crypto（Node.js 原生 Web Crypto）
-    const nodeCrypto = require("crypto").webcrypto;
+    // 替换为 Node.js 原生 Web Crypto
+    const nodeCrypto = _require("crypto").webcrypto;
     window.crypto = nodeCrypto;
     global.crypto = nodeCrypto;
 
-    // ── 2. 加载 webpack ──────────────────────────────────
+    // ── 3. 加载 webpack ──────────────────────────────────
     window.webpackJsonp = [];
     eval(fs.readFileSync(path.join(V1, "runtime.js"), "utf-8"));
 
@@ -81,11 +91,11 @@ async function main() {
     // 加载 vendor chunk
     eval(fs.readFileSync(path.join(V1, "vendor.chunk.js"), "utf-8"));
 
-    // 激活模块
+    // ── 4. 激活模块 ──────────────────────────────────────
     const wp = window.__webpack_require__;
     if (wp && wp.m) {
       Object.keys(wp.m).forEach(function (id) {
-        if (wp.m[id]) try { wp(id); } catch (_) {}
+        if (wp.m[id]) { try { wp(id); } catch (_) {} }
       });
     }
 
@@ -100,35 +110,15 @@ async function main() {
         result = getSecuritySign(input);
         break;
       case "encrypt":
-        if (cgiEncrypt) {
-          result = await cgiEncrypt(input);
-        } else {
-          // 回退到原始 qqmusic_api.js
-          const { execSync } = require("child_process");
-          const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" encrypt "${input.replace(/"/g, '\\"')}"`, { encoding: "utf-8", timeout: 30000 });
-          const j = JSON.parse(r);
-          if (!j.success) throw new Error(j.error);
-          result = j.result;
-        }
+        if (!cgiEncrypt) throw new Error("Encrypt function not available");
+        result = await cgiEncrypt(input);
         break;
       case "decrypt":
-        if (cgiDecrypt) {
+        if (!cgiDecrypt) throw new Error("Decrypt function not available");
+        {
           const binaryBuf = _Buffer.from(input.trim(), "base64");
           const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
           result = cgiDecrypt(uint8);
-        } else {
-          // 回退到原始 qqmusic_api.js（大数据用临时文件）
-          const { execSync } = require("child_process");
-          const tmpFile = path.join(HERE, "_decrypt_input.txt");
-          fs.writeFileSync(tmpFile, input, "utf-8");
-          try {
-            const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" decrypt --file "${tmpFile}"`, { encoding: "utf-8", timeout: 30000 });
-            const j = JSON.parse(r);
-            if (!j.success) throw new Error(j.error);
-            result = j.result;
-          } finally {
-            try { fs.unlinkSync(tmpFile); } catch(_) {}
-          }
         }
         break;
     }
