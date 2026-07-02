@@ -5,7 +5,7 @@
  */
 
 const _require = require;
-const { setupEnv } = _require("../../.claude/env-patch/env_patch.js");
+const { setupEnv } = _require("../../../.claude/env-patch/env_patch.js");
 
 setupEnv({
   url: "https://y.qq.com/",
