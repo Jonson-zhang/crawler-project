@@ -3,33 +3,33 @@
  * QQ音乐 sdenv 签名器
  * ======================
  *
- * 使用 sdenv (C++ V8 Addon + jsdom) 创建完整浏览器环境，
- * 加载 webpack chunk 提供 sign 函数。
+ * 使用 env_patch 创建浏览器环境，加载 webpack chunk，
+ * 提供 sign/encrypt/decrypt 功能。
  *
- * encrypt/decrypt 回退到原始 qqmusic_api.js（VMP 模块
- * 需在 qqmusic_api.js 的进程上下文中解码）。
+ * 模块 8 的 VMP 解码需要：
+ *   1. env_patch 的 window 原型链（EventTarget → Window）
+ *   2. await 排空微任务队列，让 VMP 完成异步解码
  *
  * 用法:
  *   node runner.js sign '{"test":"hello"}'
- *   node runner.js encrypt '{"comm":{...}}'   → 回退 qqmusic_api.js
- *   node runner.js decrypt '<base64>'          → 回退 qqmusic_api.js
+ *   node runner.js encrypt '{"comm":{...}}'
+ *   node runner.js decrypt '<base64>'
+ *   node runner.js combined '{"comm":{...}}'   → sign + encrypt 一次调用
  *
- * 输出: {"success": true, "result": "..."}
+ * 输出: {"success": true, result: "..."}
  */
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
 
 const _process = process;
 const _require = require;
 const _Buffer = Buffer;
 
 const HERE = __dirname;
-const V1 = path.resolve(HERE, "..");
 
-// ── 1. 加载 sdenv ────────────────────────────────────────
-const { jsdomFromText } = _require("../../../瑞数/兰州交通大学/node_modules/sdenv");
+// ── 1. env_patch 环境 ────────────────────────────────────
+_require(path.join(HERE, "env_site.js"));
 
 async function main() {
   const action = _process.argv[2];
@@ -38,41 +38,22 @@ async function main() {
     input = fs.readFileSync(_process.argv[4], "utf-8");
   }
   if (!action || !input) {
-    _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt> <data>" }) + "\n");
+    _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt|combined> <data>" }) + "\n");
     _process.exit(1);
   }
 
   const timeout = setTimeout(function () {
     _process.stderr.write(JSON.stringify({ success: false, error: "Timeout" }) + "\n");
     _process.exit(1);
-  }, 30000);
+  }, 60000);
 
   try {
-    // ── 2. 创建 sdenv 浏览器环境 ──────────────────────────
-    const dom = await jsdomFromText('<!DOCTYPE html><html><head></head><body></body></html>', {
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-      browserType: "chrome",
-      consoleConfig: { error: () => {} },
-    });
-
-    const window = dom.window;
-    global.window = window;
-    global.document = window.document;
-    global.navigator = window.navigator;
-    global.location = window.location;
-    global.self = window;
-
-    // Node.js 原生 Web Crypto
-    const nodeCrypto = _require("crypto").webcrypto;
-    window.crypto = nodeCrypto;
-    global.crypto = nodeCrypto;
-
-    // ── 3. 加载 webpack ──────────────────────────────────
-    window.webpackJsonp = [];
-    eval(fs.readFileSync(path.join(V1, "runtime.js"), "utf-8"));
+    // ── 2. 加载 webpack ──────────────────────────────────
+    global.window.webpackJsonp = [];
+    eval(fs.readFileSync(path.join(HERE, "runtime.js"), "utf-8"));
 
     // stub 模块
-    window.webpackJsonp.push([
+    global.window.webpackJsonp.push([
       [999],
       {
         380: function (e) { e.exports = { debuglog: function () { return function () {}; }, inspect: { colors: false } }; },
@@ -87,21 +68,26 @@ async function main() {
     ]);
 
     // 加载 vendor chunk
-    eval(fs.readFileSync(path.join(V1, "vendor.chunk.js"), "utf-8"));
+    eval(fs.readFileSync(path.join(HERE, "vendor.chunk.js"), "utf-8"));
 
-    // ── 4. 激活模块 ──────────────────────────────────────
-    const wp = window.__webpack_require__;
+    // ── 3. 激活模块 ──────────────────────────────────────
+    const wp = global.window.__webpack_require__;
     if (wp && wp.m) {
       Object.keys(wp.m).forEach(function (id) {
         if (wp.m[id]) { try { wp(id); } catch (_) {} }
       });
     }
 
-    const getSecuritySign = window._getSecuritySign || window._getSecuritySign2;
+    const getSecuritySign = global.window._getSecuritySign || global.window._getSecuritySign2;
+
+    // ── 4. await 微任务排空 ──────────────────────────────
+    // 模块 8 的 VMP 通过 Promise/setTimeout 异步解码 __cgiEncrypt
+    await new Promise(function (resolve) { setTimeout(resolve, 100); });
+
+    const cgiEncrypt = global.window.__cgiEncrypt;
+    const cgiDecrypt = global.window.__cgiDecrypt;
 
     // ── 5. 主要逻辑 ─────────────────────────────────────
-    // sign → sdenv V8 直接执行
-    // encrypt/decrypt → 回退到 qqmusic_api.js（VMP 解码需要）
     let result;
     switch (action) {
       case "sign":
@@ -110,20 +96,25 @@ async function main() {
         break;
 
       case "encrypt":
-      case "decrypt": {
-        // 大数据用临时文件
-        const tmpFile = path.join(HERE, "_tmp_input.txt");
-        fs.writeFileSync(tmpFile, input, "utf-8");
-        try {
-          const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" ${action} --file "${tmpFile}"`, {
-            encoding: "utf-8", timeout: 30000,
-          });
-          const j = JSON.parse(r);
-          if (!j.success) throw new Error(j.error);
-          result = j.result;
-        } finally {
-          try { fs.unlinkSync(tmpFile); } catch (_) {}
+        if (!cgiEncrypt) throw new Error("Encrypt function not available");
+        result = await cgiEncrypt(input);
+        break;
+
+      case "decrypt":
+        if (!cgiDecrypt) throw new Error("Decrypt function not available");
+        {
+          const binaryBuf = _Buffer.from(input.trim(), "base64");
+          const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
+          result = cgiDecrypt(uint8);
         }
+        break;
+
+      case "combined": {
+        // 一次性完成 sign + encrypt
+        const _input = JSON.parse(input);
+        const _sign = getSecuritySign ? getSecuritySign(JSON.stringify(_input)) : null;
+        const _encrypted = cgiEncrypt ? await cgiEncrypt(JSON.stringify(_input)) : null;
+        result = JSON.stringify({ sign: _sign, encrypted: _encrypted });
         break;
       }
 
