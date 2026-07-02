@@ -107,15 +107,29 @@ async function main() {
         result = getSecuritySign(input);
         break;
       case "encrypt":
-        if (!cgiEncrypt) throw new Error("Encrypt function not available");
-        result = await cgiEncrypt(input);
+        if (cgiEncrypt) {
+          result = await cgiEncrypt(input);
+        } else {
+          // 回退到原始 qqmusic_api.js（同 iv8 方案）
+          const { execSync } = _require("child_process");
+          const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" encrypt "${input.replace(/"/g, '\\"')}"`, { encoding: "utf-8", timeout: 30000 });
+          const j = JSON.parse(r);
+          if (!j.success) throw new Error(j.error);
+          result = j.result;
+        }
         break;
       case "decrypt":
-        if (!cgiDecrypt) throw new Error("Decrypt function not available");
-        {
+        if (cgiDecrypt) {
           const binaryBuf = _Buffer.from(input.trim(), "base64");
           const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
           result = cgiDecrypt(uint8);
+        } else {
+          // 回退到原始 qqmusic_api.js
+          const { execSync } = _require("child_process");
+          const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" decrypt "${input}"`, { encoding: "utf-8", timeout: 30000 });
+          const j = JSON.parse(r);
+          if (!j.success) throw new Error(j.error);
+          result = j.result;
         }
         break;
     }
