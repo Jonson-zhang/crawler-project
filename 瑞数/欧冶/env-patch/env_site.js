@@ -161,7 +161,26 @@ if (_origStyleDesc && !_origStyleDesc.get) {
   });
 }
 
-// ── 2.11 覆盖 document.createElement 确保元素属性完整 ──
+// ── 2.11 补齐 HTMLDocument.prototype 上的 DOM 操作方法 ──
+//    env_patch 的 HTMLDocument 继承自 EventTarget，不是 Node，
+//    所以 document 上没有 appendChild/removeChild。
+//    RS6 会在 document 上直接调用这些方法。
+HTMLDocument.prototype.appendChild = function (child) {
+  return child;
+};
+sn(HTMLDocument.prototype.appendChild, 'appendChild');
+
+HTMLDocument.prototype.removeChild = function (child) {
+  return child;
+};
+sn(HTMLDocument.prototype.removeChild, 'removeChild');
+
+HTMLDocument.prototype.insertBefore = function () {
+  return null;
+};
+sn(HTMLDocument.prototype.insertBefore, 'insertBefore');
+
+// ── 2.12 覆盖 document.createElement 确保元素属性完整 ──
 //    env_patch 的 createElement 不设置 tagName/nodeName/ownerDocument，
 //    RS6 可能通过元素反射检测这些属性。
 var origCreateElement = document.createElement.bind(document);
