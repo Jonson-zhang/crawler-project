@@ -1,11 +1,17 @@
+import requests, json
+from lxml import etree
 import subprocess
-import sys
 from pathlib import Path
 
-import requests
-from lxml import etree
+HERE = Path(__file__).parent
 
 session = requests.session()
+
+# cookies = {
+#     'T0k1m0u5AfREO': '5Kr8BmXYwVMluL1aO0gpc_cDiXGdFCbURnA8VZsnecdkKUUjexNAV5HpxpqCLIXDDUof6GO4POMxq.R.UhcO7rq',
+#     'cookiesession1': '678A3E1A457B65ECF826195EF85DB9D7',
+#     'T0k1m0u5AfREP': '257NKRclB.IdZ8daPthMu4Oo.XYTAdWKORWc.yrkhtxU1pqkAoB0qq0JxSOB0a12wnhpj4q03lieIk8bJrgr0B0iuL4Ns4iYesI5jCd_qlOn9qUtbAxHbCii5FrEin6YwMVecF5wTUJZ3rhYViQvAzsNxPVISCrj13mHcBIoMurwitNrfZphTHI.f0NpDlqxjIjQ5HIGYTZwoQ63V.SsrD1ZylTG3ZeH8dYYSU9V4JE',
+# }
 
 headers = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -22,6 +28,7 @@ headers = {
     "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"Windows"',
+    # 'Cookie': 'T0k1m0u5AfREO=5Kr8BmXYwVMluL1aO0gpc_cDiXGdFCbURnA8VZsnecdkKUUjexNAV5HpxpqCLIXDDUof6GO4POMxq.R.UhcO7rq; cookiesession1=678A3E1A457B65ECF826195EF85DB9D7; T0k1m0u5AfREP=257NKRclB.IdZ8daPthMu4Oo.XYTAdWKORWc.yrkhtxU1pqkAoB0qq0JxSOB0a12wnhpj4q03lieIk8bJrgr0B0iuL4Ns4iYesI5jCd_qlOn9qUtbAxHbCii5FrEin6YwMVecF5wTUJZ3rhYViQvAzsNxPVISCrj13mHcBIoMurwitNrfZphTHI.f0NpDlqxjIjQ5HIGYTZwoQ63V.SsrD1ZylTG3ZeH8dYYSU9V4JE',
 }
 
 url = "https://www.ouyeel.com/steel"
@@ -31,66 +38,44 @@ html = etree.HTML(response.text)
 
 meta_content = html.xpath("//meta/@content")[-1]
 js_code = html.xpath("//script[1]/text()")[0]
-
 wailian_js_code_url = (
     "https://www.ouyeel.com" + html.xpath("//script[2]/@src")[0]
-)
-wailian_js_code = session.get(wailian_js_code_url, headers=headers).text
+)  # 获取第一次请求时，页面中的外链地址
+wailian_js_code = session.get(
+    wailian_js_code_url, headers=headers
+).text  # 访问上一步得到的外链，获取外链的代码
 
-HERE = Path(__file__).parent
-TEMPLATE = HERE / "03_loader.js"
+# print(wailian_js_code)
 
-# 替换占位符 → 生成完整的 JS 代码
-template = TEMPLATE.read_text("utf-8")
-code = (
-    template.replace("meta_content", meta_content)
-    .replace("'js_code'", js_code)
-    .replace("'wailian_js_code'", wailian_js_code)
-    .replace('require("./02_code")', "")  # 该文件不存在，注释掉
-)
+# 将meta_content、js_code和wailian_js_code 替换03_loader.js中的变量
+with open("03_loader.js", "r", encoding="utf-8") as fp:
+    code = fp.read()
 
-# 写到临时文件，用 subprocess 代替 execjs（避免 GBK 编码问题）
-tmp_js = HERE / "_run.js"
-tmp_js.write_text(code, encoding="utf-8")
+code = code.replace(
+    "meta_content", json.dumps(meta_content)
+)  # 03_loader中的 'meta_content' 两边不要带引号，
+code = code.replace("'js_code'", js_code)
+code = code.replace("'wailian_js_code'", wailian_js_code)
 
-result = subprocess.run(
-    ["node", str(tmp_js)],
-    capture_output=True,
-    text=True,
-    timeout=30,
-    encoding="utf-8",
-    errors="replace",
-)
+# 如果有必要，可以保存一个调试文件看一眼
+# with open("debug_loader.js", "w", encoding = "utf-8") as f:
+#     f.write(code)
 
-tmp_js.unlink(missing_ok=True)  # 清理临时文件
+js_compile = execjs.compile(code)
 
-# stdout 包含 v_log 的输出 + 最后的 "cookie 长度"
-# 取最后一行（loader.js 的 console.log 输出）
-lines = result.stdout.strip().split("\n")
-cookie_line = ""
-for line in reversed(lines):
-    line = line.strip()
-    if line and not line.startswith("["):  # 跳过日志行（如 [EventTarget] ...）
-        cookie_line = line
-        break
+# 配合03_loader，检查content是否正确赋值
+# debug_data = js_compile.call("get_debug_info")
+# print("发起请求获取的值:", meta_content)
+# print("JS 内部变量值:  ", debug_data['variable'])
+# print("DOM 节点属性值: ", debug_data['dom_content'])
 
-if not cookie_line:
-    err = result.stderr.strip()[:300]
-    print(f"JS 执行失败: {err}", file=sys.stderr)
-    sys.exit(1)
+js_cookie = js_compile.call("get_cookie")
 
-# 格式: "cookie_string 304"
-parts = cookie_line.rsplit(" ", 1)
-js_cookie = parts[0]
-cookie_len = parts[1] if len(parts) > 1 else str(len(js_cookie))
-
-# 输出到 stderr 避免编码问题（cookie 可能含不可打印字符）
-print(f"Cookie: {len(js_cookie)} 字节", file=sys.stderr)
+print(js_cookie, len(js_cookie))
 
 cookie_key_value = js_cookie.split(";")[0].split("=")
 session.cookies.update({cookie_key_value[0]: cookie_key_value[1]})
 
 response = session.get(url, headers=headers)
 response.encoding = "utf-8"
-print(response.text[:500], response.status_code)
-
+print(response.text, response.status_code)
