@@ -33,6 +33,19 @@ setupEnv({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// 1b. 设置 global 原型链（window instanceof Window）
+//     env_patch 未做此设置，但 RS6 可能检测 instanceof。
+//     0110 指南显示 windowToGlobal 模式下必须设置原型链。
+// ═══════════════════════════════════════════════════════════════
+Object.setPrototypeOf(global, Window.prototype);
+// 如果 setPrototypeOf 后某些属性失效，手动补丁：
+if (typeof global.addEventListener !== 'function') {
+  global.addEventListener = Window.prototype.addEventListener;
+  global.removeEventListener = Window.prototype.removeEventListener;
+  global.dispatchEvent = Window.prototype.dispatchEvent;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 2. RS6 专属覆盖
 // ═══════════════════════════════════════════════════════════════
 //
