@@ -1,4 +1,4 @@
-import requests, json
+import requests, json, sys
 from lxml import etree
 import subprocess
 from pathlib import Path
