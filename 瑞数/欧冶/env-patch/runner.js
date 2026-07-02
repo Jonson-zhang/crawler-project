@@ -458,10 +458,11 @@ async function main() {
           if (!part) return;
           var eqIdx = part.indexOf('=');
           if (eqIdx < 0) return;
-          var name = part.slice(0, eqIdx).trim().toLowerCase();
+          var name = part.slice(0, eqIdx).trim();
+          var nameLower = name.toLowerCase();
           var attrs = ['path', 'expires', 'domain', 'max-age', 'samesite', 'httponly', 'secure'];
-          if (attrs.indexOf(name) >= 0) return;
-          obj[name] = part.slice(eqIdx + 1).trim();
+          if (attrs.indexOf(nameLower) >= 0) return;
+          obj[name] = part.slice(eqIdx + 1).trim();  // 保留原始大小写
         });
       }
       // 先加入初始 cookie（来自 HTTP Set-Cookie 头）
