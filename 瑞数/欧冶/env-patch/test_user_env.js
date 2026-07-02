@@ -317,7 +317,7 @@ setProxyArr(["window", "document", "location", "history", "screen", "navigator"]
 
 // ── cookie（简洁实现） ──
 let _cookieStore = {};
-Object.defineProperty(document.constructor.prototype, 'cookie', {
+Object.defineProperty(Document.prototype, 'cookie', {
     get: function() {
         return Object.keys(_cookieStore).map(k => k + '=' + _cookieStore[k]).join('; ');
     },
