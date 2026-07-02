@@ -31,7 +31,7 @@ const HERE = __dirname;
 // ═══════════════════════════════════════════════════════════════
 
 // 1. env_patch 环境
-_require(path.join(HERE, "env_site.js"));
+_require("./env_site");
 
 // 2. 加载 webpack
 global.window.webpackJsonp = [];
@@ -45,6 +45,7 @@ global.window.webpackJsonp.push([
       e.exports = function () { this.head = null; this.tail = null; this.length = 0; };
       var p = e.exports.prototype;
       p.push = function (d) { var n = { data: d, next: null }; this.length > 0 ? (this.tail.next = n) : (this.head = n); this.tail = n; ++this.length; };
+      p.unshift = function (d) { var n = { data: d, next: this.head }; 0 === this.length && (this.tail = n); this.head = n; ++this.length; };
       p.shift = function () { if (0 !== this.length) { var d = this.head.data; return 1 === this.length ? (this.head = this.tail = null) : (this.head = this.head.next), --this.length, d; } };
     },
     382: function (e) { e.exports = e(381); },
