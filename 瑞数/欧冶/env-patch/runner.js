@@ -445,10 +445,25 @@ async function main() {
 
     var cookie = '';
     try {
-      cookie = vm.runInThisContext(
+      var rawCookie = vm.runInThisContext(
         'document.cookie',
         { filename: 'rs6_getcookie.js', timeout: 5000 }
       );
+      // 浏览器中 document.cookie 只返回 name=value，不包含 path/expires/Secure 等属性。
+      // env_patch 的 cookie setter 直接存储原始 Set-Cookie 字符串，需要清理。
+      var cleanParts = [];
+      (rawCookie || '').split(';').forEach(function (part) {
+        part = part.trim();
+        if (!part) return;
+        var eqIdx = part.indexOf('=');
+        if (eqIdx < 0) return;
+        var name = part.slice(0, eqIdx).trim().toLowerCase();
+        // 跳过 cookie 属性名（不是真正的 cookie）
+        var attrs = ['path', 'expires', 'domain', 'max-age', 'samesite', 'httponly', 'secure'];
+        if (attrs.indexOf(name) >= 0) return;
+        cleanParts.push(part);
+      });
+      cookie = cleanParts.join('; ');
     } catch (e) {
       cookie = document.cookie || '';
     }
