@@ -161,6 +161,23 @@ if (_origStyleDesc && !_origStyleDesc.get) {
   });
 }
 
+// ── 2.11 覆盖 document.createElement 确保元素属性完整 ──
+//    env_patch 的 createElement 不设置 tagName/nodeName/ownerDocument，
+//    RS6 可能通过元素反射检测这些属性。
+var origCreateElement = document.createElement.bind(document);
+document.createElement = function (tagName) {
+  var el = origCreateElement(tagName);
+  var tagUpper = String(tagName).toUpperCase();
+  el.tagName = tagUpper;
+  el.nodeName = tagUpper;
+  el.ownerDocument = document;
+  if (el._style === undefined && !Object.prototype.hasOwnProperty.call(el, '_style')) {
+    el._style = {};
+  }
+  return el;
+};
+sn(document.createElement, 'createElement');
+
 // ⚠️ 以下内容在 run-time 由 runner.js 动态设置 ──
 //   - document.getElementsByTagName('META') → meta content
 //   - document.cookie 初始值
