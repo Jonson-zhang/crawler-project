@@ -80,7 +80,6 @@ async function main() {
       catch (e) {}
     } else {
       var ext = await fetchBody(s.url);
-      var vm = require('vm');
       vm.runInThisContext(ext, { filename: 'ext.js', timeout: 30000, displayErrors: false });
     }
   }
