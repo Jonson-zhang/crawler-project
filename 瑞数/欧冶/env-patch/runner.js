@@ -357,68 +357,68 @@ async function main() {
     // Phase 4: 设置浏览器环境 + 执行 RS6 VM
     // ═══════════════════════════════════════════════════════
     //
-    // 执行顺序（匹配 0110 原型链补环境方案）:
-    //   1. env_site.js (setupEnv)          → 浏览器环境补丁
-    //   2. setTimeout/setInterval = noop   → RS6 异步调用静默失效
-    //   3. 执行 ALL inline scripts (顺序)  → VM 解释器 + 入口
-    //   4. 执行 external JS               → VM 字节码 + while(1) 循环
-    //   5. 触发 load 事件                  → RS6 绑定的事件处理
+    // 执行顺序 = HTML 中 <script> 的出现顺序（浏览器行为）:
+    //   <script>document.createElement("section")</script>
+    //   <script>$_ts=...; $_ts.cd="..."</script>
+    //   <script src="external.js"></script>    ← 在此位置加载执行
+    //   <script>_$eB();</script>              ← 此时 _$eB 已定义
     //
-    REAL_CONSOLE.error('\n[4/5] 加载浏览器环境 + 执行 RS6 VM ...');
+    REAL_CONSOLE.error('\n[4/5] 加载浏览器环境 + 按顺序执行 RS6 脚本 ...');
 
     // 4a. 加载 env_patch + RS6 环境覆盖
-    //  已在 executeRS6() 中完成 setTimeout/setInterval 替换
+    //     executeRS6() 内部已完成:
+    //       - require('./env_site') → setupEnv
+    //       - setTimeout/setInterval 替换为 noop
+    //       - meta content 注入
+    //       - getElementsByTagName 覆盖
     var env = executeRS6(challenge, externalJsCode, initialCookies);
 
-    var inlineScripts = challenge.inlineScripts;
+    // 4b. 按照 HTML 顺序执行脚本
     var totalBytes = 0;
     var failedCount = 0;
+    var executedExternal = {};
 
-    // 4b. 执行 ALL 内联脚本（不跳过任何脚本，从头到尾全部执行）
-    //    RS6 挑战页面的脚本结构示例:
-    //       #0: document.createElement("section")  — 环境探针
-    //       #1: $_ts={...}; $_ts.cd="xxx"          — VM 解释器 + 挑战值
-    //       #2: _$iJ()                             — 入口点
-    //    每个脚本都可能依赖前一个脚本定义的全局变量。
-    REAL_CONSOLE.error('  → 执行 ' + inlineScripts.length + ' 个内联脚本 ...');
-    for (var i = 0; i < inlineScripts.length; i++) {
-      var code = inlineScripts[i];
-      totalBytes += code.length;
-      REAL_CONSOLE.error('    #' + i + ' (' + code.length + ' bytes)');
-      try {
-        vm.runInThisContext(code, {
-          filename: 'rs6_inline_' + i + '.js',
-          timeout: TIMEOUT_MS,
-          displayErrors: false,
-        });
-      } catch (e) {
-        failedCount++;
-        REAL_CONSOLE.error('    ⚠️  ' + e.message.slice(0, 120));
+    challenge.scripts.forEach(function (scriptItem, idx) {
+      if (scriptItem.type === 'inline') {
+        // 内联脚本：直接执行
+        var code = scriptItem.code;
+        totalBytes += code.length;
+        try {
+          vm.runInThisContext(code, {
+            filename: 'inline_' + idx + '.js',
+            timeout: TIMEOUT_MS,
+            displayErrors: false,
+          });
+        } catch (e) {
+          failedCount++;
+          REAL_CONSOLE.error('    ⚠️ [inline#' + idx + '] ' + e.message.slice(0, 120));
+        }
+      } else if (scriptItem.type === 'external') {
+        // 外链 JS：执行已下载的代码（Phase 3 已下载到 externalCodeMap）
+        var eurl = scriptItem.url;
+        var ecode = externalCodeMap[eurl];
+        if (!ecode) {
+          REAL_CONSOLE.error('    ⚠️ [external#' + idx + '] 未下载: ' + eurl);
+          return;
+        }
+        totalBytes += ecode.length;
+        REAL_CONSOLE.error('    → [external#' + idx + '] ' + eurl +
+          ' (' + ecode.length + ' bytes)');
+        try {
+          vm.runInThisContext(ecode, {
+            filename: 'external_' + idx + '.js',
+            timeout: TIMEOUT_MS,
+            displayErrors: false,
+          });
+        } catch (e) {
+          failedCount++;
+          REAL_CONSOLE.error('    ⚠️ [external#' + idx + '] ' + e.message.slice(0, 150));
+        }
+        executedExternal[eurl] = true;
       }
-    }
+    });
 
-    // 4c. 执行外链 JS（VM 字节码 + while(1) 循环）
-    //     ⚠️ 这里可能耗时较长（RS6 VM 处理所有字节码）
-    //     ⚠️ setTimeout 已被替换为 no-op，全局无异步干扰
-    if (externalJsCode) {
-      totalBytes += externalJsCode.length;
-      REAL_CONSOLE.error('  → 执行外链 JS (' + externalJsCode.length + ' bytes, 超时 ' +
-        TIMEOUT_MS + 'ms)');
-      try {
-        vm.runInThisContext(externalJsCode, {
-          filename: 'rs6_external.js',
-          timeout: TIMEOUT_MS,
-          displayErrors: false,
-        });
-      } catch (e) {
-        failedCount++;
-        REAL_CONSOLE.error('    ⚠️  ' + e.message.slice(0, 150));
-      }
-    } else {
-      REAL_CONSOLE.error('  → 无外链 JS');
-    }
-
-    // 4d. 触发 load 事件（RS6 可能绑定事件处理）
+    // 4c. 触发 load 事件（RS6 可能绑定事件处理）
     try {
       vm.runInThisContext(
         'try { window.dispatchEvent(new Event("load")); } catch(e) {}',
@@ -432,7 +432,7 @@ async function main() {
         'try { document.dispatchEvent(new Event("readystatechange")); } catch(e) {}',
         { filename: 'rs6_trigger_rsc.js', timeout: 5000, displayErrors: false }
       );
-      REAL_CONSOLE.error('  → load/DOMContentLoaded 事件已触发');
+      REAL_CONSOLE.error('  → 事件已触发');
     } catch (_) { /* ignore */ }
 
     REAL_CONSOLE.error('  → 已执行 ' + totalBytes + ' bytes' +
