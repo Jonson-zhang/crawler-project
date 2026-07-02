@@ -3,16 +3,13 @@
  * QQ音乐 sdenv 签名器
  * ======================
  *
- * 使用 env_patch 创建浏览器环境，加载 webpack chunk，
- * 提供 sign/encrypt/decrypt 功能。
- *
- * 关键：VMP 模块解码必须发生在 async 函数外部（模块顶层）。
- * VMP 检测代码执行上下文，async 函数内会导致解码失败。
+ * sign → env_patch 环境直接执行（VMP 模块解码成功）
+ * encrypt/decrypt → 回退到 qqmusic_api.js（VMP 在特定执行上下文才解码）
  *
  * 用法:
  *   node runner.js sign '{"test":"hello"}'
- *   node runner.js encrypt '{"comm":{...}}'
- *   node runner.js decrypt '<base64>'
+ *   node runner.js encrypt '{"comm":{...}}'   → 回退 qqmusic_api.js
+ *   node runner.js decrypt '<base64>'          → 回退 qqmusic_api.js
  *   node runner.js combined '{"comm":{...}}'   → sign + encrypt 一次调用
  *
  * 输出: {"success": true, result: "..."}
@@ -20,20 +17,18 @@
 
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
+
 const _process = process;
 const _require = require;
 const _Buffer = Buffer;
 
 const HERE = __dirname;
 
-// ═══════════════════════════════════════════════════════════════
-// 模块顶层初始化（必须在 async 函数外）
-// ═══════════════════════════════════════════════════════════════
-
-// 1. env_patch 环境
+// ── env_patch 环境 ───────────────────────────────────────
 _require("./env_site");
 
-// 2. 加载 webpack
+// ── 加载 webpack ────────────────────────────────────────
 global.window.webpackJsonp = [];
 eval(fs.readFileSync(path.join(HERE, "runtime.js"), "utf-8"));
 
@@ -45,7 +40,6 @@ global.window.webpackJsonp.push([
       e.exports = function () { this.head = null; this.tail = null; this.length = 0; };
       var p = e.exports.prototype;
       p.push = function (d) { var n = { data: d, next: null }; this.length > 0 ? (this.tail.next = n) : (this.head = n); this.tail = n; ++this.length; };
-      p.unshift = function (d) { var n = { data: d, next: this.head }; 0 === this.length && (this.tail = n); this.head = n; ++this.length; };
       p.shift = function () { if (0 !== this.length) { var d = this.head.data; return 1 === this.length ? (this.head = this.tail = null) : (this.head = this.head.next), --this.length, d; } };
     },
     382: function (e) { e.exports = e(381); },
@@ -54,7 +48,7 @@ global.window.webpackJsonp.push([
 
 eval(fs.readFileSync(path.join(HERE, "vendor.chunk.js"), "utf-8"));
 
-// 3. 激活模块
+// ── 激活模块 ────────────────────────────────────────────
 const wp = global.window.__webpack_require__;
 if (wp && wp.m) {
   Object.keys(wp.m).forEach(function (id) {
@@ -62,13 +56,28 @@ if (wp && wp.m) {
   });
 }
 
-// 4. 提取函数引用
 const getSecuritySign = global.window._getSecuritySign || global.window._getSecuritySign2;
-const cgiEncrypt = global.window.__cgiEncrypt;
-const cgiDecrypt = global.window.__cgiDecrypt;
+
+// ── encrypt/decrypt 回退路径 ────────────────────────────
+const _fallbackScript = path.join(HERE, "..", "env-patch", "qqmusic_api.js");
+
+function fallback(action, input) {
+  const tmpFile = path.join(HERE, "_tmp_input.txt");
+  fs.writeFileSync(tmpFile, input, "utf-8");
+  try {
+    const r = execSync(`node "${_fallbackScript}" ${action} --file "${tmpFile}"`, {
+      encoding: "utf-8", timeout: 30000,
+    });
+    const j = JSON.parse(r);
+    if (!j.success) throw new Error(j.error);
+    return j.result;
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
-// 主入口（async 只用于 await encrypt/decrypt）
+// 主入口
 // ═══════════════════════════════════════════════════════════════
 
 async function main() {
@@ -96,23 +105,17 @@ async function main() {
         break;
 
       case "encrypt":
-        if (!cgiEncrypt) throw new Error("Encrypt function not available");
-        result = await cgiEncrypt(input);
+        result = fallback("encrypt", input);
         break;
 
       case "decrypt":
-        if (!cgiDecrypt) throw new Error("Decrypt function not available");
-        {
-          const binaryBuf = _Buffer.from(input.trim(), "base64");
-          const uint8 = new Uint8Array(binaryBuf.buffer, binaryBuf.byteOffset, binaryBuf.byteLength);
-          result = cgiDecrypt(uint8);
-        }
+        result = fallback("decrypt", input);
         break;
 
       case "combined": {
         const _input = JSON.parse(input);
         const _sign = getSecuritySign ? getSecuritySign(JSON.stringify(_input)) : null;
-        const _encrypted = cgiEncrypt ? await cgiEncrypt(JSON.stringify(_input)) : null;
+        const _encrypted = fallback("encrypt", JSON.stringify(_input));
         result = JSON.stringify({ sign: _sign, encrypted: _encrypted });
         break;
       }
