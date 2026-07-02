@@ -215,6 +215,53 @@ if (typeof global.indexedDB === 'undefined') {
   });
 }
 
+// ── 2.14 修复 document.cookie 为追加/更新模式 ──
+//    env_patch 的 cookie setter 是替换（_cookie = v），
+//    而浏览器中 document.cookie = "key=val" 是追加或更新同名的。
+//    RS6 依次设置多个 cookie 时，先设置的会被后设置的覆盖掉。
+(function () {
+  var _cookieMap = {};
+  var _orderedNames = [];
+
+  // 从已有的 document.cookie 中导入初始值
+  function initFromExisting() {
+    var current = '';
+    try { current = document.cookie || ''; } catch (e) {}
+    if (current) {
+      current.split(';').forEach(function (p) {
+        p = p.trim(); if (!p) return;
+        var ei = p.indexOf('=');
+        if (ei < 0) return;
+        var n = p.slice(0, ei).trim();
+        var nl = n.toLowerCase();
+        if (['path','expires','domain','max-age','samesite','httponly','secure','comment'].indexOf(nl) >= 0) return;
+        if (!_cookieMap[n]) { _cookieMap[n] = p.slice(ei+1).trim(); _orderedNames.push(n); }
+      });
+    }
+  }
+  initFromExisting();
+
+  Object.defineProperty(document, 'cookie', {
+    get: function () {
+      return _orderedNames.map(function (n) { return n + '=' + _cookieMap[n]; }).join('; ');
+    },
+    set: function (val) {
+      if (!val || typeof val !== 'string') return;
+      var parts = val.split(';');
+      var first = parts[0].trim();
+      var ei = first.indexOf('=');
+      if (ei < 0) return;
+      var name = first.slice(0, ei).trim();
+      var value = first.slice(ei+1).trim();
+      var nl = name.toLowerCase();
+      if (['path','expires','domain','max-age','samesite','httponly','secure','comment'].indexOf(nl) >= 0) return;
+      if (_cookieMap[name]) { _cookieMap[name] = value; }
+      else { _cookieMap[name] = value; _orderedNames.push(name); }
+    },
+    configurable: true, enumerable: true,
+  });
+})();
+
 // ⚠️ 以下内容在 run-time 由 runner.js 动态设置 ──
 //   - document.getElementsByTagName('META') → meta content
 //   - document.cookie 初始值
