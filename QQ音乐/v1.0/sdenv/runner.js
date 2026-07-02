@@ -90,10 +90,12 @@ async function main() {
     // ── 5. 加载 vendor chunk ──────────────────────────────
     eval(fs.readFileSync(path.join(V1, "vendor.chunk.js"), "utf-8"));
 
-    // ── 6. 激活模块 ──────────────────────────────────────
+    // ── 6. 激活模块（跳过空模块） ──────────────────────────
     const wp = window.__webpack_require__;
     if (wp && wp.m) {
-      Object.keys(wp.m).forEach(function (id) { try { wp(id); } catch (_) {} });
+      Object.keys(wp.m).forEach(function (id) {
+        if (wp.m[id]) { try { wp(id); } catch (_) {} }
+      });
     }
 
     const getSecuritySign = window._getSecuritySign || window._getSecuritySign2;
