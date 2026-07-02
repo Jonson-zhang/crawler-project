@@ -1,9 +1,7 @@
 /**
- * env_site.js — QQ音乐 sdenv 环境补丁
+ * env_site.js — QQ音乐 浏览器环境补丁
  *
- * 加载 env_patch 框架的 safeFunction 机制，覆盖 Function.prototype.toString
- * 使所有浏览器 API 函数的 toString() 返回 [native code]，
- * VMP 模块通过此检测环境真实性。
+ * 基于 .claude/env-patch/env_patch.js 通用框架。
  */
 
 const _require = require;
@@ -28,7 +26,7 @@ setupEnv({
   extraConstructors: true,
   crypto: true,
 
-  // sdenv 提供 window，env_patch 补 safeFunction 即可
+  // 字节码 VM 要求 window !== global
   windowToGlobal: false,
 });
 

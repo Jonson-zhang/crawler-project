@@ -9,7 +9,7 @@ RS6 VM 在 sdenv 中"以为是 Chrome"，无需手写原型链。
   1. Node.js(sdenv) 加载 /steel → RS6 VM → 304 字节 Cookie
   2. Python requests 携带 Cookie → POST queryResult → JSON 数据
 
-用法: python ouyeel_iv8.py
+用法: python crawler.py
 """
 
 import json
@@ -32,7 +32,7 @@ UA = (
 )
 
 HERE = Path(__file__).parent
-SDENV_JS = HERE / "ouyeel_sdenv.js"
+SDENV_JS = HERE / "runner.js"
 
 
 def generate_cookie():

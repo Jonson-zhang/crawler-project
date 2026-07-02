@@ -5,10 +5,10 @@
  * sdenv = C++ V8 Addon + jsdom，内置完整浏览器 API。
  * RS6 VM 在 sdenv 中"以为是 Chrome"，无需手写原型链。
  *
- * 用法: node ouyeel_sdenv.js '{"url":"https://www.ouyeel.com","entryPath":"/steel"}'
+ * 用法: node runner.js '{"url":"https://www.ouyeel.com","entryPath":"/steel"}'
  */
 
-const { jsdomFromUrl } = require("../兰州交通大学/node_modules/sdenv");
+const { jsdomFromUrl } = require("../../兰州交通大学/node_modules/sdenv");
 
 async function main() {
     const cfg = JSON.parse(process.argv[2] || "{}");
