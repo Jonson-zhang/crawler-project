@@ -38,7 +38,7 @@ async function main() {
     input = fs.readFileSync(_process.argv[4], "utf-8");
   }
   if (!action || !input) {
-    _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt> <data>"));
+    _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt> <data>" }) + "\n");
     _process.exit(1);
   }
 
