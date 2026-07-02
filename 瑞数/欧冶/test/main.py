@@ -61,15 +61,36 @@ code = code.replace("'wailian_js_code'", wailian_js_code)
 # with open("debug_loader.js", "w", encoding = "utf-8") as f:
 #     f.write(code)
 
-js_compile = execjs.compile(code)
+# 保存到临时文件，用 subprocess 代替 execjs（避开 Windows GBK 编码问题）
+tmp_js = HERE / "_run.js"
+tmp_js.write_text(code, encoding="utf-8")
 
-# 配合03_loader，检查content是否正确赋值
-# debug_data = js_compile.call("get_debug_info")
-# print("发起请求获取的值:", meta_content)
-# print("JS 内部变量值:  ", debug_data['variable'])
-# print("DOM 节点属性值: ", debug_data['dom_content'])
+result = subprocess.run(
+    ["node", str(tmp_js)],
+    capture_output=True,
+    text=True,
+    timeout=30,
+    encoding="utf-8",
+    errors="replace",
+)
+tmp_js.unlink(missing_ok=True)
 
-js_cookie = js_compile.call("get_cookie")
+# stdout 含 env 日志 + 最后的 "cookie 长度"，取最后一行
+lines = result.stdout.strip().split("\n")
+cookie_line = ""
+for line in reversed(lines):
+    line = line.strip()
+    if line and not line.startswith("["):
+        cookie_line = line
+        break
+
+if not cookie_line:
+    err = result.stderr.strip()[:300]
+    print(f"JS 执行失败: {err}", file=sys.stderr)
+    exit(1)
+
+parts = cookie_line.rsplit(" ", 1)
+js_cookie = parts[0]
 
 print(js_cookie, len(js_cookie))
 
