@@ -313,26 +313,44 @@ async function main() {
     var challenge = extractRS6Challenge(html);
     REAL_CONSOLE.error('  → meta content: ' +
       (challenge.metaContent || '(none)').slice(0, 50));
-    REAL_CONSOLE.error('  → 内联脚本: ' + challenge.inlineScripts.length + ' 个');
 
-    if (challenge.externalJsUrl) {
-      REAL_CONSOLE.error('  → 外链 JS: ' + challenge.externalJsUrl);
-    } else {
-      REAL_CONSOLE.error('  → 外链 JS: (无)');
+    // 统计脚本类型
+    var inlineCount = 0, externalCount = 0;
+    challenge.scripts.forEach(function (s) {
+      if (s.type === 'inline') inlineCount++;
+      else externalCount++;
+    });
+    REAL_CONSOLE.error('  → 脚本: ' + challenge.scripts.length + ' 个 (' +
+      inlineCount + ' 内联, ' + externalCount + ' 外链)');
+
+    if (challenge.scripts.length === 0) {
+      throw new Error('未找到脚本，页面可能不是 RS6 挑战页');
     }
 
-    if (challenge.inlineScripts.length === 0 && !challenge.externalJsUrl) {
-      throw new Error('未找到 RS6 脚本，页面可能不是挑战页');
-    }
+    // 列出脚本概要
+    challenge.scripts.forEach(function (s, i) {
+      if (s.type === 'inline') {
+        REAL_CONSOLE.error('    #' + i + ' [inline] ' + s.code.length + ' bytes');
+      } else {
+        REAL_CONSOLE.error('    #' + i + ' [external] ' + s.url);
+      }
+    });
+
+    // 检查是否需要先下载所有外链 JS（如果有的话）
+    // 注：外链 JS 可能被后面的内联脚本引用，所以需要提前下载
+    var externalUrls = challenge.scripts
+      .filter(function (s) { return s.type === 'external'; })
+      .map(function (s) { return s.url; });
 
     // ═══════════════════════════════════════════════════════
-    // Phase 3: 下载外链 JS
+    // Phase 3: 下载所有外链 JS
     // ═══════════════════════════════════════════════════════
-    var externalJsCode = '';
-    if (challenge.externalJsUrl) {
-      REAL_CONSOLE.error('\n[3/5] 下载外链 JS ...');
-      externalJsCode = await httpsGetBody(challenge.externalJsUrl, initialCookies);
-      REAL_CONSOLE.error('  → ' + externalJsCode.length + ' bytes');
+    var externalCodeMap = {};
+    for (var ei = 0; ei < externalUrls.length; ei++) {
+      var eurl = externalUrls[ei];
+      REAL_CONSOLE.error('  → 下载外链: ' + eurl);
+      externalCodeMap[eurl] = await httpsGetBody(eurl, initialCookies);
+      REAL_CONSOLE.error('    → ' + externalCodeMap[eurl].length + ' bytes');
     }
 
     // ═══════════════════════════════════════════════════════
