@@ -69,6 +69,20 @@ async function main() {
     window.crypto = nodeCrypto;
     global.crypto = nodeCrypto;
 
+    // ── safeFunction — 所有函数 toString 返回 [native code] ──
+    // VMP 模块通过 fn.toString() 检测环境真实性。
+    const _nativeMap = new Map();
+    const _realToString = Function.prototype.toString;
+    Function.prototype.toString = function () {
+      return typeof this === 'function' && _nativeMap.get(this) || _realToString.call(this);
+    };
+    function sn(obj, name) {
+      if (typeof obj === 'function') {
+        _nativeMap.set(obj, `function ${name}() { [native code] }`);
+        if (obj.prototype) obj.prototype.constructor = obj;
+      }
+    }
+
     // ── 3. 加载 webpack ──────────────────────────────────
     window.webpackJsonp = [];
     eval(fs.readFileSync(path.join(V1, "runtime.js"), "utf-8"));
