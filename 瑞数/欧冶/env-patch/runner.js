@@ -451,19 +451,31 @@ async function main() {
       );
       // 浏览器中 document.cookie 只返回 name=value，不包含 path/expires/Secure 等属性。
       // env_patch 的 cookie setter 直接存储原始 Set-Cookie 字符串，需要清理。
-      var cleanParts = [];
-      (rawCookie || '').split(';').forEach(function (part) {
-        part = part.trim();
-        if (!part) return;
-        var eqIdx = part.indexOf('=');
-        if (eqIdx < 0) return;
-        var name = part.slice(0, eqIdx).trim().toLowerCase();
-        // 跳过 cookie 属性名（不是真正的 cookie）
-        var attrs = ['path', 'expires', 'domain', 'max-age', 'samesite', 'httponly', 'secure'];
-        if (attrs.indexOf(name) >= 0) return;
-        cleanParts.push(part);
-      });
-      cookie = cleanParts.join('; ');
+      var rawPairs = {};
+      function parseInto(obj, str) {
+        (str || '').split(';').forEach(function (part) {
+          part = part.trim();
+          if (!part) return;
+          var eqIdx = part.indexOf('=');
+          if (eqIdx < 0) return;
+          var name = part.slice(0, eqIdx).trim().toLowerCase();
+          var attrs = ['path', 'expires', 'domain', 'max-age', 'samesite', 'httponly', 'secure'];
+          if (attrs.indexOf(name) >= 0) return;
+          obj[name] = part.slice(eqIdx + 1).trim();
+        });
+      }
+      // 先加入初始 cookie（来自 HTTP Set-Cookie 头）
+      parseInto(rawPairs, initialCookives);
+      // 再加入 RS6 VM 生成的 cookie（覆盖同名的初始值）
+      parseInto(rawPairs, rawCookie);
+      // 合并输出
+      var merged = [];
+      for (var k in rawPairs) {
+        if (Object.prototype.hasOwnProperty.call(rawPairs, k)) {
+          merged.push(k + '=' + rawPairs[k]);
+        }
+      }
+      cookie = merged.join('; ');
     } catch (e) {
       cookie = document.cookie || '';
     }
