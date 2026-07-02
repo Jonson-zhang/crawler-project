@@ -90,7 +90,78 @@ global.HTMLLinkElement = HTMLLinkElement;
 // ── 2.8 getComputedStyle — RS6 可能调用 ──
 // env_patch 已有 getComputedStyle stub
 
-// ── 2.9 ⚠️ 以下内容在 run-time 由 runner.js 动态设置 ──
+// ── 2.9 HTMLElement 原型补全 — RS6 通过元素实例调用原型方法 ──
+//
+//    env_patch 的 HTMLElement.prototype 缺少：
+//      - getElementsByTagName  ← RS6 在 createElement('div') 后立即调用
+//      - querySelector         ← RS6 可能调用
+//      - closest               ← RS6 可能调用
+//      - matches               ← RS6 可能调用
+//
+//    补充 Element 级别的原型方法，使元素实例具备完整浏览器行为。
+
+HTMLElement.prototype.getElementsByTagName = function (tagName) {
+  // 元素级的 getElementsByTagName 通常返回空集合
+  var tag = String(tagName).toUpperCase();
+  // 如果是 meta 标签且当前元素有 content 属性
+  if (tag === 'META' && this.getAttribute) {
+    var content = this.getAttribute('content');
+    if (content) {
+      var collection = [this];
+      Object.defineProperty(collection, Symbol.toStringTag, {
+        value: 'HTMLCollection', configurable: true,
+      });
+      collection.item = function (i) { return collection[i] || null; };
+      collection.namedItem = function () { return null; };
+      return collection;
+    }
+  }
+  var emptyCollection = [];
+  Object.defineProperty(emptyCollection, Symbol.toStringTag, {
+    value: 'HTMLCollection', configurable: true,
+  });
+  emptyCollection.item = function () { return null; };
+  emptyCollection.namedItem = function () { return null; };
+  return emptyCollection;
+};
+sn(HTMLElement.prototype.getElementsByTagName, 'getElementsByTagName');
+
+HTMLElement.prototype.querySelector = function () { return null; };
+sn(HTMLElement.prototype.querySelector, 'querySelector');
+
+HTMLElement.prototype.closest = function () { return null; };
+sn(HTMLElement.prototype.closest, 'closest');
+
+HTMLElement.prototype.matches = function () { return false; };
+sn(HTMLElement.prototype.matches, 'matches');
+
+HTMLElement.prototype.addEventListener = function (type, listener) {
+  // no-op stub
+};
+sn(HTMLElement.prototype.addEventListener, 'addEventListener');
+
+HTMLElement.prototype.removeEventListener = function () {};
+sn(HTMLElement.prototype.removeEventListener, 'removeEventListener');
+
+// ── 2.10 确保 style 是实例属性（不是原型共享） ──
+//    env_patch 的 HTMLElement.prototype.style = {} 会导致所有元素
+//    共享同一个 style 对象。RS6 可能修改 element.style 影响判断。
+//    用 getter 确保每个元素有独立的 style 对象。
+var _origStyleDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'style');
+if (_origStyleDesc && !_origStyleDesc.get) {
+  // env_patch 是直接赋值，替换为 getter
+  Object.defineProperty(HTMLElement.prototype, 'style', {
+    get: function () {
+      if (!this._style) this._style = {};
+      return this._style;
+    },
+    set: function (v) { this._style = v; },
+    configurable: true,
+    enumerable: true,
+  });
+}
+
+// ⚠️ 以下内容在 run-time 由 runner.js 动态设置 ──
 //   - document.getElementsByTagName('META') → meta content
 //   - document.cookie 初始值
 //   - setTimeout / setInterval 替换为 no-op
