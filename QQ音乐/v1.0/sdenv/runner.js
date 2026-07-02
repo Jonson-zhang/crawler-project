@@ -25,15 +25,8 @@ const _setTimeout = setTimeout;
 const HERE = __dirname;
 const V1 = path.resolve(HERE, "..");  // QQ音乐/v1.0/
 
-// ── 1. 加载 sdenv（C++ V8 Addon + jsdom） ─────────────────
-let sdenv;
-try {
-  sdenv = _require("../../兰州交通大学/node_modules/sdenv");
-} catch (e) {
-  // 尝试从 node_modules 查找
-  try { sdenv = _require("sdenv"); }
-  catch (e2) { throw new Error("sdenv not found. Run: npm install sdenv"); }
-}
+// ── 1. 加载 jsdom（DOM 环境） ────────────────────────────
+const { JSDOM } = _require("jsdom");
 
 async function main() {
   const action = _process.argv[2];
