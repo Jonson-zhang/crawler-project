@@ -158,7 +158,7 @@ function extractRS6Challenge(html) {
  * 此函数在所有 HTTP 请求完成（获取了页面和外链 JS）后执行。
  * 此时 process/module/require 等已被隐藏，RS6 不会检测到 Node.js。
  */
-function executeRS6(challenge, externalJsCode, initialCookies) {
+function executeRS6(challenge, initialCookies) {
   // ── 3a. 加载 env_patch 环境（此时 process 等已被隐藏） ──
   REAL_REQUIRE('./env_site');
 
