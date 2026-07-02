@@ -46,11 +46,6 @@ async function main() {
 
   try {
     // ── 2. 创建 jsdom 环境 ────────────────────────────────
-    // sdenv 的 jsdomFromUrl 加载完整页面，但我们只需要 DOM API
-    // 改用 sdenv.createEnvironment() 创建纯净环境
-
-    // 使用 jsdom 手动创建环境（sdenv 底层是 jsdom）
-    const { JSDOM } = _require("jsdom");
     const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
       url: "https://y.qq.com/",
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
