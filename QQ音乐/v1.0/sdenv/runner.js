@@ -27,6 +27,9 @@ const V1 = path.resolve(HERE, "..");  // QQ音乐/v1.0/
 async function main() {
   const action = _process.argv[2];
   let input = _process.argv[3];
+  if (input === "--file" && _process.argv[4]) {
+    input = fs.readFileSync(_process.argv[4], "utf-8");
+  }
   if (!action || !input) {
     _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt> <data>" }));
     _process.exit(1);
