@@ -64,18 +64,28 @@ result = subprocess.run(
 
 tmp_js.unlink(missing_ok=True)  # 清理临时文件
 
-# execjs 的 stdout 输出 "cookie 长度"
-# 格式: "cookie_string 304"
-output = result.stdout.strip()
-if not output:
+# stdout 包含 v_log 的输出 + 最后的 "cookie 长度"
+# 取最后一行（loader.js 的 console.log 输出）
+lines = result.stdout.strip().split("\n")
+cookie_line = ""
+for line in reversed(lines):
+    line = line.strip()
+    if line and not line.startswith("["):  # 跳过日志行（如 [EventTarget] ...）
+        cookie_line = line
+        break
+
+if not cookie_line:
     err = result.stderr.strip()[:300]
-    print(f"❌ JS 执行失败: {err}", file=sys.stderr)
+    print(f"JS 执行失败: {err}", file=sys.stderr)
     sys.exit(1)
 
-parts = output.rsplit(" ", 1)
+# 格式: "cookie_string 304"
+parts = cookie_line.rsplit(" ", 1)
 js_cookie = parts[0]
-cookie_len = parts[1] if len(parts) > 1 else len(js_cookie)
-print(js_cookie, cookie_len)
+cookie_len = parts[1] if len(parts) > 1 else str(len(js_cookie))
+
+# 输出到 stderr 避免编码问题（cookie 可能含不可打印字符）
+print(f"Cookie: {len(js_cookie)} 字节", file=sys.stderr)
 
 cookie_key_value = js_cookie.split(";")[0].split("=")
 session.cookies.update({cookie_key_value[0]: cookie_key_value[1]})
