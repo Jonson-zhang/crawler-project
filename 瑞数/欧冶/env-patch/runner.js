@@ -253,14 +253,17 @@ function executeRS6(challenge, externalJsCode, initialCookies) {
   //    目前阶段 RS6 代码尚未运行，所以此处不替换。
   //    替换操作在 Phase 4 中执行。
 
-  // ── 3g. 检索 RS6 内联脚本索引 ──
+  // ── 3g. 替换 setTimeout/setInterval（在 RS6 执行前） ──
   //
-  //    从 HTML 提取的 inlineScripts 数组包含所有 <script> 内容。
-  //    RS6 挑战页面的典型结构：
-  //      index 0: 页面初始化脚本（非 RS6）
-  //      index 1: RS6 VM 解释器
-  //      index N: RS6 入口/激活脚本
-  //    外链 JS 包含 VM 字节码/数据。
+  //    ⚠️ 这是关键：必须在外链 JS 执行前替换 setTimeout/setInterval。
+  //    RS6 的 while(1) 字节码循环中可能调用 setTimeout，如果 setTimeout
+  //    是真实的 Node.js 定时器，事件循环会在异步回调中执行 RS6 代码，
+  //    导致 while(1) 循环状态混乱或永不退出。
+  //
+  //    替换为 no-op 后，任何 setTimeout/setInterval 调用静默失效，
+  //    RS6 VM 只能走同步路径，在 while(1) 循环内完成所有字节码处理。
+  global.setTimeout = function () {};
+  global.setInterval = function () {};
 
   // ── 3h. 返回环境引用（后续执行用） ──
   return {
