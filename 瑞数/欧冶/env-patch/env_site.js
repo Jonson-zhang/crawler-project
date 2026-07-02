@@ -24,6 +24,7 @@ setupEnv({
   screenWidth: 1920,
   screenHeight: 1080,
   canvas: true,
+  webgl: true,           // WebGL ctx + WebGLRenderingContext 全局
   plugins: true,         // navigator.plugins — RS6 可能检测
   storage: true,         // localStorage / sessionStorage
   extraConstructors: true, // 200+ 浏览器构造函数
@@ -255,8 +256,26 @@ if (typeof global.indexedDB === 'undefined') {
       var value = first.slice(ei+1).trim();
       var nl = name.toLowerCase();
       if (['path','expires','domain','max-age','samesite','httponly','secure','comment'].indexOf(nl) >= 0) return;
-      if (_cookieMap[name]) { _cookieMap[name] = value; }
-      else { _cookieMap[name] = value; _orderedNames.push(name); }
+      // max-age=0 或 value 为空 -> 删除 cookie
+      var shouldDelete = (value === '');
+      for (var pi = 1; pi < parts.length; pi++) {
+        var attr = parts[pi].trim().toLowerCase();
+        if (attr === 'max-age=0' || attr === 'max-age=-1' || (attr.indexOf('max-age=') === 0 && parseInt(attr.split('=')[1], 10) <= 0)) {
+          shouldDelete = true;
+        }
+      }
+      if (shouldDelete) {
+        if (_cookieMap[name]) {
+          delete _cookieMap[name];
+          var idx = _orderedNames.indexOf(name);
+          if (idx >= 0) _orderedNames.splice(idx, 1);
+        }
+      } else if (_cookieMap[name]) {
+        _cookieMap[name] = value;
+      } else {
+        _cookieMap[name] = value;
+        _orderedNames.push(name);
+      }
     },
     configurable: true, enumerable: true,
   });
