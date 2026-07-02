@@ -29,7 +29,7 @@ const HERE = __dirname;
 const V1 = path.resolve(HERE, "..");  // QQ音乐/v1.0/
 
 // ── 1. 加载 sdenv ────────────────────────────────────────
-const { jsdomFromText } = _require("../../兰州交通大学/node_modules/sdenv");
+const { jsdomFromText } = _require("../../../瑞数/兰州交通大学/node_modules/sdenv");
 
 async function main() {
   const action = _process.argv[2];
