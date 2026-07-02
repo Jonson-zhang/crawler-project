@@ -469,10 +469,11 @@ async function main() {
       parseInto(rawPairs, initialCookies);
       // 再加入 RS6 VM 生成的 cookie（覆盖同名的初始值）
       parseInto(rawPairs, rawCookie);
-      // 合并输出
+      // 合并输出（跳过 enable_ 开头的 RS6 内部标记 cookie）
       var merged = [];
       for (var k in rawPairs) {
         if (Object.prototype.hasOwnProperty.call(rawPairs, k)) {
+          if (k.toLowerCase().indexOf('enable_') === 0) continue;
           merged.push(k + '=' + rawPairs[k]);
         }
       }
