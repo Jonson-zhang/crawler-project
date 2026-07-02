@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * QQ音乐 sdenv 签名器
- * ======================
+ * QQ音乐 sdenv 签名器（jsdom 环境）
+ * ====================================
  *
- * 使用 sdenv (C++ V8 Addon + jsdom) 加载 webpack chunk,
- * 提供 sign/encrypt/decrypt 三个功能，通过 stdout JSON 返回。
+ * 使用 jsdom 创建完整 DOM 环境，加载 webpack chunk，
+ * 提供 sign/encrypt/decrypt 功能。encrypt/decrypt 回退到
+ * 原始 qqmusic_api.js（VMP 模块需额外条件）。
  *
  * 用法:
  *   node runner.js sign '{"test":"hello"}'
@@ -16,67 +17,54 @@
 
 const fs = require("fs");
 const path = require("path");
+const { JSDOM } = require("jsdom");
 
 const _process = process;
-const _require = require;
 const _Buffer = Buffer;
-const _setTimeout = setTimeout;
-
 const HERE = __dirname;
 const V1 = path.resolve(HERE, "..");  // QQ音乐/v1.0/
-
-// ── 1. 加载 jsdom（DOM 环境） ────────────────────────────
-const { JSDOM } = _require("jsdom");
 
 async function main() {
   const action = _process.argv[2];
   let input = _process.argv[3];
-  if (input === "--file" && _process.argv[4]) {
-    input = fs.readFileSync(_process.argv[4], "utf-8");
-  }
   if (!action || !input) {
     _process.stderr.write(JSON.stringify({ success: false, error: "Usage: node runner.js <sign|encrypt|decrypt> <data>" }));
     _process.exit(1);
   }
 
-  const timeout = _setTimeout(function () {
+  const timeout = setTimeout(function () {
     _process.stderr.write(JSON.stringify({ success: false, error: "Timeout" }));
     _process.exit(1);
   }, 30000);
 
   try {
-    // ── 2. 创建 jsdom 环境 ────────────────────────────────
+    // ── 1. 创建 jsdom 环境 ────────────────────────────────
     const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
       url: "https://y.qq.com/",
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
       runScripts: "dangerously",
-      resources: "usable",
     });
-
     const window = dom.window;
-    const document = window.document;
     global.window = window;
-    global.document = document;
+    global.document = window.document;
     global.navigator = window.navigator;
     global.location = window.location;
     global.self = window;
 
     // 提供 crypto（Node.js 原生 Web Crypto）
-    const nodeCrypto = _require("crypto").webcrypto;
+    const nodeCrypto = require("crypto").webcrypto;
     window.crypto = nodeCrypto;
     global.crypto = nodeCrypto;
 
-    // ── 3. 加载 webpack 运行时 ────────────────────────────
+    // ── 2. 加载 webpack ──────────────────────────────────
+    window.webpackJsonp = [];
     eval(fs.readFileSync(path.join(V1, "runtime.js"), "utf-8"));
 
-    // ── 4. 注入缺失模块 stub ─────────────────────────────
-    window.webpackJsonp = [];
+    // 注入 stub 模块
     window.webpackJsonp.push([
       [999],
       {
-        380: function (e) {
-          e.exports = { debuglog: function () { return function () {}; }, inspect: { colors: false } };
-        },
+        380: function (e) { e.exports = { debuglog: function () { return function () {}; }, inspect: { colors: false } }; },
         381: function (e) {
           e.exports = function () { this.head = null; this.tail = null; this.length = 0; };
           var p = e.exports.prototype;
@@ -87,14 +75,14 @@ async function main() {
       },
     ]);
 
-    // ── 5. 加载 vendor chunk ──────────────────────────────
+    // 加载 vendor chunk
     eval(fs.readFileSync(path.join(V1, "vendor.chunk.js"), "utf-8"));
 
-    // ── 6. 激活模块（跳过空模块） ──────────────────────────
+    // 激活模块
     const wp = window.__webpack_require__;
     if (wp && wp.m) {
       Object.keys(wp.m).forEach(function (id) {
-        if (wp.m[id]) { try { wp(id); } catch (_) {} }
+        if (wp.m[id]) try { wp(id); } catch (_) {}
       });
     }
 
@@ -112,8 +100,8 @@ async function main() {
         if (cgiEncrypt) {
           result = await cgiEncrypt(input);
         } else {
-          // 回退到原始 qqmusic_api.js（同 iv8 方案）
-          const { execSync } = _require("child_process");
+          // 回退到原始 qqmusic_api.js
+          const { execSync } = require("child_process");
           const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" encrypt "${input.replace(/"/g, '\\"')}"`, { encoding: "utf-8", timeout: 30000 });
           const j = JSON.parse(r);
           if (!j.success) throw new Error(j.error);
@@ -127,7 +115,7 @@ async function main() {
           result = cgiDecrypt(uint8);
         } else {
           // 回退到原始 qqmusic_api.js
-          const { execSync } = _require("child_process");
+          const { execSync } = require("child_process");
           const r = execSync(`node "${path.join(V1, "qqmusic_api.js")}" decrypt "${input}"`, { encoding: "utf-8", timeout: 30000 });
           const j = JSON.parse(r);
           if (!j.success) throw new Error(j.error);
