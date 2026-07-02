@@ -93,67 +93,58 @@ async function httpsGetBody(url, cookieStr) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * 从 RS6 挑战页面 HTML 中提取：
- *   - metaContent:   <meta content="..."> 最后一条
- *   - inlineScripts: <script> 标签内容列表（空内容跳过）
- *   - externalJsUrl: <script src="..."> 外链 JS URL
+ * 提取 RS6 挑战，保持脚本的 HTML 出现顺序。
+ *
+ * 返回:
+ *   scripts: 有序数组，每项为 { type: 'inline', code: str } 或
+ *            { type: 'external', url: str }
+ *   metaContent: <meta content="..."> 最后一条
+ *
+ * ⚠️ 必须保持顺序！浏览器顺序执行 <script> 标签。
+ *    外链 JS 可能定义函数，供后面的内联脚本调用。
  */
 function extractRS6Challenge(html) {
-  // 提取 meta content（RS6 挑战值，取最后一个 meta content）
+  // 提取 meta content（取最后一个 meta content）
   var metaMatch, metaContent = '';
   var metaRe = /<meta[^>]+content=["']([^"']+)["']/gi;
   while ((metaMatch = metaRe.exec(html)) !== null) {
     metaContent = metaMatch[1];
   }
 
-  // 提取所有内联脚本内容
-  var inlineScripts = [];
-  var scriptRe = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+  // 顺序扫描 <script> 标签，保持出现顺序
+  var scripts = [];
+  // 正则匹配所有 <script> 标签（含 src 外链和 inline）
+  var scriptRe = /<script\s*([^>]*)>([\s\S]*?)<\/script>/gi;
   var m;
+
   while ((m = scriptRe.exec(html)) !== null) {
-    var code = m[1].trim();
-    if (code) inlineScripts.push(code);
-  }
+    var attrs = m[1] || '';
+    var content = (m[2] || '').trim();
 
-  // 提取外链 JS（优先匹配 r='m' 属性的 RS6 专用 script）
-  var externalUrl = '';
-  var jsMatch = html.match(
-    /<script[^>]*src=["']([^"']+)["'][^>]*r\s*=\s*['"]m['"][^>]*>/i
-  );
-  if (!jsMatch) {
-    // 回退：取第二个 script 的 src（0110 模式）
-    var srcRe = /<script[^>]*src=["']([^"']+)["'][^>]*>/gi;
-    var srcMatches = [];
-    while ((m = srcRe.exec(html)) !== null) {
-      srcMatches.push(m[1]);
+    // 检查是否有 src 属性（外链 JS）
+    var srcMatch = attrs.match(/src\s*=\s*["']([^"']+)["']/i);
+    if (srcMatch) {
+      // 外链 JS
+      var url = srcMatch[1].trim();
+      // 相对路径转绝对路径
+      if (!url.startsWith('http')) {
+        if (url.startsWith('/')) {
+          url = 'https://www.ouyeel.com' + url;
+        } else {
+          url = 'https://www.ouyeel.com/' + url;
+        }
+      }
+      scripts.push({ type: 'external', url: url });
+    } else if (content) {
+      // 内联脚本（有内容）
+      scripts.push({ type: 'inline', code: content });
     }
-    // 跳过第一个 src（通常是基础库），取 RS6 相关的外链
-    if (srcMatches.length >= 3) {
-      // 第三个 src 通常是 RS6 的外链 JS
-      externalUrl = srcMatches[2];
-    } else if (srcMatches.length >= 2) {
-      // 第二个 src
-      externalUrl = srcMatches[1];
-    } else if (srcMatches.length >= 1) {
-      externalUrl = srcMatches[0];
-    }
-  } else {
-    externalUrl = jsMatch[1];
-  }
-
-  // 相对路径转绝对路径
-  if (externalUrl && !externalUrl.startsWith('http')) {
-    if (externalUrl.startsWith('/')) {
-      externalUrl = 'https://www.ouyeel.com' + externalUrl;
-    } else {
-      externalUrl = 'https://www.ouyeel.com/' + externalUrl;
-    }
+    // 跳过空内容的内联脚本
   }
 
   return {
-    metaContent:    metaContent,
-    inlineScripts:  inlineScripts,
-    externalJsUrl:  externalUrl,
+    metaContent: metaContent,
+    scripts: scripts,
   };
 }
 
