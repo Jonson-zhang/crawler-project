@@ -8,7 +8,8 @@
  * 提供 sign/encrypt/decrypt 三个功能。
  *
  * sdenv 提供完整的 Chrome 浏览器 API（含 Canvas、WebGL、
- * CookieJar 等），VMP 模块在 sdenv 环境下可直接解码。
+ * CookieJar 等）。配合 env_patch.js 的 safeFunction 机制
+ * 确保 VMP 模块能正确解码出 __cgiEncrypt / __cgiDecrypt。
  *
  * 用法:
  *   node runner.js sign '{"test":"hello"}'
@@ -43,14 +44,12 @@ async function main() {
   }
 
   const timeout = setTimeout(function () {
-    _process.stderr.write(JSON.stringify({ success: false, error: "Timeout" }));
+    _process.stderr.write(JSON.stringify({ success: false, error: "Timeout" }) + "\n");
     _process.exit(1);
   }, 30000);
 
   try {
     // ── 2. 创建 sdenv 浏览器环境 ──────────────────────────
-    // sdenv 的 jsdomFromText 创建 JSDOM 环境并施用
-    // chrome 浏览器扩展（完整的 DOM/BOM API + Canvas + CookieJar）
     const dom = await jsdomFromText('<!DOCTYPE html><html><head></head><body></body></html>', {
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
       browserType: "chrome",
@@ -64,26 +63,17 @@ async function main() {
     global.location = window.location;
     global.self = window;
 
-    // 替换为 Node.js 原生 Web Crypto
-    const nodeCrypto = _require("crypto").webcrypto;
-    window.crypto = nodeCrypto;
-    global.crypto = nodeCrypto;
-
-    // ── safeFunction — 所有函数 toString 返回 [native code] ──
+    //
+    // ── 3. 加载 env_patch（safeFunction 机制） ───────────
     // VMP 模块通过 fn.toString() 检测环境真实性。
-    const _nativeMap = new Map();
-    const _realToString = Function.prototype.toString;
-    Function.prototype.toString = function () {
-      return typeof this === 'function' && _nativeMap.get(this) || _realToString.call(this);
-    };
-    function sn(obj, name) {
-      if (typeof obj === 'function') {
-        _nativeMap.set(obj, `function ${name}() { [native code] }`);
-        if (obj.prototype) obj.prototype.constructor = obj;
-      }
-    }
+    // env_patch 的 safeFunction 确保所有浏览器 API 函数
+    // 的 toString() 返回 [native code]。
+    //
+    _require(path.join(HERE, "env_site.js"));
 
-    // ── 3. 加载 webpack ──────────────────────────────────
+    //
+    // ── 4. 加载 webpack chunk ───────────────────────────
+    //
     window.webpackJsonp = [];
     eval(fs.readFileSync(path.join(V1, "runtime.js"), "utf-8"));
 
@@ -105,7 +95,9 @@ async function main() {
     // 加载 vendor chunk
     eval(fs.readFileSync(path.join(V1, "vendor.chunk.js"), "utf-8"));
 
-    // ── 4. 激活模块 ──────────────────────────────────────
+    //
+    // ── 5. 激活模块 ──────────────────────────────────────
+    //
     const wp = window.__webpack_require__;
     if (wp && wp.m) {
       Object.keys(wp.m).forEach(function (id) {
