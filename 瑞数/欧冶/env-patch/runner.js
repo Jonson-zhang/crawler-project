@@ -371,7 +371,7 @@ async function main() {
     //       - setTimeout/setInterval 替换为 noop
     //       - meta content 注入
     //       - getElementsByTagName 覆盖
-    var env = executeRS6(challenge, externalJsCode, initialCookies);
+    var env = executeRS6(challenge, initialCookies);
 
     // 4b. 按照 HTML 顺序执行脚本
     var totalBytes = 0;
