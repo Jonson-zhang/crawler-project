@@ -8,6 +8,7 @@ _r('./env_site');
 global.setTimeout = function(){};
 global.setInterval = function(){};
 
+var vm = require('vm');
 var cookiesSet = [];
 var _cookieDesc = Object.getOwnPropertyDescriptor(HTMLDocument.prototype, 'cookie')
   || Object.getOwnPropertyDescriptor(document, 'cookie');
